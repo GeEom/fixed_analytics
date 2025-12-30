@@ -1,6 +1,6 @@
 # fixed_analytics
 
-Fixed-point mathematical functions using the CORDIC algorithm. Designed for embedded systems and environments without hardware floating-point support.
+Basic mathematical functions for fixed-point numbers.
 
 [![Crates.io](https://img.shields.io/crates/v/fixed_analytics.svg)](https://crates.io/crates/fixed_analytics)
 [![CI](https://github.com/GeEom/fixed_analytics/actions/workflows/ci.yml/badge.svg)](https://github.com/GeEom/fixed_analytics/actions/workflows/ci.yml)
