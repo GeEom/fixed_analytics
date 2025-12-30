@@ -1,0 +1,21 @@
+# Rust artifacts
+target/
+Cargo.lock
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Coverage
+*.profraw
+coverage/
+tarpaulin-report.html
+
+# Documentation build
+doc/

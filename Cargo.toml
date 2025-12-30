@@ -1,0 +1,67 @@
+[package]
+name = "fixed_analytics"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+authors = ["David Gathercole"]
+description = "Fixed-point mathematical functions using the CORDIC algorithm"
+repository = "https://github.com/GeEom/fixed_analytics"
+documentation = "https://docs.rs/fixed_analytics"
+readme = "README.md"
+license = "MIT"
+keywords = ["cordic", "fixed-point", "trigonometry", "math", "no_std"]
+categories = ["mathematics", "no-std", "algorithms", "embedded"]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[features]
+default = ["std"]
+std = []
+
+[dependencies]
+fixed = "1"
+
+[dev-dependencies]
+criterion = { version = "0.8.1", features = ["html_reports"] }
+
+[[bench]]
+name = "benchmarks"
+harness = false
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[profile.bench]
+lto = true
+codegen-units = 1
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "deny"
+rust_2024_compatibility = { level = "warn", priority = -1 }
+future_incompatible = { level = "deny", priority = -1 }
+nonstandard_style = { level = "deny", priority = -1 }
+rust_2018_idioms = { level = "deny", priority = -1 }
+
+[lints.clippy]
+# Lint groups
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+cargo = { level = "warn", priority = -1 }
+
+# Safety-critical denies
+unwrap_used = "deny"
+expect_used = "deny"
+indexing_slicing = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+
+# Allow specific pedantic lints that are too noisy
+module_name_repetitions = "allow"
+similar_names = "allow"

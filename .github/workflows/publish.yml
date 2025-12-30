@@ -1,0 +1,75 @@
+name: Publish
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Run full test suite before publishing
+  test:
+    name: Pre-publish Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --all-features
+      - run: cargo test --no-default-features
+      - run: cargo doc --no-deps --all-features
+        env:
+          RUSTDOCFLAGS: -Dwarnings
+
+  # Publish to crates.io
+  publish:
+    name: Publish to crates.io
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      
+      - name: Verify version matches tag
+        run: |
+          CARGO_VERSION=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')
+          TAG_VERSION=${GITHUB_REF#refs/tags/v}
+          if [ "$CARGO_VERSION" != "$TAG_VERSION" ]; then
+            echo "Version mismatch: Cargo.toml has $CARGO_VERSION but tag is $TAG_VERSION"
+            exit 1
+          fi
+      
+      - name: Publish
+        run: cargo publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  # Create GitHub release with auto-generated notes
+  release:
+    name: Create GitHub Release
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: softprops/action-gh-release@v1
+        with:
+          generate_release_notes: true
+          body: |
+            ## Installation
+            
+            ```toml
+            [dependencies]
+            fixed_analytics = "${{ github.ref_name }}"
+            ```
+            
+            For `no_std` environments:
+            
+            ```toml
+            [dependencies]
+            fixed_analytics = { version = "${{ github.ref_name }}", default-features = false }
+            ```
