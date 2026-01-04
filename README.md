@@ -7,7 +7,7 @@ Basic mathematical functions for fixed-point numbers.
 [![Rust](https://github.com/GeEom/fixed_analytics/actions/workflows/rust.yml/badge.svg)](https://github.com/GeEom/fixed_analytics/actions/workflows/rust.yml)
 [![unsafe forbidden](https://img.shields.io/badge/unsafe-forbidden-success.svg)](https://github.com/rust-secure-code/safety-dance/)
 [![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE.txt)
-[![codecov](https://codecov.io/gh/GeEom/fixed_analytics/branch/master/graph/badge.svg)](https://codecov.io/gh/GeEom/fixed_analytics)
+[![codecov](https://codecov.io/gh/GeEom/fixed_analytics/branch/main/graph/badge.svg)](https://codecov.io/gh/GeEom/fixed_analytics)
 
 ## Examples
 
