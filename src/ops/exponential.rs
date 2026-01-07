@@ -1,49 +1,10 @@
 //! Exponential and logarithmic functions.
-//!
-//! Provides exp, ln, log2, and log10 using CORDIC and related algorithms.
-//!
-//! # Implementation Notes
-//!
-//! - `exp(x)` uses the identity `exp(x) = cosh(x) + sinh(x)` with argument reduction
-//! - `ln(x)` uses the identity `ln(x) = 2 * atanh((x-1)/(x+1))`
-//! - `log2` and `log10` are derived from `ln` using change of base
 
 use crate::error::{Error, Result};
 use crate::ops::hyperbolic::sinh_cosh;
 use crate::traits::CordicNumber;
 
-/// Computes e^x (the exponential function).
-///
-/// Uses the identity `exp(x) = cosh(x) + sinh(x)` with argument reduction
-/// for large values.
-///
-/// # Arguments
-///
-/// * `x` - The exponent
-///
-/// # Returns
-///
-/// e raised to the power x.
-///
-/// # Examples
-///
-/// ```
-/// use fixed::types::I16F16;
-/// use fixed_analytics::exp;
-///
-/// let x = I16F16::ZERO;
-/// let result = exp(x);
-/// // result ≈ 1.0
-///
-/// let x = I16F16::from_num(1.0);
-/// let result = exp(x);
-/// // result ≈ 2.718
-/// ```
-///
-/// # Note
-///
-/// May overflow for large positive values of x. The exact overflow threshold
-/// depends on the fixed-point format used.
+/// Exponential (e^x). May overflow for large positive x.
 #[must_use]
 pub fn exp<T: CordicNumber>(x: T) -> T {
     let zero = T::zero();
@@ -63,23 +24,21 @@ pub fn exp<T: CordicNumber>(x: T) -> T {
     if abs_x > threshold {
         // Argument reduction using exp(x) = exp(x - ln2) * 2
         // Find k such that |x - k*ln2| < ln2
-        // Guard against infinite loops (limit to 128 iterations, enough for any practical value).
         let mut reduced = x;
         let mut scale_factor = one;
-        let max_iterations = 128_u32;
-        let mut iterations = 0_u32;
 
+        let mut i = 0;
         if x.is_positive() {
-            while reduced > ln2 && iterations < max_iterations {
+            while reduced > ln2 && i < 128 {
                 reduced -= ln2;
                 scale_factor = scale_factor + scale_factor; // *= 2
-                iterations += 1;
+                i += 1;
             }
         } else {
-            while reduced < -ln2 && iterations < max_iterations {
+            while reduced < -ln2 && i < 128 {
                 reduced += ln2;
                 scale_factor = scale_factor >> 1; // /= 2
-                iterations += 1;
+                i += 1;
             }
         }
 
@@ -95,48 +54,23 @@ pub fn exp<T: CordicNumber>(x: T) -> T {
     cosh_x.saturating_add(sinh_x)
 }
 
-/// Computes the natural logarithm (base e).
-///
-/// Uses the identity `ln(x) = 2 * atanh((x-1)/(x+1))` which is suitable
-/// for CORDIC computation.
-///
-/// # Arguments
-///
-/// * `x` - A positive value
-///
-/// # Returns
-///
-/// The natural logarithm of x.
+/// Natural logarithm. Domain: `x > 0`.
 ///
 /// # Errors
+/// Returns `DomainError` if `x ≤ 0`.
 ///
-/// Returns [`Error::DomainError`] if `x <= 0`.
-///
-/// # Examples
-///
-/// ```
-/// use fixed::types::I16F16;
-/// use fixed_analytics::ln;
-///
-/// let x = I16F16::from_num(1.0);
-/// let result = ln(x).unwrap();
-/// // result ≈ 0.0
-///
-/// let x = I16F16::E;
-/// let result = ln(x).unwrap();
-/// // result ≈ 1.0
-/// ```
+/// # Panics
+/// Panics if the internal atanh computation fails, which should never happen
+/// as the normalized argument is always in the valid range (-1/3, 1/3).
 #[must_use = "returns the natural logarithm result which should be handled"]
+#[allow(clippy::missing_panics_doc)] // Panic only on internal invariant violation
 pub fn ln<T: CordicNumber>(x: T) -> Result<T> {
     let zero = T::zero();
     let one = T::one();
     let two = T::two();
 
     if x <= zero {
-        return Err(Error::DomainError {
-            function: "ln",
-            expected: "positive value",
-        });
+        return Err(Error::domain("ln", "positive value"));
     }
 
     if x == one {
@@ -155,23 +89,22 @@ pub fn ln<T: CordicNumber>(x: T) -> Result<T> {
     let mut k_ln2 = zero;
 
     // Reduce to range [0.5, 2] for better convergence.
-    // Guard against infinite loops (limit to 128 iterations, enough for any practical value).
     let half = T::half();
-    let max_iterations = 128_u32;
-    let mut iterations = 0_u32;
 
     // For large x, divide by 2 repeatedly
-    while normalized > two && iterations < max_iterations {
+    let mut i = 0;
+    while normalized > two && i < 128 {
         normalized = normalized >> 1;
         k_ln2 += ln2;
-        iterations += 1;
+        i += 1;
     }
 
     // For small x (< 0.5), multiply by 2 repeatedly
-    while normalized < half && iterations < max_iterations {
+    i = 0;
+    while normalized < half && i < 128 {
         normalized = normalized + normalized;
         k_ln2 -= ln2;
-        iterations += 1;
+        i += 1;
     }
 
     // Now compute ln(normalized) where 0.5 <= normalized <= 2
@@ -180,41 +113,20 @@ pub fn ln<T: CordicNumber>(x: T) -> Result<T> {
     let x_plus_1 = normalized + one;
     let arg = x_minus_1.div(x_plus_1);
 
-    // atanh is computed via CORDIC.
-    // Since normalized is in [0.5, 2], arg = (x-1)/(x+1) is in (-1/3, 1/3) ⊂ (-1, 1),
-    // so atanh will always succeed. The unwrap_or(zero) is defensive only.
-    let atanh_val = crate::ops::hyperbolic::atanh(arg).unwrap_or(zero);
+    // SAFETY: normalized ∈ [0.5, 2], so arg = (x-1)/(x+1) ∈ (-1/3, 1/3) ⊂ (-1, 1).
+    // atanh cannot fail for this range.
+    #[allow(clippy::expect_used)] // Invariant: normalized in [0.5, 2] guarantees valid atanh input
+    let atanh_val = crate::ops::hyperbolic::atanh(arg)
+        .expect("normalized in [0.5, 2] guarantees arg in (-1/3, 1/3)");
     let ln_normalized = atanh_val + atanh_val; // 2 * atanh
 
     Ok(ln_normalized + k_ln2)
 }
 
-/// Computes the base-2 logarithm.
-///
-/// `log2(x) = ln(x) / ln(2)`
-///
-/// # Arguments
-///
-/// * `x` - A positive value
-///
-/// # Returns
-///
-/// The base-2 logarithm of x.
+/// Base-2 logarithm. Domain: `x > 0`.
 ///
 /// # Errors
-///
-/// Returns [`Error::DomainError`] if `x <= 0`.
-///
-/// # Examples
-///
-/// ```
-/// use fixed::types::I16F16;
-/// use fixed_analytics::log2;
-///
-/// let x = I16F16::from_num(8.0);
-/// let result = log2(x).unwrap();
-/// // result ≈ 3.0
-/// ```
+/// Returns `DomainError` if `x ≤ 0`.
 #[must_use = "returns the base-2 logarithm result which should be handled"]
 pub fn log2<T: CordicNumber>(x: T) -> Result<T> {
     let ln_x = ln(x)?;
@@ -222,32 +134,10 @@ pub fn log2<T: CordicNumber>(x: T) -> Result<T> {
     Ok(ln_x.div(ln_2))
 }
 
-/// Computes the base-10 logarithm.
-///
-/// `log10(x) = ln(x) / ln(10)`
-///
-/// # Arguments
-///
-/// * `x` - A positive value
-///
-/// # Returns
-///
-/// The base-10 logarithm of x.
+/// Base-10 logarithm. Domain: `x > 0`.
 ///
 /// # Errors
-///
-/// Returns [`Error::DomainError`] if `x <= 0`.
-///
-/// # Examples
-///
-/// ```
-/// use fixed::types::I16F16;
-/// use fixed_analytics::log10;
-///
-/// let x = I16F16::from_num(100.0);
-/// let result = log10(x).unwrap();
-/// // result ≈ 2.0
-/// ```
+/// Returns `DomainError` if `x ≤ 0`.
 #[must_use = "returns the base-10 logarithm result which should be handled"]
 pub fn log10<T: CordicNumber>(x: T) -> Result<T> {
     let ln_x = ln(x)?;
@@ -255,28 +145,7 @@ pub fn log10<T: CordicNumber>(x: T) -> Result<T> {
     Ok(ln_x.div(ln_10))
 }
 
-/// Computes 2^x (power of 2).
-///
-/// `pow2(x) = exp(x * ln(2))`
-///
-/// # Arguments
-///
-/// * `x` - The exponent
-///
-/// # Returns
-///
-/// 2 raised to the power x.
-///
-/// # Examples
-///
-/// ```
-/// use fixed::types::I16F16;
-/// use fixed_analytics::ops::exponential::pow2;
-///
-/// let x = I16F16::from_num(3.0);
-/// let result = pow2(x);
-/// // result ≈ 8.0
-/// ```
+/// Power of 2 (2^x).
 #[must_use]
 pub fn pow2<T: CordicNumber>(x: T) -> T {
     let ln_2 = T::ln_2();

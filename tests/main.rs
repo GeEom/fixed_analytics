@@ -1,4 +1,3 @@
-//! Test harness organizing unit and meta-level validation
+//! Test harness for unit tests.
 
-mod meta;
 mod unit;

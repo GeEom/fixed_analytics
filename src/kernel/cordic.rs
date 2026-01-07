@@ -28,19 +28,28 @@ use crate::tables::{
 };
 use crate::traits::CordicNumber;
 
-/// Safe table lookup that avoids out-of-bounds indexing.
+/// Table lookup with bounds checking.
+///
+/// # Panics
+/// Panics if index >= 64, which should never happen as CORDIC iterations
+/// are bounded by `min(frac_bits, 62)` for circular and `min(frac_bits, 54)`
+/// for hyperbolic mode.
 #[inline]
+#[allow(clippy::expect_used)] // Index bounded by iteration limits, panic indicates bug
 fn table_lookup(table: &[i64; 64], index: u32) -> i64 {
-    table.get(index as usize).copied().unwrap_or(0)
+    // Index is bounded by CORDIC iteration limits (max 62), always < 64.
+    *table
+        .get(index as usize)
+        .expect("CORDIC index exceeds table size")
 }
 
-/// Returns the inverse circular gain factor (1/K ≈ 0.6073).
+/// Returns the CORDIC scale factor (1/K ≈ 0.6073).
 ///
 /// Pre-multiply initial vectors by this to compensate for CORDIC gain.
 #[inline]
 #[must_use]
-pub fn circular_gain_inv<T: CordicNumber>() -> T {
-    T::from_i64_frac(CIRCULAR_GAIN_INV)
+pub fn cordic_scale_factor<T: CordicNumber>() -> T {
+    T::from_i1f63(CIRCULAR_GAIN_INV)
 }
 
 /// Returns the hyperbolic gain factor (`K_h` ≈ 0.8282).
@@ -50,7 +59,7 @@ pub fn circular_gain_inv<T: CordicNumber>() -> T {
 #[inline]
 #[must_use]
 pub fn hyperbolic_gain<T: CordicNumber>() -> T {
-    T::from_i64_frac(HYPERBOLIC_GAIN)
+    T::from_i1f63(HYPERBOLIC_GAIN)
 }
 
 /// Returns the inverse hyperbolic gain factor (`1/K_h` ≈ 1.2075).
@@ -60,7 +69,7 @@ pub fn hyperbolic_gain<T: CordicNumber>() -> T {
 #[inline]
 #[must_use]
 pub fn hyperbolic_gain_inv<T: CordicNumber>() -> T {
-    T::from_i2f62_frac(HYPERBOLIC_GAIN_INV)
+    T::from_i2f62(HYPERBOLIC_GAIN_INV)
 }
 
 /// Performs circular CORDIC in rotation mode.
@@ -93,7 +102,7 @@ pub fn circular_rotation<T: CordicNumber>(mut x: T, mut y: T, mut z: T) -> (T, T
     let iterations = T::frac_bits().min(62);
 
     for i in 0..iterations {
-        let angle = T::from_i64_frac(table_lookup(&ATAN_TABLE, i));
+        let angle = T::from_i1f63(table_lookup(&ATAN_TABLE, i));
 
         if z >= zero {
             // Rotate counter-clockwise (positive angle)
@@ -140,7 +149,7 @@ pub fn circular_vectoring<T: CordicNumber>(mut x: T, mut y: T, mut z: T) -> (T, 
     let iterations = T::frac_bits().min(62);
 
     for i in 0..iterations {
-        let angle = T::from_i64_frac(table_lookup(&ATAN_TABLE, i));
+        let angle = T::from_i1f63(table_lookup(&ATAN_TABLE, i));
 
         if y < zero {
             // y is negative, rotate counter-clockwise to bring y toward zero
@@ -199,7 +208,7 @@ pub fn hyperbolic_rotation<T: CordicNumber>(mut x: T, mut y: T, mut z: T) -> (T,
 
     while iteration_count < max_iterations && i < 64 {
         let table_index = i.saturating_sub(1);
-        let angle = T::from_i64_frac(table_lookup(&ATANH_TABLE, table_index));
+        let angle = T::from_i1f63(table_lookup(&ATANH_TABLE, table_index));
 
         if z >= zero {
             // "Rotate" in positive direction
@@ -264,7 +273,7 @@ pub fn hyperbolic_vectoring<T: CordicNumber>(mut x: T, mut y: T, mut z: T) -> (T
 
     while iteration_count < max_iterations && i < 64 {
         let table_index = i.saturating_sub(1);
-        let angle = T::from_i64_frac(table_lookup(&ATANH_TABLE, table_index));
+        let angle = T::from_i1f63(table_lookup(&ATANH_TABLE, table_index));
 
         // Hyperbolic pseudo-rotation equations:
         // x' = x + σ*y*2^(-i)

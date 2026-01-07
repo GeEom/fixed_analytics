@@ -4,8 +4,11 @@
 #[allow(clippy::indexing_slicing, clippy::cast_precision_loss)]
 mod tests {
     use fixed_analytics::tables::hyperbolic::{
-        ATANH_HALF, ATANH_TABLE, HYPERBOLIC_GAIN, HYPERBOLIC_GAIN_INV, REPEAT_INDICES, needs_repeat,
+        ATANH_HALF, ATANH_TABLE, HYPERBOLIC_GAIN, HYPERBOLIC_GAIN_INV, needs_repeat,
     };
+
+    /// Repeat indices for hyperbolic CORDIC convergence (used only in tests).
+    const REPEAT_INDICES: [u32; 5] = [4, 13, 40, 121, 364];
 
     #[test]
     fn atanh_table_has_64_entries() {
@@ -44,17 +47,16 @@ mod tests {
     }
 
     #[test]
-    fn repeat_indices_correct() {
-        assert_eq!(REPEAT_INDICES, [4, 13, 40, 121, 364]);
-    }
-
-    #[test]
-    fn needs_repeat_matches_indices() {
+    fn needs_repeat_correct_indices() {
+        // Verify needs_repeat returns true for expected indices
         for &idx in &REPEAT_INDICES {
             assert!(needs_repeat(idx), "needs_repeat({idx}) should be true");
         }
+        // Verify needs_repeat returns false for non-repeat indices
         assert!(!needs_repeat(5));
         assert!(!needs_repeat(100));
+        assert!(!needs_repeat(0));
+        assert!(!needs_repeat(3));
     }
 
     #[test]

@@ -64,7 +64,7 @@ mod tests {
     }
 
     #[test]
-    fn circular_gain_inv_value() {
+    fn cordic_scale_factor_value() {
         // 1/K ≈ 0.6073 in I1F63 format
         // Expected value: 0x4DBA_76D4_21AF_2D34
         assert_eq!(CIRCULAR_GAIN_INV, 0x4DBA_76D4_21AF_2D34);

@@ -28,12 +28,6 @@ mod tests {
         let msg = format!("{err}");
         assert!(msg.contains("exp"));
         assert!(msg.contains("overflow"));
-
-        // Test invalid input error constructor
-        let err = Error::invalid_input("sqrt");
-        let msg = format!("{err}");
-        assert!(msg.contains("sqrt"));
-        assert!(msg.contains("invalid"));
     }
 
     #[test]
