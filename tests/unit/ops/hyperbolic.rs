@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests {
     use fixed::types::I16F16;
-    use fixed_analytics::{acosh, acoth, asinh, atanh, cosh, sinh, sinh_cosh, tanh};
+    use fixed_analytics::{acosh, acoth, asinh, atanh, cosh, coth, sinh, sinh_cosh, tanh};
 
     const TOLERANCE: f32 = 0.05;
 
@@ -205,6 +205,69 @@ mod tests {
         assert!(
             (diff - 1.0).abs() < 0.2,
             "cosh²(5) - sinh²(5) = {diff}, expected ~1.0"
+        );
+    }
+
+    #[test]
+    fn coth_at_zero() {
+        // coth(0) is undefined (pole), should return DomainError
+        let result = coth(I16F16::ZERO);
+        assert!(result.is_err(), "coth(0) should return Err");
+    }
+
+    #[test]
+    #[allow(clippy::unwrap_used)]
+    fn coth_nonzero_values() {
+        // coth(x) = cosh(x)/sinh(x)
+        // coth(1) ≈ 1.3130
+        let result: f32 = coth(I16F16::ONE).unwrap().to_num();
+        assert!(
+            (result - 1.3130).abs() < TOLERANCE,
+            "coth(1) = {result}, expected ~1.3130"
+        );
+
+        // coth(-1) ≈ -1.3130
+        let result_neg: f32 = coth(-I16F16::ONE).unwrap().to_num();
+        assert!(
+            (result_neg + 1.3130).abs() < TOLERANCE,
+            "coth(-1) = {result_neg}, expected ~-1.3130"
+        );
+    }
+
+    #[test]
+    fn sinh_cosh_small_values() {
+        // Test Taylor series approximation for very small values (|x| < 0.1)
+        // sinh(x) ≈ x for small x
+        // cosh(x) ≈ 1 + x²/2 for small x
+        let small = I16F16::from_num(0.05);
+        let (s, c) = sinh_cosh(small);
+
+        // sinh(0.05) ≈ 0.05 (Taylor: sinh(x) ≈ x)
+        let s_f32: f32 = s.to_num();
+        assert!(
+            (s_f32 - 0.05).abs() < 0.01,
+            "sinh(0.05) = {s_f32}, expected ~0.05"
+        );
+
+        // cosh(0.05) ≈ 1.00125 (Taylor: 1 + x²/2 = 1 + 0.00125)
+        let c_f32: f32 = c.to_num();
+        assert!(
+            (c_f32 - 1.00125).abs() < 0.01,
+            "cosh(0.05) = {c_f32}, expected ~1.00125"
+        );
+
+        // Also test negative small value
+        let small_neg = I16F16::from_num(-0.05);
+        let (s_neg, c_neg) = sinh_cosh(small_neg);
+        let s_neg_f32: f32 = s_neg.to_num();
+        let c_neg_f32: f32 = c_neg.to_num();
+        assert!(
+            (s_neg_f32 + 0.05).abs() < 0.01,
+            "sinh(-0.05) = {s_neg_f32}, expected ~-0.05"
+        );
+        assert!(
+            (c_neg_f32 - 1.00125).abs() < 0.01,
+            "cosh(-0.05) = {c_neg_f32}, expected ~1.00125"
         );
     }
 }

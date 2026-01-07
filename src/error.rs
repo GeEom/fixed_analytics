@@ -21,12 +21,6 @@ pub enum Error {
         /// Name of the function that encountered the error.
         function: &'static str,
     },
-
-    /// Input was not a valid number (e.g., attempting to use a NaN-like representation).
-    InvalidInput {
-        /// Name of the function that encountered the error.
-        function: &'static str,
-    },
 }
 
 impl Error {
@@ -41,12 +35,6 @@ impl Error {
     pub const fn overflow(function: &'static str) -> Self {
         Self::Overflow { function }
     }
-
-    /// Create an invalid input error for the given function.
-    #[must_use]
-    pub const fn invalid_input(function: &'static str) -> Self {
-        Self::InvalidInput { function }
-    }
 }
 
 impl fmt::Display for Error {
@@ -60,9 +48,6 @@ impl fmt::Display for Error {
             }
             Self::Overflow { function } => {
                 write!(f, "{function}: result would overflow")
-            }
-            Self::InvalidInput { function } => {
-                write!(f, "{function}: invalid input value")
             }
         }
     }

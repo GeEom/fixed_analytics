@@ -4,6 +4,7 @@
 mod tests {
     use fixed::types::{I4F12, I4F60, I8F8, I8F24, I16F16, I20F12, I24F8, I32F32, I48F16, I64F64};
     use fixed_analytics::CordicNumber;
+    use fixed_analytics::kernel::hyperbolic_gain_inv;
 
     #[test]
     #[allow(clippy::approx_constant)]
@@ -43,28 +44,28 @@ mod tests {
     }
 
     #[test]
-    fn from_i64_frac_across_types() {
-        // Test that from_i64_frac works correctly across different types
+    fn from_i1f63_across_types() {
+        // Test that from_i1f63 works correctly across different types
         // 0.5 in I1F63 format
         let half_bits: i64 = 0x4000_0000_0000_0000;
 
-        let i8f8_half: f32 = I8F8::from_i64_frac(half_bits).to_num();
+        let i8f8_half: f32 = I8F8::from_i1f63(half_bits).to_num();
         assert!((i8f8_half - 0.5).abs() < 0.01);
 
-        let i16f16_half: f32 = I16F16::from_i64_frac(half_bits).to_num();
+        let i16f16_half: f32 = I16F16::from_i1f63(half_bits).to_num();
         assert!((i16f16_half - 0.5).abs() < 0.0001);
 
-        let i32f32_half: f64 = I32F32::from_i64_frac(half_bits).to_num();
+        let i32f32_half: f64 = I32F32::from_i1f63(half_bits).to_num();
         assert!((i32f32_half - 0.5).abs() < 1e-9);
 
-        let i64f64_half: f64 = I64F64::from_i64_frac(half_bits).to_num();
+        let i64f64_half: f64 = I64F64::from_i1f63(half_bits).to_num();
         assert!((i64f64_half - 0.5).abs() < 1e-15);
 
         // Also test a non-standard type
-        let i24f8_half: f32 = I24F8::from_i64_frac(half_bits).to_num();
+        let i24f8_half: f32 = I24F8::from_i1f63(half_bits).to_num();
         assert!((i24f8_half - 0.5).abs() < 0.01);
 
-        let i4f60_half: f64 = I4F60::from_i64_frac(half_bits).to_num();
+        let i4f60_half: f64 = I4F60::from_i1f63(half_bits).to_num();
         assert!((i4f60_half - 0.5).abs() < 1e-15);
     }
 
@@ -80,5 +81,50 @@ mod tests {
         assert_eq!(I24F8::frac_bits(), 8);
         assert_eq!(I4F12::frac_bits(), 12);
         assert_eq!(I48F16::frac_bits(), 16);
+    }
+
+    #[test]
+    fn frac_pi_4_values() {
+        // Test the frac_pi_4() default implementation
+        // π/4 ≈ 0.7854
+        let pi_4_16: f32 = I16F16::frac_pi_4().to_num();
+        assert!(
+            (pi_4_16 - core::f32::consts::FRAC_PI_4).abs() < 0.001,
+            "I16F16::frac_pi_4() = {pi_4_16}, expected ~0.7854"
+        );
+
+        let pi_4_32: f64 = I32F32::frac_pi_4().to_num();
+        assert!(
+            (pi_4_32 - core::f64::consts::FRAC_PI_4).abs() < 1e-9,
+            "I32F32::frac_pi_4() = {pi_4_32}, expected ~0.7854"
+        );
+
+        let pi_4_64: f64 = I64F64::frac_pi_4().to_num();
+        assert!(
+            (pi_4_64 - core::f64::consts::FRAC_PI_4).abs() < 1e-15,
+            "I64F64::frac_pi_4() = {pi_4_64}, expected ~0.7854"
+        );
+    }
+
+    #[test]
+    fn from_i2f62_high_precision() {
+        // Test from_i2f62 with high-precision types (frac_bits > 62)
+        // This exercises the shift-left branch in from_i2f62
+        // 1/K_h ≈ 1.2075 is stored in I2F62 format
+        // We call hyperbolic_gain_inv which uses from_i2f62
+
+        // I64F64 has 64 fractional bits > 62, so it should use the shift-left branch
+        let gain_inv_64: f64 = hyperbolic_gain_inv::<I64F64>().to_num();
+        assert!(
+            (gain_inv_64 - 1.2075).abs() < 0.01,
+            "hyperbolic_gain_inv::<I64F64>() = {gain_inv_64}, expected ~1.2075"
+        );
+
+        // I4F60 has 60 fractional bits < 62, uses shift-right branch (control test)
+        let gain_inv_60: f64 = hyperbolic_gain_inv::<I4F60>().to_num();
+        assert!(
+            (gain_inv_60 - 1.2075).abs() < 0.01,
+            "hyperbolic_gain_inv::<I4F60>() = {gain_inv_60}, expected ~1.2075"
+        );
     }
 }

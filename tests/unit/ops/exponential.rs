@@ -180,4 +180,55 @@ mod tests {
         let val: f32 = result.unwrap().to_num();
         assert!(val.abs() < 0.01, "log10(1) = {val}, expected 0");
     }
+
+    #[test]
+    fn exp_large_positive() {
+        // exp of large positive values should exercise the argument reduction loop
+        let large = I16F16::from_num(5.0);
+        let result: f32 = exp(large).to_num();
+        // exp(5) ≈ 148.41
+        assert!(
+            result > 100.0 && result < 200.0,
+            "exp(5) = {result}, expected ~148"
+        );
+
+        // Test even larger value to ensure multiple reduction iterations
+        let larger = I16F16::from_num(8.0);
+        let result2: f32 = exp(larger).to_num();
+        // exp(8) ≈ 2981
+        assert!(result2 > 2000.0, "exp(8) = {result2}, expected > 2000");
+    }
+
+    #[test]
+    fn ln_large_values() {
+        // ln of large values should exercise the argument reduction loop
+        let large = I16F16::from_num(1000.0);
+        let result = ln(large);
+        assert!(result.is_ok());
+        let val: f32 = result.unwrap().to_num();
+        // ln(1000) ≈ 6.9
+        assert!((val - 6.9).abs() < 0.5, "ln(1000) = {val}, expected ~6.9");
+
+        // Test even larger value
+        let larger = I16F16::from_num(10000.0);
+        let result2 = ln(larger);
+        assert!(result2.is_ok());
+        let val2: f32 = result2.unwrap().to_num();
+        // ln(10000) ≈ 9.2
+        assert!(
+            (val2 - 9.2).abs() < 0.5,
+            "ln(10000) = {val2}, expected ~9.2"
+        );
+    }
+
+    #[test]
+    fn ln_very_small_values() {
+        // Test very small values to ensure the multiply-by-2 loop iterates
+        let tiny = I16F16::from_num(0.0001);
+        let result = ln(tiny);
+        assert!(result.is_ok());
+        let val: f32 = result.unwrap().to_num();
+        // ln(0.0001) ≈ -9.2
+        assert!(val < -8.0, "ln(0.0001) = {val}, expected < -8.0");
+    }
 }

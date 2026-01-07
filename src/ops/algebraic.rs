@@ -1,62 +1,28 @@
-//! Algebraic functions.
-//!
-//! Provides sqrt using an iterative algorithm optimized for fixed-point.
-//!
-//! # Algorithm
-//!
-//! Square root is computed using a digit-by-digit method similar to
-//! long division, which is well-suited for fixed-point arithmetic.
+//! Algebraic functions (sqrt).
 
+use crate::error::{Error, Result};
 use crate::traits::CordicNumber;
 
-/// Computes the square root of a value.
+/// Square root. Domain: `x ≥ 0`. Uses Newton-Raphson iteration.
 ///
-/// Uses a Newton-Raphson iteration method that is efficient
-/// for fixed-point numbers.
-///
-/// # Arguments
-///
-/// * `x` - A non-negative value
-///
-/// # Returns
-///
-/// The square root of `x`. Returns 0 for negative inputs.
-///
-/// # Examples
-///
-/// ```
-/// use fixed::types::I16F16;
-/// use fixed_analytics::sqrt;
-///
-/// let x = I16F16::from_num(4.0);
-/// let result = sqrt(x);
-/// // result ≈ 2.0
-///
-/// let x = I16F16::from_num(2.0);
-/// let result = sqrt(x);
-/// // result ≈ 1.414
-/// ```
-///
-/// # Algorithm Details
-///
-/// This implementation uses Newton-Raphson iteration:
-/// ```text
-/// x_{n+1} = (x_n + S/x_n) / 2
-/// ```
-/// Starting from an initial guess, this converges quadratically to sqrt(S).
-#[must_use]
-pub fn sqrt<T: CordicNumber>(x: T) -> T {
+/// # Errors
+/// Returns `DomainError` if `x < 0`.
+#[must_use = "returns the square root result which should be handled"]
+pub fn sqrt<T: CordicNumber>(x: T) -> Result<T> {
     let zero = T::zero();
     let one = T::one();
     let half = T::half();
 
-    // Handle edge cases
-    if x <= zero {
-        return zero;
+    if x < zero {
+        return Err(Error::domain("sqrt", "non-negative value"));
+    }
+
+    if x == zero {
+        return Ok(zero);
     }
 
     if x == one {
-        return one;
+        return Ok(one);
     }
 
     // Initial guess: use bit-level estimation for faster convergence
@@ -85,42 +51,38 @@ pub fn sqrt<T: CordicNumber>(x: T) -> T {
     };
 
     // Newton-Raphson iteration: x_new = (x_old + n/x_old) / 2
-    // Number of iterations depends on precision needed
+    // Number of iterations depends on precision needed.
+    // Newton-Raphson for sqrt converges quadratically, so 8-20 iterations
+    // is sufficient for any fixed-point precision up to 128 bits.
     let iterations = (T::frac_bits() / 2).clamp(8, 20);
 
-    for _ in 0..iterations {
-        if guess == zero {
-            return zero;
-        }
+    // Pre-compute epsilon: approximately 2^(-frac_bits/2) for convergence check.
+    // frac_bits ≤ 128 for all supported types, so shift is in range [0, 63].
+    #[allow(clippy::cast_possible_wrap, clippy::cast_sign_loss)]
+    let epsilon_shift = (63i32 - (T::frac_bits() / 2) as i32).max(0) as u32;
+    let epsilon = T::from_i1f63(1i64 << epsilon_shift);
 
+    // Run iterations - 1 times with early exit on convergence
+    for _ in 0..iterations.saturating_sub(1) {
         let quotient = x.div(guess);
         let sum = guess.saturating_add(quotient);
         let new_guess = sum.saturating_mul(half);
 
-        // Check for convergence
         let diff = if new_guess > guess {
             new_guess - guess
         } else {
             guess - new_guess
         };
 
-        // Epsilon is approximately 2^(-frac_bits/2) for reasonable convergence.
-        // This scales with the type's precision: smaller for higher precision types.
-        // frac_bits() is at most 64, so this cast is safe.
-        #[allow(clippy::cast_possible_wrap)]
-        let epsilon_shift = 63i32 - (T::frac_bits() / 2) as i32;
-        let epsilon_bits = if epsilon_shift >= 0 {
-            1i64 << epsilon_shift
-        } else {
-            1i64 >> (-epsilon_shift)
-        };
-        let epsilon = T::from_i64_frac(epsilon_bits);
         if diff <= epsilon {
-            return new_guess;
+            return Ok(new_guess);
         }
 
         guess = new_guess;
     }
 
-    guess
+    // Final iteration - always performed, result always returned
+    let quotient = x.div(guess);
+    let sum = guess.saturating_add(quotient);
+    Ok(sum.saturating_mul(half))
 }

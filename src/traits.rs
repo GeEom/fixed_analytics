@@ -36,85 +36,71 @@ pub trait CordicNumber:
     + Shl<u32, Output = Self>
     + Shr<u32, Output = Self>
 {
-    /// The zero value.
+    /// Zero.
     fn zero() -> Self;
-
-    /// The value one.
+    /// One.
     fn one() -> Self;
-
-    /// The value two.
-    fn two() -> Self;
-
-    /// The value one-half (0.5).
-    fn half() -> Self;
-
-    /// The mathematical constant π.
+    /// Two.
+    #[must_use]
+    fn two() -> Self {
+        Self::one() + Self::one()
+    }
+    /// Half.
+    #[must_use]
+    fn half() -> Self {
+        Self::from_num(0.5)
+    }
+    /// π. Requires ≥2 integer bits.
     fn pi() -> Self;
-
-    /// The mathematical constant π/2.
+    /// π/2. Requires ≥1 integer bit.
     fn frac_pi_2() -> Self;
-
-    /// The mathematical constant π/4.
-    fn frac_pi_4() -> Self;
-
+    /// π/4.
+    #[must_use]
+    fn frac_pi_4() -> Self {
+        Self::frac_pi_2() >> 1
+    }
     /// Euler's number e.
     fn e() -> Self;
-
-    /// The natural logarithm of 2.
+    /// ln(2).
     fn ln_2() -> Self;
-
-    /// The natural logarithm of 10.
+    /// ln(10).
     fn ln_10() -> Self;
-
-    /// Returns the absolute value of `self`.
+    /// Absolute value.
     #[must_use]
     fn abs(self) -> Self;
-
-    /// Returns the number of fractional bits in this type.
+    /// Fractional bits. Determines CORDIC iteration count.
     fn frac_bits() -> u32;
-
-    /// Returns the total number of bits in this type.
+    /// Total bits.
     fn total_bits() -> u32;
-
-    /// Converts from a 64-bit signed fractional representation (I1F63).
-    fn from_i64_frac(bits: i64) -> Self;
-
-    /// Converts from a 64-bit signed fractional representation (I2F62).
-    ///
-    /// This is used for constants that are >= 1 but < 4, such as `1/K_h ≈ 1.2075`.
-    fn from_i2f62_frac(bits: i64) -> Self;
-
-    /// Checks if this value is negative.
+    /// Converts from a raw I1F63 representation (1 sign bit, 63 fractional bits).
+    /// For constants in (-1, 1).
+    fn from_i1f63(bits: i64) -> Self;
+    /// Converts from a raw I2F62 representation (2 integer bits, 62 fractional bits).
+    /// For constants in [1, 4).
+    fn from_i2f62(bits: i64) -> Self;
+    /// Returns true if negative.
     fn is_negative(self) -> bool;
-
-    /// Checks if this value is positive.
+    /// Returns true if positive.
     fn is_positive(self) -> bool {
         !self.is_negative() && self != Self::zero()
     }
-
     /// Saturating multiplication.
     #[must_use]
     fn saturating_mul(self, rhs: Self) -> Self;
-
     /// Saturating addition.
     #[must_use]
     fn saturating_add(self, rhs: Self) -> Self;
-
     /// Saturating subtraction.
     #[must_use]
     fn saturating_sub(self, rhs: Self) -> Self;
-
     /// Division.
     #[must_use]
     fn div(self, rhs: Self) -> Self;
-
-    /// Convert from a floating-point value.
+    /// Convert from numeric type.
     fn from_num<N: fixed::traits::ToFixed>(n: N) -> Self;
-
-    /// The maximum representable value.
+    /// Maximum value.
     fn max_value() -> Self;
-
-    /// The minimum representable value.
+    /// Minimum value.
     fn min_value() -> Self;
 }
 
@@ -159,16 +145,6 @@ macro_rules! impl_cordic_generic {
             }
 
             #[inline]
-            fn two() -> Self {
-                Self::from_num(2)
-            }
-
-            #[inline]
-            fn half() -> Self {
-                Self::from_num(0.5)
-            }
-
-            #[inline]
             fn pi() -> Self {
                 Self::PI
             }
@@ -176,11 +152,6 @@ macro_rules! impl_cordic_generic {
             #[inline]
             fn frac_pi_2() -> Self {
                 Self::FRAC_PI_2
-            }
-
-            #[inline]
-            fn frac_pi_4() -> Self {
-                Self::FRAC_PI_4
             }
 
             #[inline]
@@ -214,8 +185,9 @@ macro_rules! impl_cordic_generic {
             }
 
             #[inline]
+            // Casts are safe: frac_bits ≤ 128, shift amounts bounded by type size
             #[allow(clippy::cast_possible_wrap, clippy::cast_lossless)]
-            fn from_i64_frac(bits: i64) -> Self {
+            fn from_i1f63(bits: i64) -> Self {
                 // Convert from I1F63 representation to our type.
                 // I1F63 has 63 fractional bits.
                 // FRAC_NBITS is at most 128, which fits in i32.
@@ -236,8 +208,9 @@ macro_rules! impl_cordic_generic {
             }
 
             #[inline]
+            // Casts are safe: frac_bits ≤ 128, shift amounts bounded by type size
             #[allow(clippy::cast_possible_wrap, clippy::cast_lossless)]
-            fn from_i2f62_frac(bits: i64) -> Self {
+            fn from_i2f62(bits: i64) -> Self {
                 // Convert from I2F62 representation to our type.
                 // I2F62 has 62 fractional bits.
                 let our_frac = Self::FRAC_NBITS as i32;

@@ -1,31 +1,31 @@
-//! Core CORDIC iteration kernels.
+//! CORDIC (Coordinate Rotation Digital Computer) kernels.
 //!
-//! This module contains the fundamental CORDIC algorithm implementations
-//! for both circular and hyperbolic modes, in both rotation and vectoring
-//! directions.
+//! # Algorithm
 //!
-//! # CORDIC Overview
+//! Iteratively rotates vectors using only shifts and adds:
 //!
-//! CORDIC (Coordinate Rotation Digital Computer) is an iterative algorithm
-//! that computes trigonometric, hyperbolic, and other functions using only
-//! addition, subtraction, and bit shifts.
+//! ```text
+//! x' = x - σ·y·2^(-i)
+//! y' = y + σ·x·2^(-i)
+//! z' = z - σ·atan(2^-i)
+//! ```
 //!
-//! ## Modes and Directions
+//! **Rotation mode** (z→0): computes sin/cos from angle.
+//! **Vectoring mode** (y→0): computes atan from coordinates.
+//!
+//! Hyperbolic mode uses `atanh(2^-i)` tables and requires iteration repeats
+//! at indices 4, 13, 40, ... for convergence.
 //!
 //! | Mode | Rotation (z → 0) | Vectoring (y → 0) |
 //! |------|------------------|-------------------|
-//! | Circular | sin, cos from angle | atan from (x, y) |
-//! | Hyperbolic | sinh, cosh from arg | atanh, ln |
+//! | Circular | sin, cos | atan |
+//! | Hyperbolic | sinh, cosh | atanh, ln |
 //!
-//! ## Usage
-//!
-//! The kernels are building blocks for higher-level functions. Users should
-//! generally use the functions in [`crate::ops`] instead of calling kernels
-//! directly.
+//! Users should call functions in [`crate::ops`] rather than kernels directly.
 
 mod cordic;
 
-pub use crate::kernel::cordic::{circular_gain_inv, circular_rotation, circular_vectoring};
+pub use crate::kernel::cordic::{circular_rotation, circular_vectoring, cordic_scale_factor};
 pub use crate::kernel::cordic::{
     hyperbolic_gain, hyperbolic_gain_inv, hyperbolic_rotation, hyperbolic_vectoring,
 };

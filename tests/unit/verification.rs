@@ -205,6 +205,7 @@ mod reference_comparison {
     }
 
     #[test]
+    #[allow(clippy::unwrap_used)]
     fn sqrt_vs_f64() {
         for i in 0..SAMPLES {
             let bits = sample_bits(SEED, i);
@@ -213,7 +214,7 @@ mod reference_comparison {
             let x = I16F16::from_bits(bits);
             let x_f64: f64 = x.to_num();
 
-            let result = sqrt(x);
+            let result = sqrt(x).unwrap();
             let expected = x_f64.sqrt();
             let err = (result.to_num::<f64>() - expected).abs();
 
@@ -837,11 +838,12 @@ mod monotonicity {
     use fixed_analytics::{asin, atan, exp, ln, sin, sqrt, tanh};
 
     #[test]
+    #[allow(clippy::unwrap_used)]
     fn sqrt_is_increasing() {
         let mut prev = I16F16::ZERO;
         for i in 0..1000 {
             let x = I16F16::from_bits(i * 1000);
-            let y = sqrt(x);
+            let y = sqrt(x).unwrap();
             assert!(
                 y >= prev,
                 "sqrt({}) = {} < sqrt({}) = {}",
@@ -1041,14 +1043,25 @@ mod bounds {
         for i in 0..SAMPLES {
             let bits = sample_bits(SEED, i);
             let x = I16F16::from_bits(bits);
-            let y = sqrt(x);
 
-            assert!(
-                y >= I16F16::ZERO,
-                "sqrt({}) = {} should be non-negative",
-                x.to_num::<f64>(),
-                y.to_num::<f64>()
-            );
+            // sqrt returns Err for negative inputs, Ok for non-negative
+            match sqrt(x) {
+                Ok(y) => {
+                    assert!(
+                        y >= I16F16::ZERO,
+                        "sqrt({}) = {} should be non-negative",
+                        x.to_num::<f64>(),
+                        y.to_num::<f64>()
+                    );
+                }
+                Err(_) => {
+                    assert!(
+                        x < I16F16::ZERO,
+                        "sqrt({}) returned Err but input is non-negative",
+                        x.to_num::<f64>()
+                    );
+                }
+            }
         }
     }
 

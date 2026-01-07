@@ -3,7 +3,7 @@
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-    use fixed::types::I16F16;
+    use fixed::types::{I16F16, I32F32};
     use fixed_analytics::{acos, asin, atan, atan2, cos, sin, sin_cos, tan};
 
     const TOLERANCE: f32 = 0.002;
@@ -287,6 +287,106 @@ mod tests {
         assert!(
             (result_neg - expected_neg).abs() < 0.01,
             "atan(-1000) = {result_neg}, expected ~{expected_neg}"
+        );
+    }
+
+    #[test]
+    fn asin_near_negative_one() {
+        // Test asin for values very close to -1, exercising the boundary path
+        // where sqrt_term is very small and x is negative
+        let near_neg_one = I16F16::from_num(-0.9999);
+        let result = asin(near_neg_one);
+        assert!(result.is_ok());
+        let val: f32 = result.unwrap().to_num();
+        // asin(-0.9999) should be very close to -π/2
+        let expected = -core::f32::consts::FRAC_PI_2;
+        assert!(
+            (val - expected).abs() < 0.1,
+            "asin(-0.9999) = {val}, expected ~{expected}"
+        );
+
+        // Test exactly at -1
+        let neg_one = -I16F16::ONE;
+        let result_exact = asin(neg_one);
+        assert!(result_exact.is_ok());
+        let val_exact: f32 = result_exact.unwrap().to_num();
+        assert!(
+            (val_exact - expected).abs() < 0.01,
+            "asin(-1) = {val_exact}, expected ~{expected}"
+        );
+    }
+
+    #[test]
+    fn asin_boundary_very_close() {
+        // Test with higher precision type to hit the small sqrt_term boundary path
+        // The threshold is 2^(-15) ≈ 0.0000305, so we need sqrt(1-x²) < 0.0000305
+        // This requires 1-x² < 2^(-30), meaning x must be within 2^(-31) of ±1
+        // Using I32F32 for higher precision
+
+        // Create a value extremely close to -1 but not exactly -1
+        // -1 + 2^(-32) (smallest representable distance)
+        let near_neg_one = -I32F32::ONE + I32F32::from_bits(1);
+        let result = asin(near_neg_one);
+        assert!(result.is_ok());
+        let val: f64 = result.unwrap().to_num();
+        let expected = -core::f64::consts::FRAC_PI_2;
+        assert!(
+            (val - expected).abs() < 0.01,
+            "asin(~-1) = {val}, expected ~{expected}"
+        );
+
+        // Also test positive boundary
+        let near_pos_one = I32F32::ONE - I32F32::from_bits(1);
+        let result_pos = asin(near_pos_one);
+        assert!(result_pos.is_ok());
+        let val_pos: f64 = result_pos.unwrap().to_num();
+        let expected_pos = core::f64::consts::FRAC_PI_2;
+        assert!(
+            (val_pos - expected_pos).abs() < 0.01,
+            "asin(~1) = {val_pos}, expected ~{expected_pos}"
+        );
+    }
+
+    #[test]
+    fn asin_domain_error_message() {
+        // Test that domain errors are properly returned for out-of-range values
+        let too_large = I16F16::from_num(1.5);
+        let err = asin(too_large).unwrap_err();
+        assert!(matches!(err, fixed_analytics::Error::DomainError { .. }));
+
+        let too_small = I16F16::from_num(-1.5);
+        let err2 = asin(too_small).unwrap_err();
+        assert!(matches!(err2, fixed_analytics::Error::DomainError { .. }));
+    }
+
+    #[test]
+    fn sin_cos_very_large_positive_angle() {
+        // Test with very large positive angle to exercise the reduction loop
+        // The loop iterates while reduced > pi, subtracting 2π each time
+        // 200.0 radians is about 32 times 2π, so the loop will iterate many times
+        let very_large = I16F16::from_num(200.0);
+        let (s, c) = sin_cos(very_large);
+
+        // Should still satisfy sin²+cos² = 1
+        let sum_sq: f32 = (s * s + c * c).to_num();
+        assert!(
+            (sum_sq - 1.0).abs() < 0.1,
+            "sin²(200) + cos²(200) = {sum_sq}, expected ~1.0"
+        );
+    }
+
+    #[test]
+    fn sin_cos_very_large_negative_angle() {
+        // Test with very large negative angle to exercise the second reduction loop
+        // The loop iterates while reduced < -pi, adding 2π each time
+        let very_large_neg = I16F16::from_num(-200.0);
+        let (s, c) = sin_cos(very_large_neg);
+
+        // Should still satisfy sin²+cos² = 1
+        let sum_sq: f32 = (s * s + c * c).to_num();
+        assert!(
+            (sum_sq - 1.0).abs() < 0.1,
+            "sin²(-200) + cos²(-200) = {sum_sq}, expected ~1.0"
         );
     }
 }

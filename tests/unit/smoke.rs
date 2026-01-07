@@ -57,9 +57,10 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::unwrap_used)]
     fn smoke_test_algebraic() {
         let x = I16F16::from_num(2.0);
-        let _ = sqrt(x);
+        let _ = sqrt(x).unwrap();
     }
 }
 
@@ -145,9 +146,10 @@ mod multi_type {
     }
 
     #[test]
+    #[allow(clippy::unwrap_used)]
     fn sqrt_i32f32() {
         let x = I32F32::from_num(4.0);
-        let result: f64 = sqrt(x).to_num();
+        let result: f64 = sqrt(x).unwrap().to_num();
         assert!(
             (result - 2.0).abs() < 0.001,
             "sqrt(4) = {result} (I32F32), expected 2.0"
@@ -179,9 +181,10 @@ mod multi_type {
     }
 
     #[test]
+    #[allow(clippy::unwrap_used)]
     fn sqrt_i8f24() {
         let x = I8F24::from_num(2.0);
-        let result: f32 = sqrt(x).to_num();
+        let result: f32 = sqrt(x).unwrap().to_num();
         assert!(
             (result - 1.414).abs() < 0.01,
             "sqrt(2) = {result} (I8F24), expected ~1.414"
@@ -220,9 +223,10 @@ mod i8f8 {
     }
 
     #[test]
+    #[allow(clippy::unwrap_used)]
     fn basic_sqrt() {
         let x = I8F8::from_num(4.0);
-        let result: f32 = sqrt(x).to_num();
+        let result: f32 = sqrt(x).unwrap().to_num();
         assert!(
             (result - 2.0).abs() < 0.1,
             "sqrt(4) = {result} (I8F8), expected ~2.0"
