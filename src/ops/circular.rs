@@ -101,8 +101,7 @@ pub fn asin<T: CordicNumber>(x: T) -> Result<T> {
     let one_minus_x_sq = one.saturating_sub(x_sq);
     // SAFETY: x ∈ [-1,1] is enforced above, so 1-x² ∈ [0,1], sqrt cannot fail.
     #[allow(clippy::expect_used)] // Invariant: x in [-1,1] guarantees valid sqrt input
-    let sqrt_term =
-        crate::ops::algebraic::sqrt(one_minus_x_sq).expect("x in [-1,1] guarantees 1-x² ≥ 0");
+    let sqrt_term = crate::ops::algebraic::sqrt(one_minus_x_sq).expect("1-x² ≥ 0");
 
     // Handle case where sqrt_term is very small (x close to ±1)
     if sqrt_term < T::from_i1f63(0x0001_0000_0000_0000) {

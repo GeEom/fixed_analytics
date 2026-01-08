@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 mod tests {
-    use fixed::types::I16F16;
+    use fixed::types::{I16F16, I32F32};
     use fixed_analytics::{acosh, acoth, asinh, atanh, cosh, coth, sinh, sinh_cosh, tanh};
 
     const TOLERANCE: f32 = 0.05;
@@ -231,6 +231,42 @@ mod tests {
         assert!(
             (result_neg + 1.3130).abs() < TOLERANCE,
             "coth(-1) = {result_neg}, expected ~-1.3130"
+        );
+    }
+
+    #[test]
+    fn sinh_cosh_small_values_high_precision() {
+        // Test Taylor series approximation for high-precision types (≥24 frac bits)
+        // Uses fifth/sixth-order Taylor series
+        let small = I32F32::from_num(0.03); // Below 0.05 threshold
+        let (s, c) = sinh_cosh(small);
+
+        // sinh(0.03) ≈ 0.03 (Taylor: sinh(x) ≈ x)
+        let s_f32: f32 = s.to_num();
+        assert!(
+            (s_f32 - 0.03).abs() < 0.01,
+            "sinh(0.03) = {s_f32}, expected ~0.03"
+        );
+
+        // cosh(0.03) ≈ 1.00045 (Taylor: 1 + x²/2)
+        let c_f32: f32 = c.to_num();
+        assert!(
+            (c_f32 - 1.00045).abs() < 0.01,
+            "cosh(0.03) = {c_f32}, expected ~1.00045"
+        );
+
+        // Test negative small value for high precision
+        let small_neg = I32F32::from_num(-0.03);
+        let (s_neg, c_neg) = sinh_cosh(small_neg);
+        let s_neg_f32: f32 = s_neg.to_num();
+        let c_neg_f32: f32 = c_neg.to_num();
+        assert!(
+            (s_neg_f32 + 0.03).abs() < 0.01,
+            "sinh(-0.03) = {s_neg_f32}, expected ~-0.03"
+        );
+        assert!(
+            (c_neg_f32 - 1.00045).abs() < 0.01,
+            "cosh(-0.03) = {c_neg_f32}, expected ~1.00045"
         );
     }
 

@@ -9,10 +9,13 @@ use crate::traits::CordicNumber;
 /// Full limit = 1 + this value.
 const HYPERBOLIC_CONVERGENCE_LIMIT_FRAC: i64 = 0x0F22_3D70_A3D7_0A3D;
 
-/// Taylor series threshold: 0.1 in I1F63 format.
-/// Below this, sinh(x) ≈ x and cosh(x) ≈ 1 + x²/2.
-/// Chosen as ~1/5 of first atanh table entry (0.549) for <0.1% error.
-const TAYLOR_THRESHOLD_I1F63: i64 = 0x0CCC_CCCC_CCCC_CCCD; // 0.1 * 2^63
+/// Taylor series threshold for high precision (≥24 frac bits): 0.05 in I1F63 format.
+/// Lower threshold means less Taylor usage, better for high precision where CORDIC excels.
+const TAYLOR_THRESHOLD_HIGH_PREC_I1F63: i64 = 0x0666_6666_6666_6666; // 0.05 * 2^63
+
+/// Taylor series threshold for low precision (<24 frac bits): 0.1 in I1F63 format.
+/// Higher threshold uses Taylor more, which is sufficient for lower precision types.
+const TAYLOR_THRESHOLD_LOW_PREC_I1F63: i64 = 0x0CCC_CCCC_CCCC_CCCD; // 0.1 * 2^63
 
 /// atanh argument reduction threshold: 0.75 in I1F63 format.
 /// tanh(1.0) ≈ 0.762; use 0.75 to stay within CORDIC convergence with margin.
@@ -30,7 +33,7 @@ pub fn sinh_cosh<T: CordicNumber>(x: T) -> (T, T) {
     if x.abs() > limit {
         // Use the identities:
         // sinh(2x) = 2 * sinh(x) * cosh(x)
-        // cosh(2x) = cosh²(x) + sinh²(x) = 2*cosh²(x) - 1
+        // cosh(2x) = cosh²(x) + sinh²(x)
         let half_x = x >> 1;
         let (sh, ch) = sinh_cosh(half_x);
 
@@ -42,15 +45,36 @@ pub fn sinh_cosh<T: CordicNumber>(x: T) -> (T, T) {
 
     // For very small x, use Taylor series approximation to avoid CORDIC
     // overshoot on the first iteration (where atanh(0.5) ≈ 0.549 is larger than x).
-    // sinh(x) ≈ x + x³/6 ≈ x for small x
-    // cosh(x) ≈ 1 + x²/2 for small x
-    let small_threshold = T::from_i1f63(TAYLOR_THRESHOLD_I1F63);
+    // Use precision-dependent threshold and order.
+    let threshold_bits = if T::frac_bits() >= 24 {
+        TAYLOR_THRESHOLD_HIGH_PREC_I1F63
+    } else {
+        TAYLOR_THRESHOLD_LOW_PREC_I1F63
+    };
+    let small_threshold = T::from_i1f63(threshold_bits);
     if x.abs() < small_threshold {
         let x_sq = x.saturating_mul(x);
-        // cosh(x) ≈ 1 + x²/2
-        let cosh_approx = one.saturating_add(x_sq >> 1);
-        // sinh(x) ≈ x (higher order terms negligible for |x| < 0.1)
-        return (x, cosh_approx);
+        let x_cu = x_sq.saturating_mul(x);
+        let x_qu = x_sq.saturating_mul(x_sq);
+
+        // Higher precision benefits from higher-order Taylor terms
+        if T::frac_bits() >= 24 {
+            // sinh(x) ≈ x + x³/6 + x⁵/120, cosh(x) ≈ 1 + x²/2 + x⁴/24 + x⁶/720
+            let x_5 = x_qu.saturating_mul(x);
+            let x_6 = x_qu.saturating_mul(x_sq);
+            let c = one
+                .saturating_add(x_sq >> 1)
+                .saturating_add(x_qu.div(T::from_num(24)));
+            let cosh_approx = c.saturating_add(x_6.div(T::from_num(720)));
+            let s = x.saturating_add(x_cu.div(T::from_num(6)));
+            let sinh_approx = s.saturating_add(x_5.div(T::from_num(120)));
+            return (sinh_approx, cosh_approx);
+        }
+        // sinh(x) ≈ x + x³/6, cosh(x) ≈ 1 + x²/2 + x⁴/24
+        let c = one.saturating_add(x_sq >> 1);
+        let cosh_approx = c.saturating_add(x_qu.div(T::from_num(24)));
+        let sinh_approx = x.saturating_add(x_cu.div(T::from_num(6)));
+        return (sinh_approx, cosh_approx);
     }
 
     // For moderate x, use CORDIC directly.

@@ -115,9 +115,20 @@ jobs:
         with:
           workspaces: tools/accuracy-bench
 
+      - name: Fetch baseline from main
+        run: |
+          # For PRs: fetch baseline from the base branch (main)
+          # For pushes to main: fetch baseline from the previous commit
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch origin ${{ github.base_ref }}
+            git show origin/${{ github.base_ref }}:tools/accuracy-bench/baseline.json > /tmp/baseline-from-main.json
+          else
+            git show HEAD~1:tools/accuracy-bench/baseline.json > /tmp/baseline-from-main.json || cp tools/accuracy-bench/baseline.json /tmp/baseline-from-main.json
+          fi
+
       - name: Run accuracy benchmark
         working-directory: tools/accuracy-bench
-        run: cargo run --release -- --baseline baseline.json
+        run: cargo run --release -- --baseline /tmp/baseline-from-main.json
 
       - name: Upload report
         if: always()
@@ -126,37 +137,3 @@ jobs:
           name: accuracy-report-${{ github.sha }}
           path: tools/accuracy-bench/reports/
           retention-days: 30
-
-  update-baseline:
-    name: Update Baseline
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: accuracy
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install GMP and MPFR
-        run: sudo apt-get update && sudo apt-get install -y libgmp-dev libmpfr-dev
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: tools/accuracy-bench
-
-      - name: Generate new baseline
-        working-directory: tools/accuracy-bench
-        run: |
-          cargo run --release
-          REPORT=$(ls -t reports/accuracy-*.json | head -1)
-          cp "$REPORT" baseline.json
-
-      - name: Commit baseline
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add tools/accuracy-bench/baseline.json
-          git diff --staged --quiet || git commit -m "Update accuracy baseline [skip ci]"
-          git push
