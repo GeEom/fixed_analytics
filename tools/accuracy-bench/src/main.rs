@@ -3,9 +3,13 @@
 //! Run with: cargo run --release
 //! Compare: cargo run --release -- --baseline path/to/baseline.json
 
-use accuracy_bench::{build_registry, report::Report, sampling::SampleStrategy, test_function};
+use accuracy_bench::{
+    build_registry, readme, report::Report, sampling::SampleStrategy, test_function,
+};
 use rayon::prelude::*;
-use std::{env, fs, process};
+use std::{env, fs, path::Path, process};
+
+const README_PATH: &str = "../../README.md";
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -26,7 +30,7 @@ fn main() {
     let registry = build_registry();
     eprintln!("Testing {} functions...\n", registry.len());
 
-    let results = registry
+    let results: Vec<_> = registry
         .par_iter()
         .map(|f| {
             eprintln!("  {}", f.name());
@@ -36,17 +40,74 @@ fn main() {
 
     let report = Report::new(results);
 
+    // Save JSON report
     fs::create_dir_all("reports").ok();
     let json_path = format!("reports/accuracy-{}.json", report.timestamp);
     fs::write(&json_path, report.to_json()).expect("Failed to write report");
     eprintln!("Report saved: {json_path}");
 
-    if let Some(path) = baseline_path {
-        let passed = compare_and_report(&report, path);
-        process::exit(if passed { 0 } else { 1 });
+    // Determine README path (handle running from different directories)
+    let readme_path = find_readme_path();
+
+    if let Some(baseline_path) = baseline_path {
+        // CI mode: verify README and compare to baseline
+        let mut all_passed = true;
+
+        // Verify README is up-to-date
+        if let Some(ref path) = readme_path {
+            eprintln!("\nVerifying README accuracy section...");
+            match readme::verify_readme(path, &report.results) {
+                Ok(()) => eprintln!("README: OK"),
+                Err(e) => {
+                    eprintln!("README: FAILED\n{e}");
+                    all_passed = false;
+                }
+            }
+        } else {
+            eprintln!("\nWarning: Could not find README.md to verify");
+        }
+
+        // Compare to baseline
+        let baseline_passed = compare_and_report(&report, baseline_path);
+        if !baseline_passed {
+            all_passed = false;
+        }
+
+        process::exit(if all_passed { 0 } else { 1 });
     } else {
+        // Local mode: update README and print table
+        if let Some(ref path) = readme_path {
+            match readme::update_readme(path, &report.results) {
+                Ok(true) => eprintln!("README.md updated with latest accuracy data"),
+                Ok(false) => eprintln!("README.md already up-to-date"),
+                Err(e) => eprintln!("Warning: Could not update README: {e}"),
+            }
+        }
+
         report.print_table();
     }
+}
+
+/// Find the README.md file, checking multiple possible locations.
+fn find_readme_path() -> Option<String> {
+    let candidates = [
+        README_PATH,
+        "README.md",
+        "../README.md",
+        "../../README.md",
+        "../../../README.md",
+    ];
+
+    for candidate in candidates {
+        if Path::new(candidate).exists()
+            && let Ok(content) = fs::read_to_string(candidate)
+            && content.contains("fixed_analytics")
+        {
+            return Some(candidate.to_string());
+        }
+    }
+
+    None
 }
 
 fn compare_and_report(current: &Report, baseline_path: &str) -> bool {
@@ -94,10 +155,8 @@ fn compare_and_report(current: &Report, baseline_path: &str) -> bool {
         };
 
         // Check I16F16
-        let (passed_16, status_16) = check_regression(
-            baseline_fn.i16f16.rel_mean,
-            current_fn.i16f16.rel_mean,
-        );
+        let (passed_16, status_16) =
+            check_regression(baseline_fn.i16f16.rel_mean, current_fn.i16f16.rel_mean);
         if !passed_16 {
             all_passed = false;
         }
@@ -113,10 +172,8 @@ fn compare_and_report(current: &Report, baseline_path: &str) -> bool {
         );
 
         // Check I32F32
-        let (passed_32, status_32) = check_regression(
-            baseline_fn.i32f32.rel_mean,
-            current_fn.i32f32.rel_mean,
-        );
+        let (passed_32, status_32) =
+            check_regression(baseline_fn.i32f32.rel_mean, current_fn.i32f32.rel_mean);
         if !passed_32 {
             all_passed = false;
         }

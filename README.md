@@ -1,6 +1,6 @@
 # fixed_analytics
 
-Fixed-point trigonometric, hyperbolic, exponential, and algebraic functions via CORDIC.
+Fixed-point mathematical functions which are accurate, fast, safe, and machine independent.
 
 [![Crates.io](https://img.shields.io/crates/v/fixed_analytics.svg)](https://crates.io/crates/fixed_analytics)
 [![CI](https://github.com/GeEom/fixed_analytics/actions/workflows/ci.yml/badge.svg)](https://github.com/GeEom/fixed_analytics/actions/workflows/ci.yml)
@@ -30,14 +30,14 @@ Requires Rust 1.88 or later.
 
 ```toml
 [dependencies]
-fixed_analytics = "0.3"
+fixed_analytics = "0.4"
 ```
 
 For `no_std` environments:
 
 ```toml
 [dependencies]
-fixed_analytics = { version = "0.3", default-features = false }
+fixed_analytics = { version = "0.4", default-features = false }
 ```
 
 ## Available Functions
@@ -51,3 +51,33 @@ fixed_analytics = { version = "0.3", default-features = false }
 
 Fallible functions return `Result<T, Error>` and fail on domain violations.
 Total functions return `T` directly and handle all inputs.
+Functions are calculated via CORDIC, Newton-Raphson, and Taylor series techniques.
+
+<!-- ACCURACY_START -->
+### Accuracy
+
+Relative error statistics measured against MPFR reference implementations.
+
+| Function | I16F16 Mean | I16F16 Median | I16F16 P95 | I32F32 Mean | I32F32 Median | I32F32 P95 |
+|----------|-------------|---------------|------------|-------------|---------------|------------|
+| sin | 6.19e-4 | 9.34e-5 | 1.30e-3 | 1.22e-8 | 1.79e-9 | 2.52e-8 |
+| cos | 6.82e-4 | 1.02e-4 | 1.46e-3 | 1.30e-8 | 1.91e-9 | 2.83e-8 |
+| tan | 2.47e-4 | 9.84e-5 | 6.70e-4 | 6.00e-9 | 1.89e-9 | 1.40e-8 |
+| asin | 2.87e-4 | 5.93e-5 | 6.46e-4 | 5.34e-9 | 8.82e-10 | 1.03e-8 |
+| acos | 3.61e-5 | 2.18e-5 | 1.14e-4 | 5.37e-10 | 3.19e-10 | 1.71e-9 |
+| atan | 2.71e-5 | 2.21e-5 | 6.29e-5 | 3.69e-10 | 2.92e-10 | 8.74e-10 |
+| sinh | 1.85e-4 | 1.39e-4 | 5.05e-4 | 1.05e-8 | 2.37e-9 | 9.47e-9 |
+| cosh | 1.73e-4 | 1.23e-4 | 5.00e-4 | 1.03e-8 | 2.07e-9 | 9.16e-9 |
+| tanh | 2.26e-5 | 1.38e-5 | 6.13e-5 | 1.67e-9 | 1.31e-10 | 1.22e-9 |
+| coth | 1.74e-5 | 4.86e-6 | 7.23e-5 | 4.34e-10 | 1.39e-10 | 1.31e-9 |
+| asinh | 6.44e-4 | 4.83e-4 | 1.75e-3 | 1.03e-8 | 7.59e-9 | 2.85e-8 |
+| acosh | 6.74e-4 | 5.21e-4 | 1.80e-3 | 1.05e-8 | 7.96e-9 | 2.88e-8 |
+| atanh | 3.01e-4 | 5.90e-5 | 6.25e-4 | 6.68e-9 | 1.32e-9 | 1.44e-8 |
+| acoth | 2.10e-3 | 1.33e-3 | 6.67e-3 | 4.26e-8 | 2.62e-8 | 1.39e-7 |
+| exp | 1.14e-2 | 7.72e-5 | 7.87e-2 | 1.91e-7 | 2.35e-9 | 1.30e-6 |
+| ln | 1.35e-5 | 8.76e-6 | 2.97e-5 | 4.50e-10 | 3.48e-10 | 9.17e-10 |
+| log2 | 1.33e-5 | 8.48e-6 | 2.92e-5 | 3.46e-10 | 2.24e-10 | 7.21e-10 |
+| log10 | 1.44e-5 | 9.28e-6 | 3.14e-5 | 4.49e-10 | 3.27e-10 | 9.07e-10 |
+| pow2 | 7.30e-4 | 5.68e-5 | 4.70e-3 | 1.15e-8 | 1.16e-9 | 7.38e-8 |
+| sqrt | 1.77e-7 | 1.16e-7 | 4.74e-7 | 2.70e-12 | 1.78e-12 | 7.16e-12 |
+<!-- ACCURACY_END -->

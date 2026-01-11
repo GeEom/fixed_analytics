@@ -1,7 +1,11 @@
 //! Tests for circular trigonometric functions
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::cast_precision_loss,
+    reason = "test code uses unwrap and f32 casts for conciseness"
+)]
 mod tests {
     use fixed::types::{I16F16, I32F32};
     use fixed_analytics::{acos, asin, atan, atan2, cos, sin, sin_cos, tan};
@@ -36,7 +40,6 @@ mod tests {
 
     // Tests Pythagorean identity: sin²(x) + cos²(x) = 1
     #[test]
-    #[allow(clippy::cast_precision_loss)]
     fn sin_cos_pythagorean_identity() {
         for i in -20..=20 {
             let angle = I16F16::from_num(i) * I16F16::from_num(0.1);

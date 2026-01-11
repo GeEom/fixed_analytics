@@ -1,7 +1,7 @@
 //! Tests for exponential and logarithmic functions
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used, reason = "test code uses unwrap for conciseness")]
 mod tests {
     use fixed::types::I16F16;
     use fixed_analytics::{exp, ln, log2, log10, pow2};
@@ -230,5 +230,33 @@ mod tests {
         let val: f32 = result.unwrap().to_num();
         // ln(0.0001) ≈ -9.2
         assert!(val < -8.0, "ln(0.0001) = {val}, expected < -8.0");
+    }
+
+    #[test]
+    fn exp_overflow_to_max() {
+        // exp of very large positive values should return max when scale > max_shift
+        // For I16F16: total_bits = 32, max_shift = 31
+        // Need scale > 31, i.e., x > 31 * ln(2) ≈ 21.5
+        // exp(25) triggers scale=36 which exceeds max_shift=31
+        let very_large = I16F16::from_num(25.0);
+        let result: f32 = exp(very_large).to_num();
+        // Should return max value
+        let max: f32 = I16F16::MAX.to_num();
+        assert!(
+            (result - max).abs() < 1.0,
+            "exp(25) = {result}, expected max {max}"
+        );
+    }
+
+    #[test]
+    fn exp_underflow_to_zero() {
+        // exp of very large negative values should return zero when -scale > max_shift
+        // For I16F16: total_bits = 32, max_shift = 31
+        // Need -scale > 31, i.e., x < -31 * ln(2) ≈ -21.5
+        // exp(-25) triggers scale=-36 which exceeds -max_shift=-31
+        let very_negative = I16F16::from_num(-25.0);
+        let result: f32 = exp(very_negative).to_num();
+        // Should return zero
+        assert!(result == 0.0, "exp(-25) = {result}, expected 0");
     }
 }

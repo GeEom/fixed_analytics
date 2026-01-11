@@ -4,14 +4,14 @@
 //! properties: reference values, identities, inverse roundtrips, monotonicity,
 //! and output bounds.
 
-// Test-specific clippy allows: these tests intentionally use casts and simple arithmetic
-// for readability over micro-optimizations.
+// Test-specific lints - these are acceptable in test code
 #![allow(
+    clippy::unwrap_used,
     clippy::cast_possible_truncation,
-    clippy::cast_lossless,
-    clippy::cast_precision_loss,
     clippy::suboptimal_flops,
-    clippy::manual_range_contains
+    clippy::cast_lossless,
+    clippy::manual_range_contains,
+    reason = "test code uses these patterns for conciseness and clarity"
 )]
 
 #[cfg(test)]
@@ -205,7 +205,6 @@ mod reference_comparison {
     }
 
     #[test]
-    #[allow(clippy::unwrap_used)]
     fn sqrt_vs_f64() {
         for i in 0..SAMPLES {
             let bits = sample_bits(SEED, i);
@@ -831,6 +830,7 @@ mod roundtrips {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, reason = "test code uses unwrap for conciseness")]
 mod monotonicity {
     //! Verify that monotonic functions are actually monotonic.
 
@@ -838,7 +838,6 @@ mod monotonicity {
     use fixed_analytics::{asin, atan, exp, ln, sin, sqrt, tanh};
 
     #[test]
-    #[allow(clippy::unwrap_used)]
     fn sqrt_is_increasing() {
         let mut prev = I16F16::ZERO;
         for i in 0..1000 {

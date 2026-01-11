@@ -28,19 +28,23 @@ use crate::tables::{
 };
 use crate::traits::CordicNumber;
 
-/// Table lookup with bounds checking.
+/// Table lookup for CORDIC iteration.
 ///
-/// # Panics
-/// Panics if index >= 64, which should never happen as CORDIC iterations
-/// are bounded by `min(frac_bits, 62)` for circular and `min(frac_bits, 54)`
-/// for hyperbolic mode.
+/// # Safety Invariant
+/// Index is bounded by CORDIC iteration limits:
+/// - Circular mode: `min(frac_bits, 62)` → max index 61
+/// - Hyperbolic mode: `min(frac_bits, 54)` with `i.saturating_sub(1)` → max index 53
+///
+/// Since the tables have 64 elements and max index is 61, bounds are always satisfied.
+/// The bounds check is optimized away in release builds.
 #[inline]
-#[allow(clippy::expect_used)] // Index bounded by iteration limits, panic indicates bug
-fn table_lookup(table: &[i64; 64], index: u32) -> i64 {
-    // Index is bounded by CORDIC iteration limits (max 62), always < 64.
-    *table
-        .get(index as usize)
-        .expect("CORDIC index exceeds table size")
+const fn table_lookup(table: &[i64; 64], index: u32) -> i64 {
+    // SAFETY: Iteration limits guarantee index < 64 (see doc comment above).
+    #[allow(
+        clippy::indexing_slicing,
+        reason = "index bounded by CORDIC iteration limits"
+    )]
+    table[index as usize]
 }
 
 /// Returns the CORDIC scale factor (1/K ≈ 0.6073).
@@ -199,7 +203,7 @@ pub fn circular_vectoring<T: CordicNumber>(mut x: T, mut y: T, mut z: T) -> (T, 
 #[must_use]
 pub fn hyperbolic_rotation<T: CordicNumber>(mut x: T, mut y: T, mut z: T) -> (T, T, T) {
     let zero = T::zero();
-    // Hyperbolic mode converges more slowly and needs repetitions
+    // Use frac_bits iterations, capped at 54 for table bounds.
     let max_iterations = T::frac_bits().min(54);
 
     let mut i: u32 = 1; // Hyperbolic starts at i=1
@@ -265,7 +269,8 @@ pub fn hyperbolic_rotation<T: CordicNumber>(mut x: T, mut y: T, mut z: T) -> (T,
 #[must_use]
 pub fn hyperbolic_vectoring<T: CordicNumber>(mut x: T, mut y: T, mut z: T) -> (T, T, T) {
     let zero = T::zero();
-    let max_iterations = T::frac_bits().min(54);
+    // Use at least 24 iterations for better accuracy, even for lower precision types.
+    let max_iterations = T::frac_bits().clamp(24, 54);
 
     let mut i: u32 = 1;
     let mut iteration_count: u32 = 0;
