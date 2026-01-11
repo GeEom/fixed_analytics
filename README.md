@@ -30,14 +30,14 @@ Requires Rust 1.88 or later.
 
 ```toml
 [dependencies]
-fixed_analytics = "0.5"
+fixed_analytics = "0.5.1"
 ```
 
 For `no_std` environments:
 
 ```toml
 [dependencies]
-fixed_analytics = { version = "0.5", default-features = false }
+fixed_analytics = { version = "0.5.1", default-features = false }
 ```
 
 ## Available Functions
@@ -50,7 +50,7 @@ fixed_analytics = { version = "0.5", default-features = false }
 | Category | Total Functions | Fallible Functions |
 |----------|-----------------|-------------------|
 | Trigonometric | `sin`, `cos`, `tan`, `sin_cos`, `atan`, `atan2` | `asin`, `acos` |
-| Hyperbolic | `sinh`, `cosh`, `tanh`, `sinh_cosh`\*, `asinh` | `acosh`, `atanh`, `acoth`, `coth` |
+| Hyperbolic | `sinh`, `cosh`, `tanh`, `sinh_cosh`, `asinh` | `acosh`, `atanh`, `acoth`, `coth` |
 | Exponential | `exp`, `pow2` | `ln`, `log2`, `log10` |
 | Algebraic | — | `sqrt` |
 
@@ -58,8 +58,7 @@ Functions are calculated via CORDIC, Newton-Raphson, and Taylor series technique
 
 ### Saturation Behavior
 
-The following total functions use **saturation semantics**: rather than returning an error or
-panicking on overflow, they clamp to the representable range.
+The following total functions saturate, clamping to the representable range near the following thresholds.
 
 | Function | I16F16 Threshold | I32F32 Threshold | Result |
 |----------|------------------|------------------|--------|
