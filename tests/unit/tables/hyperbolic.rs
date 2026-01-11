@@ -1,7 +1,11 @@
 //! Tests for hyperbolic CORDIC lookup tables
 
 #[cfg(test)]
-#[allow(clippy::indexing_slicing, clippy::cast_precision_loss)]
+#[allow(
+    clippy::indexing_slicing,
+    clippy::cast_precision_loss,
+    reason = "test code uses direct indexing and f64 casts"
+)]
 mod tests {
     use fixed_analytics::tables::hyperbolic::{
         ATANH_HALF, ATANH_TABLE, HYPERBOLIC_GAIN, HYPERBOLIC_GAIN_INV, needs_repeat,

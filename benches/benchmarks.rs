@@ -1,6 +1,6 @@
 //! Benchmarks for CORDIC functions.
 
-#![allow(missing_docs)]
+#![allow(missing_docs, reason = "benchmark code does not need documentation")]
 
 use std::hint::black_box;
 

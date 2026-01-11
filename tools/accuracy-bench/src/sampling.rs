@@ -23,7 +23,9 @@ impl SampleStrategy {
         );
 
         for &v in &[0.0, 1.0, -1.0, 0.5, -0.5, 2.0, -2.0] {
-            if v >= lo && v <= hi { points.push(v); }
+            if v >= lo && v <= hi {
+                points.push(v);
+            }
         }
 
         for i in 0..self.grid_points {
@@ -33,7 +35,9 @@ impl SampleStrategy {
 
         let mut rng = self.seed;
         for _ in 0..self.random_points {
-            rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            rng = rng
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             let t = (rng as f64) / (u64::MAX as f64);
             points.push(lo + t * (hi - lo));
         }

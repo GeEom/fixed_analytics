@@ -1,6 +1,6 @@
 [package]
 name = "fixed_analytics"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2024"
 rust-version = "1.88"
 authors = ["David Gathercole"]
@@ -40,27 +40,49 @@ lto = true
 codegen-units = 1
 
 [lints.rust]
-unsafe_code = "forbid"
+rust_2024_compatibility = "deny"
+future_incompatible = "deny"
+nonstandard_style = "deny"
+rust_2018_idioms = "deny"
 missing_docs = "deny"
-rust_2024_compatibility = { level = "warn", priority = -1 }
-future_incompatible = { level = "deny", priority = -1 }
-nonstandard_style = { level = "deny", priority = -1 }
-rust_2018_idioms = { level = "deny", priority = -1 }
+unsafe_code = "deny"
+unused = "deny"
 
 [lints.clippy]
 # Lint groups
-all = { level = "warn", priority = -1 }
-pedantic = { level = "warn", priority = -1 }
-nursery = { level = "warn", priority = -1 }
-cargo = { level = "warn", priority = -1 }
+correctness = { level = "deny", priority = -1 }
+suspicious = { level = "deny", priority = -1 }
+complexity = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+nursery = { level = "deny", priority = -1 }
+cargo = { level = "deny", priority = -1 }
+style = { level = "deny", priority = -1 }
+perf = { level = "deny", priority = -1 }
 
-# Safety-critical denies
-unwrap_used = "deny"
-expect_used = "deny"
+allow_attributes_without_reason = "deny"
+used_underscore_binding = "deny"
+if_then_some_else_none = "deny"
+missing_const_for_fn = "deny"
+missing_errors_doc = "deny"
+missing_panics_doc = "deny"
 indexing_slicing = "deny"
+result_large_err = "deny"
+shadow_unrelated = "deny"
+wildcard_imports = "deny"
+map_err_ignore = "deny"
+enum_glob_use = "deny"
+infinite_loop = "deny"
+unimplemented = "deny"
+print_stderr = "deny"
+print_stdout = "deny"
+expect_used = "deny"
+unwrap_used = "deny"
+empty_loop = "deny"
+mem_forget = "deny"
+dbg_macro = "deny"
 panic = "deny"
 todo = "deny"
-unimplemented = "deny"
+exit = "deny"
 
 # Allow specific pedantic lints that are too noisy
 module_name_repetitions = "allow"

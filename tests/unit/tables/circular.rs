@@ -1,7 +1,11 @@
 //! Tests for circular CORDIC lookup tables
 
 #[cfg(test)]
-#[allow(clippy::indexing_slicing, clippy::cast_precision_loss)]
+#[allow(
+    clippy::indexing_slicing,
+    clippy::cast_precision_loss,
+    reason = "test code uses direct indexing and f64 casts"
+)]
 mod tests {
     use fixed_analytics::tables::circular::{ATAN_TABLE, CIRCULAR_GAIN_INV};
 

@@ -102,6 +102,12 @@ pub trait CordicNumber:
     fn max_value() -> Self;
     /// Minimum value.
     fn min_value() -> Self;
+    /// Round to nearest integer (half away from zero).
+    #[must_use]
+    fn round(self) -> Self;
+    /// Convert to i32 (truncates toward zero).
+    #[must_use]
+    fn to_i32(self) -> i32;
 }
 
 // =============================================================================
@@ -186,7 +192,11 @@ macro_rules! impl_cordic_generic {
 
             #[inline]
             // Casts are safe: frac_bits ≤ 128, shift amounts bounded by type size
-            #[allow(clippy::cast_possible_wrap, clippy::cast_lossless)]
+            #[allow(
+                clippy::cast_possible_wrap,
+                clippy::cast_lossless,
+                reason = "frac_bits bounded by type size"
+            )]
             fn from_i1f63(bits: i64) -> Self {
                 // Convert from I1F63 representation to our type.
                 // I1F63 has 63 fractional bits.
@@ -196,12 +206,18 @@ macro_rules! impl_cordic_generic {
 
                 if shift >= 0 {
                     // We have fewer frac bits than I1F63, shift right
-                    #[allow(clippy::cast_possible_truncation)]
+                    #[allow(
+                        clippy::cast_possible_truncation,
+                        reason = "intentional truncation to target type"
+                    )]
                     Self::from_bits((bits >> shift) as $bits_type)
                 } else {
                     // We have more frac bits than I1F63, shift left
                     // Must cast first to avoid losing sign bit
-                    #[allow(clippy::cast_possible_truncation)]
+                    #[allow(
+                        clippy::cast_possible_truncation,
+                        reason = "intentional truncation to target type"
+                    )]
                     let wide = bits as $bits_type;
                     Self::from_bits(wide << (-shift))
                 }
@@ -209,7 +225,11 @@ macro_rules! impl_cordic_generic {
 
             #[inline]
             // Casts are safe: frac_bits ≤ 128, shift amounts bounded by type size
-            #[allow(clippy::cast_possible_wrap, clippy::cast_lossless)]
+            #[allow(
+                clippy::cast_possible_wrap,
+                clippy::cast_lossless,
+                reason = "frac_bits bounded by type size"
+            )]
             fn from_i2f62(bits: i64) -> Self {
                 // Convert from I2F62 representation to our type.
                 // I2F62 has 62 fractional bits.
@@ -218,11 +238,17 @@ macro_rules! impl_cordic_generic {
 
                 if shift >= 0 {
                     // We have fewer frac bits than I2F62, shift right
-                    #[allow(clippy::cast_possible_truncation)]
+                    #[allow(
+                        clippy::cast_possible_truncation,
+                        reason = "intentional truncation to target type"
+                    )]
                     Self::from_bits((bits >> shift) as $bits_type)
                 } else {
                     // We have more frac bits than I2F62, shift left
-                    #[allow(clippy::cast_possible_truncation)]
+                    #[allow(
+                        clippy::cast_possible_truncation,
+                        reason = "intentional truncation to target type"
+                    )]
                     let wide = bits as $bits_type;
                     Self::from_bits(wide << (-shift))
                 }
@@ -266,6 +292,20 @@ macro_rules! impl_cordic_generic {
             #[inline]
             fn min_value() -> Self {
                 Self::MIN
+            }
+
+            #[inline]
+            fn round(self) -> Self {
+                Fixed::round(self)
+            }
+
+            #[inline]
+            #[allow(
+                clippy::cast_possible_truncation,
+                reason = "intentional truncation to target type"
+            )]
+            fn to_i32(self) -> i32 {
+                self.to_num::<i32>()
             }
         }
     };

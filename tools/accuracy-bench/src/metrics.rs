@@ -68,26 +68,48 @@ impl ErrorStats {
 
         Self {
             count: abs_vals.len(),
-            abs_max, abs_mean, abs_p50, abs_p95, abs_p99,
-            rel_max, rel_mean, rel_p50, rel_p95, rel_p99,
+            abs_max,
+            abs_mean,
+            abs_p50,
+            abs_p95,
+            abs_p99,
+            rel_max,
+            rel_mean,
+            rel_p50,
+            rel_p95,
+            rel_p99,
         }
     }
 
     pub fn empty() -> Self {
         Self {
             count: 0,
-            abs_max: 0.0, abs_mean: 0.0, abs_p50: 0.0, abs_p95: 0.0, abs_p99: 0.0,
-            rel_max: 0.0, rel_mean: 0.0, rel_p50: 0.0, rel_p95: 0.0, rel_p99: 0.0,
+            abs_max: 0.0,
+            abs_mean: 0.0,
+            abs_p50: 0.0,
+            abs_p95: 0.0,
+            abs_p99: 0.0,
+            rel_max: 0.0,
+            rel_mean: 0.0,
+            rel_p50: 0.0,
+            rel_p95: 0.0,
+            rel_p99: 0.0,
         }
     }
 }
 
 fn mean(vals: &[f64]) -> f64 {
-    if vals.is_empty() { 0.0 } else { vals.iter().sum::<f64>() / vals.len() as f64 }
+    if vals.is_empty() {
+        0.0
+    } else {
+        vals.iter().sum::<f64>() / vals.len() as f64
+    }
 }
 
 fn percentile(sorted: &[f64], p: f64) -> f64 {
-    if sorted.is_empty() { return 0.0; }
+    if sorted.is_empty() {
+        return 0.0;
+    }
     let idx = ((sorted.len() - 1) as f64 * p).round() as usize;
     sorted[idx.min(sorted.len() - 1)]
 }

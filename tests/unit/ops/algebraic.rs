@@ -1,8 +1,7 @@
 //! Tests for algebraic functions (sqrt)
 
-#![allow(clippy::unwrap_used)]
-
 #[cfg(test)]
+#[allow(clippy::unwrap_used, reason = "test code uses unwrap for conciseness")]
 mod tests {
     use fixed::types::I16F16;
     use fixed_analytics::sqrt;
