@@ -1,7 +1,9 @@
 //! Hyperbolic functions via hyperbolic CORDIC.
 
+use crate::bounded::{AtLeastOne, NonNegative, OpenUnitInterval};
 use crate::error::{Error, Result};
 use crate::kernel::{hyperbolic_gain_inv, hyperbolic_rotation, hyperbolic_vectoring};
+use crate::ops::algebraic::sqrt_nonneg;
 use crate::traits::CordicNumber;
 
 /// Hyperbolic CORDIC converges for |x| < sum of atanh table ≈ 1.1182.
@@ -62,12 +64,14 @@ pub fn sinh_cosh<T: CordicNumber>(x: T) -> (T, T) {
             // sinh(x) ≈ x + x³/6 + x⁵/120, cosh(x) ≈ 1 + x²/2 + x⁴/24 + x⁶/720
             let x_5 = x_qu.saturating_mul(x);
             let x_6 = x_qu.saturating_mul(x_sq);
-            let c = one
+            // cosh base: 1 + x²/2 + x⁴/24
+            let cosh_base = one
                 .saturating_add(x_sq >> 1)
                 .saturating_add(x_qu.div(T::from_num(24)));
-            let cosh_approx = c.saturating_add(x_6.div(T::from_num(720)));
-            let s = x.saturating_add(x_cu.div(T::from_num(6)));
-            let sinh_approx = s.saturating_add(x_5.div(T::from_num(120)));
+            let cosh_approx = cosh_base.saturating_add(x_6.div(T::from_num(720)));
+            // sinh base: x + x³/6
+            let sinh_base = x.saturating_add(x_cu.div(T::from_num(6)));
+            let sinh_approx = sinh_base.saturating_add(x_5.div(T::from_num(120)));
             return (sinh_approx, cosh_approx);
         }
         // sinh(x) ≈ x + x³/6, cosh(x) ≈ 1 + x²/2 + x⁴/24
@@ -122,66 +126,42 @@ pub fn coth<T: CordicNumber>(x: T) -> Result<T> {
 }
 
 /// Inverse hyperbolic sine. Accepts any value.
-///
-/// # Panics
-/// Panics if the internal sqrt computation fails, which should never happen
-/// as 1+x² is always ≥ 1 for any x.
 #[must_use]
-#[allow(clippy::missing_panics_doc)] // Panic only on internal invariant violation
 pub fn asinh<T: CordicNumber>(x: T) -> T {
-    let zero = T::zero();
-    let one = T::one();
-
-    if x == zero {
-        return zero;
+    if x == T::zero() {
+        return T::zero();
     }
 
-    // asinh(x) = sign(x) * ln(|x| + sqrt(x² + 1))
-    // For CORDIC, we use: asinh(x) = atanh(x / sqrt(1 + x²))
-    let x_sq = x.saturating_mul(x);
-    let one_plus_x_sq = one.saturating_add(x_sq);
-    // SAFETY: 1+x² ≥ 1 for all x, so sqrt cannot fail.
-    #[allow(clippy::expect_used)] // Invariant: 1+x² is always ≥ 1
-    let sqrt_term = crate::ops::algebraic::sqrt(one_plus_x_sq).expect("1+x² is always ≥ 1");
+    // asinh(x) = atanh(x / sqrt(1 + x²))
+    // NonNegative::one_plus_square(x) returns 1 + x², which is always ≥ 1
+    let sqrt_term = sqrt_nonneg(NonNegative::one_plus_square(x));
 
-    // Compute x / sqrt(1 + x²), which is in (-1, 1)
-    let arg = x.div(sqrt_term);
+    // x / sqrt(1 + x²) is always in (-1, 1) since sqrt(1 + x²) > |x|
+    let arg = OpenUnitInterval::from_div_by_sqrt_one_plus_square(x, sqrt_term);
 
-    atanh_core(arg)
+    atanh_open(arg)
 }
 
 /// Inverse hyperbolic cosine. Domain: `x ≥ 1`.
 ///
 /// # Errors
 /// Returns `DomainError` if `x < 1`.
-///
-/// # Panics
-/// Panics if the internal sqrt computation fails, which should never happen
-/// for valid domain inputs as x²-1 is always non-negative when x ≥ 1.
 #[must_use = "returns the inverse hyperbolic cosine result which should be handled"]
-#[allow(clippy::missing_panics_doc)] // Panic only on internal invariant violation
 pub fn acosh<T: CordicNumber>(x: T) -> Result<T> {
-    let one = T::one();
+    let at_least_one = AtLeastOne::new(x).ok_or_else(|| Error::domain("acosh", "value >= 1"))?;
 
-    if x < one {
-        return Err(Error::domain("acosh", "value >= 1"));
-    }
-
-    if x == one {
+    if x == T::one() {
         return Ok(T::zero());
     }
 
-    // acosh(x) = ln(x + sqrt(x² - 1))
-    // Using CORDIC: acosh(x) = atanh(sqrt(x² - 1) / x) for x > 0
-    // But this requires |sqrt(x²-1)/x| < 1, which is true for x > 1
-    let x_sq = x.saturating_mul(x);
-    let x_sq_minus_one = x_sq.saturating_sub(one);
-    // SAFETY: x ≥ 1 is enforced above, so x²-1 ≥ 0, sqrt cannot fail.
-    #[allow(clippy::expect_used)] // Invariant: x ≥ 1 guarantees valid sqrt input
-    let sqrt_term = crate::ops::algebraic::sqrt(x_sq_minus_one).expect("x ≥ 1 guarantees x²-1 ≥ 0");
+    // acosh(x) = atanh(sqrt(x² - 1) / x) for x > 1
+    // NonNegative::square_minus_one gives x² - 1, which is ≥ 0 since x ≥ 1
+    let sqrt_term = sqrt_nonneg(NonNegative::square_minus_one(at_least_one));
 
-    let arg = sqrt_term.div(x);
-    Ok(atanh_core(arg))
+    // sqrt(x² - 1) / x is in (-1, 1) for x > 1 since sqrt(x² - 1) < x
+    let arg = OpenUnitInterval::from_sqrt_square_minus_one_div(sqrt_term, at_least_one);
+
+    Ok(atanh_open(arg))
 }
 
 /// Inverse hyperbolic tangent. Domain: `(-1, 1)`.
@@ -190,13 +170,21 @@ pub fn acosh<T: CordicNumber>(x: T) -> Result<T> {
 /// Returns `DomainError` if `|x| ≥ 1`.
 #[must_use = "returns the inverse hyperbolic tangent result which should be handled"]
 pub fn atanh<T: CordicNumber>(x: T) -> Result<T> {
-    let one = T::one();
+    OpenUnitInterval::new(x)
+        .map(atanh_open)
+        .ok_or_else(|| Error::domain("atanh", "value in range (-1, 1)"))
+}
 
-    if x >= one || x <= -one {
-        return Err(Error::domain("atanh", "value in range (-1, 1)"));
-    }
-
-    Ok(atanh_core(x))
+/// Infallible inverse hyperbolic tangent for values in (-1, 1).
+///
+/// This function takes an [`OpenUnitInterval<T>`] wrapper, guaranteeing at the
+/// type level that the input is valid. No domain check is performed at runtime.
+///
+/// Use this when the input is known to be in (-1, 1) through mathematical
+/// invariants (e.g., `x / sqrt(1 + x²)`).
+#[must_use]
+pub fn atanh_open<T: CordicNumber>(x: OpenUnitInterval<T>) -> T {
+    atanh_core(x.get())
 }
 
 /// Core atanh implementation. Caller must ensure |x| < 1.

@@ -7,7 +7,7 @@ mod tests {
     use fixed_analytics::kernel::hyperbolic_gain_inv;
 
     #[test]
-    #[allow(clippy::approx_constant)]
+    #[allow(clippy::approx_constant, reason = "testing pi approximation")]
     fn basic_operations_i16f16() {
         let x = I16F16::from_num(2.5);
         assert_eq!(I16F16::zero(), I16F16::ZERO);

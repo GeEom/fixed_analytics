@@ -27,11 +27,8 @@
 
 #![no_std]
 #![cfg_attr(docsrs, feature(doc_cfg))]
-#![warn(missing_docs)]
-#![warn(clippy::pedantic)]
-#![allow(clippy::module_name_repetitions)]
-#![allow(clippy::similar_names)]
 
+pub mod bounded;
 pub mod error;
 pub mod kernel;
 pub mod ops;

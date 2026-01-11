@@ -1,5 +1,6 @@
 //! Algebraic functions (sqrt).
 
+use crate::bounded::NonNegative;
 use crate::error::{Error, Result};
 use crate::traits::CordicNumber;
 
@@ -9,20 +10,31 @@ use crate::traits::CordicNumber;
 /// Returns `DomainError` if `x < 0`.
 #[must_use = "returns the square root result which should be handled"]
 pub fn sqrt<T: CordicNumber>(x: T) -> Result<T> {
+    NonNegative::new(x)
+        .map(sqrt_nonneg)
+        .ok_or_else(|| Error::domain("sqrt", "non-negative value"))
+}
+
+/// Infallible square root for non-negative values.
+///
+/// This function takes a [`NonNegative<T>`] wrapper, guaranteeing at the type
+/// level that the input is valid. No domain check is performed at runtime.
+///
+/// Use this when the non-negativity of the input is already established
+/// through mathematical invariants (e.g., `1 + x²`, `1 - x²` for `|x| ≤ 1`).
+#[must_use]
+pub fn sqrt_nonneg<T: CordicNumber>(x: NonNegative<T>) -> T {
+    let x = x.get();
     let zero = T::zero();
     let one = T::one();
     let half = T::half();
 
-    if x < zero {
-        return Err(Error::domain("sqrt", "non-negative value"));
-    }
-
     if x == zero {
-        return Ok(zero);
+        return zero;
     }
 
     if x == one {
-        return Ok(one);
+        return one;
     }
 
     // Initial guess: use bit-level estimation for faster convergence
@@ -58,7 +70,11 @@ pub fn sqrt<T: CordicNumber>(x: T) -> Result<T> {
 
     // Pre-compute epsilon: approximately 2^(-frac_bits/2) for convergence check.
     // frac_bits ≤ 128 for all supported types, so shift is in range [0, 63].
-    #[allow(clippy::cast_possible_wrap, clippy::cast_sign_loss)]
+    #[allow(
+        clippy::cast_possible_wrap,
+        clippy::cast_sign_loss,
+        reason = "frac_bits bounded by type size"
+    )]
     let epsilon_shift = (63i32 - (T::frac_bits() / 2) as i32).max(0) as u32;
     let epsilon = T::from_i1f63(1i64 << epsilon_shift);
 
@@ -75,7 +91,7 @@ pub fn sqrt<T: CordicNumber>(x: T) -> Result<T> {
         };
 
         if diff <= epsilon {
-            return Ok(new_guess);
+            return new_guess;
         }
 
         guess = new_guess;
@@ -84,5 +100,5 @@ pub fn sqrt<T: CordicNumber>(x: T) -> Result<T> {
     // Final iteration - always performed, result always returned
     let quotient = x.div(guess);
     let sum = guess.saturating_add(quotient);
-    Ok(sum.saturating_mul(half))
+    sum.saturating_mul(half)
 }

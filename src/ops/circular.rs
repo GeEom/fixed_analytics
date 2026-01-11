@@ -1,7 +1,9 @@
 //! Trigonometric functions via circular CORDIC.
 
+use crate::bounded::{NonNegative, UnitInterval};
 use crate::error::{Error, Result};
 use crate::kernel::{circular_rotation, circular_vectoring, cordic_scale_factor};
+use crate::ops::algebraic::sqrt_nonneg;
 use crate::traits::CordicNumber;
 
 /// Sine and cosine. More efficient than separate calls. Accepts any angle.
@@ -70,25 +72,17 @@ pub fn tan<T: CordicNumber>(angle: T) -> T {
 ///
 /// # Errors
 /// Returns `DomainError` if `|x| > 1`.
-///
-/// # Panics
-/// Panics if the internal sqrt computation fails, which should never happen
-/// for valid domain inputs as 1-x² is always non-negative when |x| ≤ 1.
 #[must_use = "returns the arcsine result which should be handled"]
-#[allow(clippy::missing_panics_doc)] // Panic only on internal invariant violation
 pub fn asin<T: CordicNumber>(x: T) -> Result<T> {
-    let one = T::one();
-    let neg_one = -one;
-
-    if x > one || x < neg_one {
+    let Some(unit_x) = UnitInterval::new(x) else {
         return Err(Error::domain("asin", "value in range [-1, 1]"));
-    }
+    };
 
     // Special cases
-    if x == one {
+    if x == T::one() {
         return Ok(T::frac_pi_2());
     }
-    if x == neg_one {
+    if x == -T::one() {
         return Ok(-T::frac_pi_2());
     }
     if x == T::zero() {
@@ -96,12 +90,8 @@ pub fn asin<T: CordicNumber>(x: T) -> Result<T> {
     }
 
     // Use the identity: asin(x) = atan(x / sqrt(1 - x²))
-    // This gives better accuracy than iterative methods
-    let x_sq = x.saturating_mul(x);
-    let one_minus_x_sq = one.saturating_sub(x_sq);
-    // SAFETY: x ∈ [-1,1] is enforced above, so 1-x² ∈ [0,1], sqrt cannot fail.
-    #[allow(clippy::expect_used)] // Invariant: x in [-1,1] guarantees valid sqrt input
-    let sqrt_term = crate::ops::algebraic::sqrt(one_minus_x_sq).expect("1-x² ≥ 0");
+    // NonNegative::one_minus_square gives 1 - x², which is ≥ 0 since |x| ≤ 1
+    let sqrt_term = sqrt_nonneg(NonNegative::one_minus_square(unit_x));
 
     // Handle case where sqrt_term is very small (x close to ±1)
     if sqrt_term < T::from_i1f63(0x0001_0000_0000_0000) {

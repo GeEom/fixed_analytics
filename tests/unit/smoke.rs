@@ -1,6 +1,7 @@
 //! Smoke tests and multi-type tests for the library API
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, reason = "test code uses unwrap for conciseness")]
 mod tests {
     use fixed::types::I16F16;
     use fixed_analytics::{
@@ -42,9 +43,9 @@ mod tests {
         let _ = asinh(x);
         let _ = atanh(x);
 
-        let x = I16F16::from_num(1.5);
-        let _ = acosh(x);
-        let _ = acoth(x);
+        let x_large = I16F16::from_num(1.5);
+        let _ = acosh(x_large);
+        let _ = acoth(x_large);
     }
 
     #[test]
@@ -57,7 +58,6 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::unwrap_used)]
     fn smoke_test_algebraic() {
         let x = I16F16::from_num(2.0);
         let _ = sqrt(x).unwrap();
@@ -69,6 +69,7 @@ mod tests {
 // ==========================================================================
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, reason = "test code uses unwrap for conciseness")]
 mod multi_type {
     use fixed::types::{I8F24, I32F32};
     use fixed_analytics::{acos, asin, atan, exp, ln, sin_cos, sinh_cosh, sqrt};
@@ -103,7 +104,6 @@ mod multi_type {
     }
 
     #[test]
-    #[allow(clippy::unwrap_used)]
     fn inverse_trig_i32f32() {
         let x = I32F32::from_num(0.5);
         let asin_val = asin(x).unwrap();
@@ -134,7 +134,6 @@ mod multi_type {
     }
 
     #[test]
-    #[allow(clippy::unwrap_used)]
     fn exp_ln_i32f32() {
         let x = I32F32::from_num(2.0);
         let result = exp(ln(x).unwrap());
@@ -146,7 +145,6 @@ mod multi_type {
     }
 
     #[test]
-    #[allow(clippy::unwrap_used)]
     fn sqrt_i32f32() {
         let x = I32F32::from_num(4.0);
         let result: f64 = sqrt(x).unwrap().to_num();
@@ -181,7 +179,6 @@ mod multi_type {
     }
 
     #[test]
-    #[allow(clippy::unwrap_used)]
     fn sqrt_i8f24() {
         let x = I8F24::from_num(2.0);
         let result: f32 = sqrt(x).unwrap().to_num();
@@ -192,7 +189,6 @@ mod multi_type {
     }
 
     #[test]
-    #[allow(clippy::unwrap_used)]
     fn ln_i8f24() {
         let x = I8F24::from_num(2.0);
         let result: f32 = ln(x).unwrap().to_num();
@@ -205,6 +201,7 @@ mod multi_type {
 
 // I8F8 tests - lower precision, 16-bit total
 #[cfg(test)]
+#[allow(clippy::unwrap_used, reason = "test code uses unwrap for conciseness")]
 mod i8f8 {
     use fixed::types::I8F8;
     use fixed_analytics::{sin_cos, sqrt};
@@ -223,7 +220,6 @@ mod i8f8 {
     }
 
     #[test]
-    #[allow(clippy::unwrap_used)]
     fn basic_sqrt() {
         let x = I8F8::from_num(4.0);
         let result: f32 = sqrt(x).unwrap().to_num();

@@ -1,6 +1,7 @@
 //! Tests for hyperbolic functions
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, reason = "test code uses unwrap for conciseness")]
 mod tests {
     use fixed::types::{I16F16, I32F32};
     use fixed_analytics::{acosh, acoth, asinh, atanh, cosh, coth, sinh, sinh_cosh, tanh};
@@ -69,7 +70,6 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::unwrap_used)]
     fn acoth_values() {
         // acoth(x) = atanh(1/x)
         // acoth(2) = atanh(0.5) ≈ 0.5493
@@ -82,12 +82,12 @@ mod tests {
         );
 
         // acoth(-2) = atanh(-0.5) ≈ -0.5493
-        let result = acoth(I16F16::from_num(-2.0));
-        assert!(result.is_ok());
-        let val: f32 = result.unwrap().to_num();
+        let result_neg = acoth(I16F16::from_num(-2.0));
+        assert!(result_neg.is_ok());
+        let val_neg: f32 = result_neg.unwrap().to_num();
         assert!(
-            (val + 0.5493).abs() < TOLERANCE,
-            "acoth(-2) expected ~-0.5493, got {val}"
+            (val_neg + 0.5493).abs() < TOLERANCE,
+            "acoth(-2) expected ~-0.5493, got {val_neg}"
         );
     }
 
@@ -107,7 +107,6 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::unwrap_used)]
     fn cosh_acosh_roundtrip() {
         // cosh(acosh(x)) ≈ x for x >= 1
         for i in 1..=10 {
@@ -125,7 +124,6 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::unwrap_used)]
     fn tanh_atanh_roundtrip() {
         // tanh(atanh(x)) ≈ x for x in (-1, 1)
         for i in -9..=9 {
@@ -141,7 +139,6 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::unwrap_used)]
     fn atanh_near_boundary() {
         // atanh approaches infinity as |x| approaches 1
         // Test values close to but not at the boundary
@@ -160,7 +157,6 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::unwrap_used)]
     fn acosh_at_boundary() {
         // acosh(1) should be exactly 0
         let result: f32 = acosh(I16F16::ONE).unwrap().to_num();
@@ -216,7 +212,6 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::unwrap_used)]
     fn coth_nonzero_values() {
         // coth(x) = cosh(x)/sinh(x)
         // coth(1) ≈ 1.3130
@@ -267,6 +262,21 @@ mod tests {
         assert!(
             (c_neg_f32 - 1.00045).abs() < 0.01,
             "cosh(-0.03) = {c_neg_f32}, expected ~1.00045"
+        );
+
+        // Additional test with even smaller value to ensure full Taylor path coverage
+        let tiny = core::hint::black_box(I32F32::from_num(0.01));
+        let (s_tiny, c_tiny) = sinh_cosh(tiny);
+        // Use black_box to prevent optimization
+        let s_tiny_f32: f32 = core::hint::black_box(s_tiny).to_num();
+        let c_tiny_f32: f32 = core::hint::black_box(c_tiny).to_num();
+        assert!(
+            (s_tiny_f32 - 0.01).abs() < 0.001,
+            "sinh(0.01) = {s_tiny_f32}, expected ~0.01"
+        );
+        assert!(
+            (c_tiny_f32 - 1.0).abs() < 0.001,
+            "cosh(0.01) = {c_tiny_f32}, expected ~1.0"
         );
     }
 

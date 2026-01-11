@@ -2,6 +2,7 @@
 
 pub mod functions;
 pub mod metrics;
+pub mod readme;
 pub mod reference;
 pub mod report;
 pub mod sampling;

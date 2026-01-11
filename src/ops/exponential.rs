@@ -1,7 +1,8 @@
 //! Exponential and logarithmic functions.
 
+use crate::bounded::{NormalizedLnArg, OpenUnitInterval};
 use crate::error::{Error, Result};
-use crate::ops::hyperbolic::sinh_cosh;
+use crate::ops::hyperbolic::{atanh_open, sinh_cosh};
 use crate::traits::CordicNumber;
 
 /// Exponential (e^x). May overflow for large positive x.
@@ -16,54 +17,59 @@ pub fn exp<T: CordicNumber>(x: T) -> T {
         return one;
     }
 
-    // For large |x|, use argument reduction: exp(x) = exp(x/2)²
-    // Or better: exp(x) = 2^k * exp(r) where x = k*ln(2) + r
-    let abs_x = x.abs();
-    let threshold = ln2 + ln2; // About 1.386
+    // For large |x|, use argument reduction: exp(x) = 2^k * exp(r)
+    // where r is reduced to (-ln2, ln2) range
+    let mut reduced = x;
+    let mut scale: i32 = 0;
 
-    if abs_x > threshold {
-        // Argument reduction using exp(x) = exp(x - ln2) * 2
-        // Find k such that |x - k*ln2| < ln2
-        let mut reduced = x;
-        let mut scale_factor = one;
-
-        let mut i = 0;
-        if x.is_positive() {
-            while reduced > ln2 && i < 128 {
-                reduced -= ln2;
-                scale_factor = scale_factor + scale_factor; // *= 2
-                i += 1;
-            }
-        } else {
-            while reduced < -ln2 && i < 128 {
-                reduced += ln2;
-                scale_factor = scale_factor >> 1; // /= 2
-                i += 1;
-            }
-        }
-
-        // Now compute exp(reduced) where |reduced| <= ln2
-        let (sinh_r, cosh_r) = sinh_cosh(reduced);
-        let exp_r = cosh_r.saturating_add(sinh_r);
-
-        return scale_factor.saturating_mul(exp_r);
+    // Reduce positive values
+    let mut i = 0;
+    while reduced > ln2 && i < 64 {
+        reduced -= ln2;
+        scale += 1;
+        i += 1;
     }
 
-    // For small x, use exp(x) = cosh(x) + sinh(x) directly
-    let (sinh_x, cosh_x) = sinh_cosh(x);
-    cosh_x.saturating_add(sinh_x)
+    // Reduce negative values
+    i = 0;
+    while reduced < -ln2 && i < 64 {
+        reduced += ln2;
+        scale -= 1;
+        i += 1;
+    }
+
+    // Compute exp(reduced) = cosh(reduced) + sinh(reduced)
+    let (sinh_r, cosh_r) = sinh_cosh(reduced);
+    let exp_r = cosh_r.saturating_add(sinh_r);
+
+    // Scale by 2^scale using bit shifts
+    #[allow(clippy::cast_possible_wrap, reason = "total_bits bounded by type size")]
+    let max_shift = (T::total_bits() - 1) as i32;
+
+    #[allow(clippy::cast_sign_loss, reason = "scale >= 0 checked before cast")]
+    if scale >= 0 {
+        if scale > max_shift {
+            T::max_value()
+        } else {
+            let shift = scale as u32;
+            exp_r << shift
+        }
+    } else {
+        let neg_scale = -scale;
+        if neg_scale > max_shift {
+            zero
+        } else {
+            let shift = neg_scale as u32;
+            exp_r >> shift
+        }
+    }
 }
 
 /// Natural logarithm. Domain: `x > 0`.
 ///
 /// # Errors
 /// Returns `DomainError` if `x ≤ 0`.
-///
-/// # Panics
-/// Panics if the internal atanh computation fails, which should never happen
-/// as the normalized argument is always in the valid range (-1/3, 1/3).
 #[must_use = "returns the natural logarithm result which should be handled"]
-#[allow(clippy::missing_panics_doc)] // Panic only on internal invariant violation
 pub fn ln<T: CordicNumber>(x: T) -> Result<T> {
     let zero = T::zero();
     let one = T::one();
@@ -76,9 +82,6 @@ pub fn ln<T: CordicNumber>(x: T) -> Result<T> {
     if x == one {
         return Ok(zero);
     }
-
-    // For x very close to 1, the direct formula works well
-    // ln(x) = 2 * atanh((x-1)/(x+1))
 
     // For x far from 1, use argument reduction:
     // ln(x) = ln(x * 2^(-k)) + k * ln(2)
@@ -109,15 +112,14 @@ pub fn ln<T: CordicNumber>(x: T) -> Result<T> {
 
     // Now compute ln(normalized) where 0.5 <= normalized <= 2
     // Using ln(x) = 2 * atanh((x-1)/(x+1))
-    let x_minus_1 = normalized - one;
-    let x_plus_1 = normalized + one;
-    let arg = x_minus_1.div(x_plus_1);
+    // NormalizedLnArg encodes that normalized ∈ [0.5, 2]
+    let norm = NormalizedLnArg::from_normalized(normalized);
 
-    // SAFETY: normalized ∈ [0.5, 2], so arg = (x-1)/(x+1) ∈ (-1/3, 1/3) ⊂ (-1, 1).
-    // atanh cannot fail for this range.
-    #[allow(clippy::expect_used)] // Invariant: normalized in [0.5, 2] guarantees valid atanh input
-    let atanh_val = crate::ops::hyperbolic::atanh(arg)
-        .expect("normalized in [0.5, 2] guarantees arg in (-1/3, 1/3)");
+    // OpenUnitInterval::from_normalized_ln_arg computes (x-1)/(x+1),
+    // which is in (-1/3, 1/3) ⊂ (-1, 1) for x ∈ [0.5, 2]
+    let arg = OpenUnitInterval::from_normalized_ln_arg(norm);
+
+    let atanh_val = atanh_open(arg);
     let ln_normalized = atanh_val + atanh_val; // 2 * atanh
 
     Ok(ln_normalized + k_ln2)
