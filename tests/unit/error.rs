@@ -17,17 +17,10 @@ mod tests {
 
     #[test]
     fn error_constructors() {
-        // Test domain error constructor
         let err = Error::domain("asin", "value in range [-1, 1]");
         let msg = format!("{err}");
         assert!(msg.contains("asin"));
         assert!(msg.contains("[-1, 1]"));
-
-        // Test overflow error constructor
-        let err_overflow = Error::overflow("exp");
-        let msg_overflow = format!("{err_overflow}");
-        assert!(msg_overflow.contains("exp"));
-        assert!(msg_overflow.contains("overflow"));
     }
 
     #[test]

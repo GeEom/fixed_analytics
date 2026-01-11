@@ -259,4 +259,149 @@ mod tests {
         // Should return zero
         assert!(result == 0.0, "exp(-25) = {result}, expected 0");
     }
+
+    mod saturation {
+        use super::*;
+        use fixed::types::I32F32;
+
+        /// Check if I16F16 value is saturated to MAX (within 0.01%)
+        fn is_max_16(val: I16F16) -> bool {
+            val.to_num::<f32>() >= I16F16::MAX.to_num::<f32>() * 0.9999
+        }
+
+        /// Check if I16F16 value is saturated to zero
+        fn is_zero_16(val: I16F16) -> bool {
+            val == I16F16::ZERO || val.to_num::<f32>().abs() < 0.0001
+        }
+
+        /// Check if I32F32 value is saturated to MAX (within 0.01%)
+        fn is_max_32(val: I32F32) -> bool {
+            val.to_num::<f64>() >= I32F32::MAX.to_num::<f64>() * 0.9999
+        }
+
+        /// Check if I32F32 value is saturated to zero
+        fn is_zero_32(val: I32F32) -> bool {
+            val == I32F32::ZERO || val.to_num::<f64>().abs() < 0.000_000_1
+        }
+
+        // ===== exp saturation thresholds =====
+        // I16F16: saturates to MAX at x >= 22.2, to zero at x <= -9.2
+        // I32F32: saturates to MAX at x >= 44.4, to zero at x <= -16.2
+
+        #[test]
+        fn exp_i16f16_upper_threshold() {
+            // Below threshold: should NOT saturate
+            assert!(
+                !is_max_16(exp(I16F16::from_num(22.1))),
+                "exp(22.1) should not saturate"
+            );
+            // At threshold: should saturate
+            assert!(
+                is_max_16(exp(I16F16::from_num(22.2))),
+                "exp(22.2) should saturate to MAX"
+            );
+        }
+
+        #[test]
+        fn exp_i16f16_lower_threshold() {
+            // Above threshold: should NOT be zero
+            assert!(
+                !is_zero_16(exp(I16F16::from_num(-9.1))),
+                "exp(-9.1) should not be zero"
+            );
+            // At threshold: should be zero
+            assert!(
+                is_zero_16(exp(I16F16::from_num(-9.2))),
+                "exp(-9.2) should be zero"
+            );
+        }
+
+        #[test]
+        fn exp_i32f32_upper_threshold() {
+            // Below threshold: should NOT saturate
+            assert!(
+                !is_max_32(exp(I32F32::from_num(44.3))),
+                "exp(44.3) should not saturate"
+            );
+            // At threshold: should saturate
+            assert!(
+                is_max_32(exp(I32F32::from_num(44.4))),
+                "exp(44.4) should saturate to MAX"
+            );
+        }
+
+        #[test]
+        fn exp_i32f32_lower_threshold() {
+            // Above threshold: should NOT be zero
+            assert!(
+                !is_zero_32(exp(I32F32::from_num(-16.1))),
+                "exp(-16.1) should not be zero"
+            );
+            // At threshold: should be zero
+            assert!(
+                is_zero_32(exp(I32F32::from_num(-16.2))),
+                "exp(-16.2) should be zero"
+            );
+        }
+
+        // ===== pow2 saturation thresholds =====
+        // I16F16: saturates to MAX at x >= 15.0, to zero at x <= -13.2
+        // I32F32: saturates to MAX at x >= 31.0, to zero at x <= -23.3
+
+        #[test]
+        fn pow2_i16f16_upper_threshold() {
+            // Below threshold: should NOT saturate
+            assert!(
+                !is_max_16(pow2(I16F16::from_num(14.9))),
+                "pow2(14.9) should not saturate"
+            );
+            // At threshold: should saturate
+            assert!(
+                is_max_16(pow2(I16F16::from_num(15.0))),
+                "pow2(15.0) should saturate to MAX"
+            );
+        }
+
+        #[test]
+        fn pow2_i16f16_lower_threshold() {
+            // Above threshold: should NOT be zero
+            assert!(
+                !is_zero_16(pow2(I16F16::from_num(-13.1))),
+                "pow2(-13.1) should not be zero"
+            );
+            // At threshold: should be zero
+            assert!(
+                is_zero_16(pow2(I16F16::from_num(-13.2))),
+                "pow2(-13.2) should be zero"
+            );
+        }
+
+        #[test]
+        fn pow2_i32f32_upper_threshold() {
+            // Below threshold: should NOT saturate
+            assert!(
+                !is_max_32(pow2(I32F32::from_num(30.9))),
+                "pow2(30.9) should not saturate"
+            );
+            // At threshold: should saturate
+            assert!(
+                is_max_32(pow2(I32F32::from_num(31.0))),
+                "pow2(31.0) should saturate to MAX"
+            );
+        }
+
+        #[test]
+        fn pow2_i32f32_lower_threshold() {
+            // Above threshold: should NOT be zero
+            assert!(
+                !is_zero_32(pow2(I32F32::from_num(-23.2))),
+                "pow2(-23.2) should not be zero"
+            );
+            // At threshold: should be zero
+            assert!(
+                is_zero_32(pow2(I32F32::from_num(-23.3))),
+                "pow2(-23.3) should be zero"
+            );
+        }
+    }
 }

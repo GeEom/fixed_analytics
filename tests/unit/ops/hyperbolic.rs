@@ -316,4 +316,174 @@ mod tests {
             "cosh(-0.05) = {c_neg_f32}, expected ~1.00125"
         );
     }
+
+    mod saturation {
+        use super::*;
+        use fixed::types::I32F32;
+
+        /// Check if I16F16 value is saturated to MAX (within 0.01%)
+        fn is_max_16(val: I16F16) -> bool {
+            val.to_num::<f32>() >= I16F16::MAX.to_num::<f32>() * 0.9999
+        }
+
+        /// Check if I16F16 value is saturated to MIN (within 0.01%)
+        fn is_min_16(val: I16F16) -> bool {
+            val.to_num::<f32>() <= I16F16::MIN.to_num::<f32>() * 0.9999
+        }
+
+        /// Check if I32F32 value is saturated to MAX (within 0.01%)
+        fn is_max_32(val: I32F32) -> bool {
+            val.to_num::<f64>() >= I32F32::MAX.to_num::<f64>() * 0.9999
+        }
+
+        /// Check if I32F32 value is saturated to MIN (within 0.01%)
+        fn is_min_32(val: I32F32) -> bool {
+            val.to_num::<f64>() <= I32F32::MIN.to_num::<f64>() * 0.9999
+        }
+
+        // ===== sinh saturation thresholds =====
+        // I16F16: saturates to MAX at x >= 11.1, to MIN at x <= -11.1
+        // I32F32: saturates to MAX at x >= 22.2, to MIN at x <= -22.2
+
+        #[test]
+        fn sinh_i16f16_positive_threshold() {
+            // Below threshold: should NOT saturate
+            assert!(
+                !is_max_16(sinh(I16F16::from_num(11.0))),
+                "sinh(11.0) should not saturate"
+            );
+            // At threshold: should saturate
+            assert!(
+                is_max_16(sinh(I16F16::from_num(11.1))),
+                "sinh(11.1) should saturate to MAX"
+            );
+        }
+
+        #[test]
+        fn sinh_i16f16_negative_threshold() {
+            // Above threshold: should NOT saturate
+            assert!(
+                !is_min_16(sinh(I16F16::from_num(-11.0))),
+                "sinh(-11.0) should not saturate to MIN"
+            );
+            // At threshold: should saturate
+            assert!(
+                is_min_16(sinh(I16F16::from_num(-11.1))),
+                "sinh(-11.1) should saturate to MIN"
+            );
+        }
+
+        #[test]
+        fn sinh_i32f32_positive_threshold() {
+            // Below threshold: should NOT saturate
+            assert!(
+                !is_max_32(sinh(I32F32::from_num(22.1))),
+                "sinh(22.1) should not saturate"
+            );
+            // At threshold: should saturate
+            assert!(
+                is_max_32(sinh(I32F32::from_num(22.2))),
+                "sinh(22.2) should saturate to MAX"
+            );
+        }
+
+        #[test]
+        fn sinh_i32f32_negative_threshold() {
+            // Above threshold: should NOT saturate
+            assert!(
+                !is_min_32(sinh(I32F32::from_num(-22.1))),
+                "sinh(-22.1) should not saturate to MIN"
+            );
+            // At threshold: should saturate
+            assert!(
+                is_min_32(sinh(I32F32::from_num(-22.2))),
+                "sinh(-22.2) should saturate to MIN"
+            );
+        }
+
+        // ===== cosh saturation thresholds =====
+        // I16F16: saturates to MAX at |x| >= 11.1
+        // I32F32: saturates to MAX at |x| >= 22.2
+        // (cosh is even, so positive and negative thresholds are symmetric)
+
+        #[test]
+        fn cosh_i16f16_positive_threshold() {
+            // Below threshold: should NOT saturate
+            assert!(
+                !is_max_16(cosh(I16F16::from_num(11.0))),
+                "cosh(11.0) should not saturate"
+            );
+            // At threshold: should saturate
+            assert!(
+                is_max_16(cosh(I16F16::from_num(11.1))),
+                "cosh(11.1) should saturate to MAX"
+            );
+        }
+
+        #[test]
+        fn cosh_i16f16_negative_threshold() {
+            // Above threshold (less negative): should NOT saturate
+            assert!(
+                !is_max_16(cosh(I16F16::from_num(-11.0))),
+                "cosh(-11.0) should not saturate"
+            );
+            // At threshold: should saturate
+            assert!(
+                is_max_16(cosh(I16F16::from_num(-11.1))),
+                "cosh(-11.1) should saturate to MAX"
+            );
+        }
+
+        #[test]
+        fn cosh_i32f32_positive_threshold() {
+            // Below threshold: should NOT saturate
+            assert!(
+                !is_max_32(cosh(I32F32::from_num(22.1))),
+                "cosh(22.1) should not saturate"
+            );
+            // At threshold: should saturate
+            assert!(
+                is_max_32(cosh(I32F32::from_num(22.2))),
+                "cosh(22.2) should saturate to MAX"
+            );
+        }
+
+        #[test]
+        fn cosh_i32f32_negative_threshold() {
+            // Above threshold (less negative): should NOT saturate
+            assert!(
+                !is_max_32(cosh(I32F32::from_num(-22.1))),
+                "cosh(-22.1) should not saturate"
+            );
+            // At threshold: should saturate
+            assert!(
+                is_max_32(cosh(I32F32::from_num(-22.2))),
+                "cosh(-22.2) should saturate to MAX"
+            );
+        }
+
+        // ===== sinh/cosh threshold consistency =====
+
+        #[test]
+        fn sinh_cosh_thresholds_match() {
+            // sinh and cosh should have the same saturation threshold
+            // (both grow as e^x/2 for large |x|)
+            assert!(
+                is_max_16(sinh(I16F16::from_num(11.1))),
+                "sinh(11.1) should saturate"
+            );
+            assert!(
+                is_max_16(cosh(I16F16::from_num(11.1))),
+                "cosh(11.1) should saturate"
+            );
+            assert!(
+                is_max_32(sinh(I32F32::from_num(22.2))),
+                "sinh(22.2) should saturate"
+            );
+            assert!(
+                is_max_32(cosh(I32F32::from_num(22.2))),
+                "cosh(22.2) should saturate"
+            );
+        }
+    }
 }

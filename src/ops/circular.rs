@@ -12,20 +12,28 @@ pub fn sin_cos<T: CordicNumber>(angle: T) -> (T, T) {
     let pi = T::pi();
     let frac_pi_2 = T::frac_pi_2();
     let zero = T::zero();
-
-    // Reduce angle to [-π, π] range first.
-    let mut reduced = angle;
     let two_pi = pi + pi;
-    let mut i = 0;
-    while reduced > pi && i < 64 {
-        reduced -= two_pi;
-        i += 1;
-    }
-    i = 0;
-    while reduced < -pi && i < 64 {
-        reduced += two_pi;
-        i += 1;
-    }
+
+    // Reduce angle to [-π, π] using direct quotient computation.
+    // This handles arbitrarily large angles without iteration limits.
+    let reduced = if angle > pi || angle < -pi {
+        // Compute n = round(angle / 2π), then reduced = angle - n * 2π
+        let quotient = angle.div(two_pi);
+        let n = quotient.round();
+        angle.saturating_sub(n.saturating_mul(two_pi))
+    } else {
+        angle
+    };
+
+    // Clamp to [-π, π] to handle any residual from saturation.
+    // This is a safety net; mathematically unnecessary for valid inputs.
+    let reduced = if reduced > pi {
+        reduced.saturating_sub(two_pi)
+    } else if reduced < -pi {
+        reduced.saturating_add(two_pi)
+    } else {
+        reduced
+    };
 
     // Further reduce to [-π/2, π/2] and track sign
     let (reduced, negate) = if reduced > frac_pi_2 {
@@ -61,7 +69,44 @@ pub fn cos<T: CordicNumber>(angle: T) -> T {
     sin_cos(angle).1
 }
 
-/// Tangent. May overflow near ±π/2.
+/// Tangent. Returns `sin(angle) / cos(angle)`.
+///
+/// # Overflow Behavior
+///
+/// Tangent has poles at ±π/2, ±3π/2, etc. where it approaches ±∞.
+/// Since these poles occur at irrational values that cannot be exactly
+/// represented in fixed-point, this function will never divide by
+/// exactly zero. However, near poles the result may:
+///
+/// - Saturate to `T::MAX` or `T::MIN` for very small denominators
+/// - Produce very large finite values that may overflow in subsequent operations
+///
+/// The threshold for potential overflow is approximately:
+/// - `|angle - π/2| < 2^(-frac_bits/2)` for the nearest pole
+///
+/// For I16F16, this means angles within ~0.004 radians of π/2 may overflow.
+/// For I32F32, within ~0.00003 radians.
+///
+/// If you need to detect near-pole conditions, check `cos(angle).abs()`
+/// against a threshold before calling `tan`.
+///
+/// # Example
+///
+/// ```
+/// use fixed::types::I16F16;
+/// use fixed_analytics::{tan, cos};
+///
+/// let angle = I16F16::from_num(1.5); // Close to π/2 ≈ 1.571
+///
+/// // Safe: check cosine magnitude first
+/// let c = cos(angle);
+/// if c.abs() > I16F16::from_num(0.01) {
+///     let t = tan(angle);
+///     // Use t safely
+/// } else {
+///     // Handle near-pole case
+/// }
+/// ```
 #[must_use]
 pub fn tan<T: CordicNumber>(angle: T) -> T {
     let (s, c) = sin_cos(angle);
