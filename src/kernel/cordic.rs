@@ -1,12 +1,11 @@
 //! Core CORDIC iteration implementations.
 //!
-//! The CORDIC algorithm operates in three modes, each with two directions:
+//! The CORDIC algorithm operates in two modes, each with two directions:
 //!
 //! | Mode | Rotation (z → 0) | Vectoring (y → 0) |
 //! |------|------------------|-------------------|
 //! | Circular | sin, cos | atan |
 //! | Hyperbolic | sinh, cosh | atanh, ln |
-//! | Linear | multiply | divide |
 //!
 //! # Algorithm
 //!
@@ -30,16 +29,13 @@ use crate::traits::CordicNumber;
 
 /// Table lookup for CORDIC iteration.
 ///
-/// # Safety Invariant
 /// Index is bounded by CORDIC iteration limits:
 /// - Circular mode: `min(frac_bits, 62)` → max index 61
 /// - Hyperbolic mode: `min(frac_bits, 54)` with `i.saturating_sub(1)` → max index 53
 ///
 /// Since the tables have 64 elements and max index is 61, bounds are always satisfied.
-/// The bounds check is optimized away in release builds.
 #[inline]
 const fn table_lookup(table: &[i64; 64], index: u32) -> i64 {
-    // SAFETY: Iteration limits guarantee index < 64 (see doc comment above).
     #[allow(
         clippy::indexing_slicing,
         reason = "index bounded by CORDIC iteration limits"
@@ -109,13 +105,11 @@ pub fn circular_rotation<T: CordicNumber>(mut x: T, mut y: T, mut z: T) -> (T, T
         let angle = T::from_i1f63(table_lookup(&ATAN_TABLE, i));
 
         if z >= zero {
-            // Rotate counter-clockwise (positive angle)
             let x_new = x.saturating_sub(y >> i);
             y = y.saturating_add(x >> i);
             x = x_new;
             z -= angle;
         } else {
-            // Rotate clockwise (negative angle)
             let x_new = x.saturating_add(y >> i);
             y = y.saturating_sub(x >> i);
             x = x_new;

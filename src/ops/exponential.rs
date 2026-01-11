@@ -5,7 +5,37 @@ use crate::error::{Error, Result};
 use crate::ops::hyperbolic::{atanh_open, sinh_cosh};
 use crate::traits::CordicNumber;
 
-/// Exponential (e^x). May overflow for large positive x.
+/// Exponential function (e^x).
+///
+/// # Saturation Behavior
+///
+/// This function saturates for extreme inputs rather than returning an error:
+///
+/// | Condition | Result | Example (I16F16) |
+/// |-----------|--------|------------------|
+/// | x > `ln(T::MAX)` | `T::MAX` | x > ~10.4 → 32767.99 |
+/// | x < `ln(T::MIN_POSITIVE)` | `T::ZERO` | x < ~-10.4 → 0 |
+///
+/// The exact thresholds depend on the type's range:
+/// - **I16F16:** Saturates for x > ~10.4 or x < ~-20
+/// - **I32F32:** Saturates for x > ~21.5 or x < ~-45
+///
+/// Saturation is silent and deterministic. If you need to detect overflow,
+/// check the input range before calling:
+///
+/// ```
+/// use fixed::types::I16F16;
+/// use fixed_analytics::exp;
+///
+/// let x = I16F16::from_num(5.0);
+/// let max_safe = I16F16::from_num(10.0);
+///
+/// if x < max_safe {
+///     let result = exp(x);  // Safe
+/// } else {
+///     // Handle potential saturation
+/// }
+/// ```
 #[must_use]
 pub fn exp<T: CordicNumber>(x: T) -> T {
     let zero = T::zero();
@@ -147,7 +177,20 @@ pub fn log10<T: CordicNumber>(x: T) -> Result<T> {
     Ok(ln_x.div(ln_10))
 }
 
-/// Power of 2 (2^x).
+/// Power of 2 (2^x). Computed as exp(x × ln(2)).
+///
+/// # Saturation Behavior
+///
+/// Saturates for extreme inputs:
+///
+/// | Condition | Result | Example (I16F16) |
+/// |-----------|--------|------------------|
+/// | x > `log2(T::MAX)` | `T::MAX` | x > ~15 → 32767.99 |
+/// | x < `log2(T::MIN_POSITIVE)` | `T::ZERO` | x < ~-16 → 0 |
+///
+/// The exact thresholds:
+/// - **I16F16:** Saturates for x > ~15 or x < ~-16
+/// - **I32F32:** Saturates for x > ~31 or x < ~-32
 #[must_use]
 pub fn pow2<T: CordicNumber>(x: T) -> T {
     let ln_2 = T::ln_2();

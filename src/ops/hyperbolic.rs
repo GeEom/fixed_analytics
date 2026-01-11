@@ -9,27 +9,60 @@ use crate::traits::CordicNumber;
 /// Hyperbolic CORDIC converges for |x| < sum of atanh table ≈ 1.1182.
 /// Stored as fractional part (0.1182) since I1F63 can't hold 1.x.
 /// Full limit = 1 + this value.
-const HYPERBOLIC_CONVERGENCE_LIMIT_FRAC: i64 = 0x0F22_3D70_A3D7_0A3D;
+const HYPERBOLIC_CONVERGENCE_LIMIT_FRAC_I1F63: i64 = 0x0F22_3D70_A3D7_0A3D;
 
-/// Taylor series threshold for high precision (≥24 frac bits): 0.05 in I1F63 format.
-/// Lower threshold means less Taylor usage, better for high precision where CORDIC excels.
-const TAYLOR_THRESHOLD_HIGH_PREC_I1F63: i64 = 0x0666_6666_6666_6666; // 0.05 * 2^63
+/// Taylor series threshold for sinh/cosh with high-precision types (≥24 frac bits).
+///
+/// Below this threshold, 6th-order Taylor series is used instead of CORDIC:
+/// ```text
+/// sinh(x) ≈ x + x³/6 + x⁵/120
+/// cosh(x) ≈ 1 + x²/2 + x⁴/24 + x⁶/720
+/// ```
+///
+/// Optimal value: 0.1366 (tuned via golden section search).
+const TAYLOR_THRESHOLD_HIGH_PREC_I1F63: i64 = 0x117B_9236_B6A0_8400;
 
-/// Taylor series threshold for low precision (<24 frac bits): 0.1 in I1F63 format.
-/// Higher threshold uses Taylor more, which is sufficient for lower precision types.
-const TAYLOR_THRESHOLD_LOW_PREC_I1F63: i64 = 0x0CCC_CCCC_CCCC_CCCD; // 0.1 * 2^63
+/// Taylor series threshold for sinh/cosh with low-precision types (<24 frac bits).
+///
+/// Below this threshold, 4th-order Taylor series is used instead of CORDIC:
+/// ```text
+/// sinh(x) ≈ x + x³/6
+/// cosh(x) ≈ 1 + x²/2 + x⁴/24
+/// ```
+///
+/// Optimal value: 0.2776 (tuned via golden section search).
+const TAYLOR_THRESHOLD_LOW_PREC_I1F63: i64 = 0x2389_AF6C_4171_EC00;
 
-/// atanh argument reduction threshold: 0.75 in I1F63 format.
-/// tanh(1.0) ≈ 0.762; use 0.75 to stay within CORDIC convergence with margin.
-const ATANH_REDUCTION_THRESHOLD_I1F63: i64 = 0x6000_0000_0000_0000; // 0.75 * 2^63
+/// Argument reduction threshold for atanh.
+///
+/// For |x| > this threshold, atanh uses the identity:
+/// ```text
+/// atanh(x) = atanh(0.5) + atanh((x - 0.5) / (1 - 0.5x))
+/// ```
+/// to reduce the argument into CORDIC's optimal convergence range.
+///
+/// Value 0.75 keeps reduced arguments within the convergent region.
+const ATANH_REDUCTION_THRESHOLD_I1F63: i64 = 0x6000_0000_0000_0000;
 
 /// Hyperbolic sine and cosine. More efficient than separate calls.
+///
+/// # Saturation Behavior
+///
+/// Both outputs can saturate for large |x|:
+/// - sinh saturates to `T::MAX` or `T::MIN`
+/// - cosh saturates to `T::MAX`
+///
+/// See [`sinh`] and [`cosh`] for threshold details.
+///
+/// When saturation occurs, both values saturate together (they grow
+/// at the same rate), so the relationship cosh²(x) - sinh²(x) = 1
+/// will not hold for saturated outputs.
 #[must_use]
 pub fn sinh_cosh<T: CordicNumber>(x: T) -> (T, T) {
     let zero = T::zero();
     let one = T::one();
     // Compute limit as 1 + fractional_part (~1.1182)
-    let limit = one.saturating_add(T::from_i1f63(HYPERBOLIC_CONVERGENCE_LIMIT_FRAC));
+    let limit = one.saturating_add(T::from_i1f63(HYPERBOLIC_CONVERGENCE_LIMIT_FRAC_I1F63));
 
     // Handle argument reduction for large values
     if x.abs() > limit {
@@ -92,13 +125,45 @@ pub fn sinh_cosh<T: CordicNumber>(x: T) -> (T, T) {
 }
 
 /// Hyperbolic sine.
+///
+/// # Saturation Behavior
+///
+/// sinh(x) grows exponentially: sinh(x) ≈ e^x/2 for large |x|.
+/// This function saturates for extreme inputs:
+///
+/// | Condition | Result | Example (I16F16) |
+/// |-----------|--------|------------------|
+/// | x > `asinh(T::MAX)` | `T::MAX` | x > ~10.4 → 32767.99 |
+/// | x < `-asinh(T::MAX)` | `T::MIN` | x < ~-10.4 → -32768.0 |
+///
+/// The exact thresholds:
+/// - **I16F16:** Saturates for |x| > ~10.4
+/// - **I32F32:** Saturates for |x| > ~21.5
+///
+/// Within the non-saturating range, sinh is computed accurately via CORDIC
+/// with argument reduction for |x| > 1.118.
 #[inline]
 #[must_use]
 pub fn sinh<T: CordicNumber>(x: T) -> T {
     sinh_cosh(x).0
 }
 
-/// Hyperbolic cosine. Always ≥1.
+/// Hyperbolic cosine. Always ≥ 1.
+///
+/// # Saturation Behavior
+///
+/// cosh(x) grows exponentially: cosh(x) ≈ e^|x|/2 for large |x|.
+/// This function saturates for extreme inputs:
+///
+/// | Condition | Result | Example (I16F16) |
+/// |-----------|--------|------------------|
+/// | \|x\| > `acosh(T::MAX)` | `T::MAX` | \|x\| > ~10.4 → 32767.99 |
+///
+/// Unlike sinh, cosh is always positive, so it only saturates to `T::MAX`.
+///
+/// The exact thresholds:
+/// - **I16F16:** Saturates for |x| > ~10.4
+/// - **I32F32:** Saturates for |x| > ~21.5
 #[inline]
 #[must_use]
 pub fn cosh<T: CordicNumber>(x: T) -> T {

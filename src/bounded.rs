@@ -77,7 +77,7 @@ impl<T: CordicNumber> NonNegative<T> {
         Self(x_sq.saturating_sub(T::one()))
     }
 
-    /// Returns the inner value.
+    /// Unwraps the inner value.
     #[inline]
     #[must_use]
     pub const fn get(self) -> T {
@@ -103,7 +103,7 @@ impl<T: CordicNumber> UnitInterval<T> {
         (value >= -one && value <= one).then_some(Self(value))
     }
 
-    /// Returns the inner value.
+    /// Unwraps the inner value.
     #[inline]
     #[must_use]
     pub const fn get(self) -> T {
@@ -158,13 +158,13 @@ impl<T: CordicNumber> OpenUnitInterval<T> {
     /// `(x - 1) / (x + 1)` is in `(-1/3, 1/3)` which is a subset of `(-1, 1)`.
     #[inline]
     #[must_use]
-    pub fn from_normalized_ln_arg(x: NormalizedLnArg<T>) -> Self {
+    pub(crate) fn from_normalized_ln_arg(x: NormalizedLnArg<T>) -> Self {
         let x_minus_1 = x.0 - T::one();
         let x_plus_1 = x.0 + T::one();
         Self(x_minus_1.div(x_plus_1))
     }
 
-    /// Returns the inner value.
+    /// Unwraps the inner value.
     #[inline]
     #[must_use]
     pub const fn get(self) -> T {
@@ -188,7 +188,7 @@ impl<T: CordicNumber> AtLeastOne<T> {
         (value >= T::one()).then_some(Self(value))
     }
 
-    /// Returns the inner value.
+    /// Unwraps the inner value.
     #[inline]
     #[must_use]
     pub const fn get(self) -> T {
@@ -201,24 +201,17 @@ impl<T: CordicNumber> AtLeastOne<T> {
 /// After normalizing the input for ln computation, the value is always
 /// in this range, which guarantees that `(x-1)/(x+1)` is in `(-1/3, 1/3)`.
 #[derive(Clone, Copy, Debug)]
-pub struct NormalizedLnArg<T>(T);
+pub(crate) struct NormalizedLnArg<T>(T);
 
 impl<T: CordicNumber> NormalizedLnArg<T> {
     /// Creates a new `NormalizedLnArg` from the normalization loop result.
     ///
     /// The ln function's normalization loop guarantees the result is in [0.5, 2].
-    /// This constructor trusts that invariant (used only in ln implementation).
+    /// This constructor trusts that invariant.
     #[inline]
     #[must_use]
     pub(crate) const fn from_normalized(value: T) -> Self {
         Self(value)
-    }
-
-    /// Returns the inner value.
-    #[inline]
-    #[must_use]
-    pub const fn get(self) -> T {
-        self.0
     }
 }
 
@@ -324,12 +317,6 @@ mod tests {
     fn at_least_one_get() {
         let at_least = AtLeastOne::new(I16F16::from_num(2)).unwrap();
         assert_eq!(at_least.get(), I16F16::from_num(2));
-    }
-
-    #[test]
-    fn normalized_ln_arg_get() {
-        let norm = NormalizedLnArg::from_normalized(I16F16::from_num(1.5));
-        assert_eq!(norm.get(), I16F16::from_num(1.5));
     }
 
     #[test]

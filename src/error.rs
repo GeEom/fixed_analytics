@@ -15,12 +15,6 @@ pub enum Error {
         /// Human-readable description of the valid domain.
         expected: &'static str,
     },
-
-    /// The computation would overflow the fixed-point representation.
-    Overflow {
-        /// Name of the function that encountered the error.
-        function: &'static str,
-    },
 }
 
 impl Error {
@@ -28,12 +22,6 @@ impl Error {
     #[must_use]
     pub const fn domain(function: &'static str, expected: &'static str) -> Self {
         Self::DomainError { function, expected }
-    }
-
-    /// Create an overflow error for the given function.
-    #[must_use]
-    pub const fn overflow(function: &'static str) -> Self {
-        Self::Overflow { function }
     }
 }
 
@@ -45,9 +33,6 @@ impl fmt::Display for Error {
                     f,
                     "{function}: input outside valid domain, expected {expected}"
                 )
-            }
-            Self::Overflow { function } => {
-                write!(f, "{function}: result would overflow")
             }
         }
     }
