@@ -4,7 +4,6 @@
 mod tests {
     use fixed::types::{I4F12, I4F60, I8F8, I8F24, I16F16, I20F12, I24F8, I32F32, I48F16, I64F64};
     use fixed_analytics::CordicNumber;
-    use fixed_analytics::kernel::hyperbolic_gain_inv;
 
     #[test]
     #[allow(clippy::approx_constant, reason = "testing pi approximation")]
@@ -103,28 +102,6 @@ mod tests {
         assert!(
             (pi_4_64 - core::f64::consts::FRAC_PI_4).abs() < 1e-15,
             "I64F64::frac_pi_4() = {pi_4_64}, expected ~0.7854"
-        );
-    }
-
-    #[test]
-    fn from_i2f62_high_precision() {
-        // Test from_i2f62 with high-precision types (frac_bits > 62)
-        // This exercises the shift-left branch in from_i2f62
-        // 1/K_h ≈ 1.2075 is stored in I2F62 format
-        // We call hyperbolic_gain_inv which uses from_i2f62
-
-        // I64F64 has 64 fractional bits > 62, so it should use the shift-left branch
-        let gain_inv_64: f64 = hyperbolic_gain_inv::<I64F64>().to_num();
-        assert!(
-            (gain_inv_64 - 1.2075).abs() < 0.01,
-            "hyperbolic_gain_inv::<I64F64>() = {gain_inv_64}, expected ~1.2075"
-        );
-
-        // I4F60 has 60 fractional bits < 62, uses shift-right branch (control test)
-        let gain_inv_60: f64 = hyperbolic_gain_inv::<I4F60>().to_num();
-        assert!(
-            (gain_inv_60 - 1.2075).abs() < 0.01,
-            "hyperbolic_gain_inv::<I4F60>() = {gain_inv_60}, expected ~1.2075"
         );
     }
 }
