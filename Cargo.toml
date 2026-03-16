@@ -1,6 +1,6 @@
 [package]
 name = "fixed_analytics"
-version = "0.5.1"
+version = "1.0.0"
 edition = "2024"
 rust-version = "1.88"
 authors = ["David Gathercole"]
@@ -13,27 +13,39 @@ keywords = ["cordic", "fixed-point", "trigonometry", "math", "no_std"]
 categories = ["mathematics", "no-std", "algorithms", "embedded"]
 
 [package.metadata.docs.rs]
-all-features = true
+features = ["std"]
 rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
 default = ["std"]
 std = []
+verify-no-panic = ["dep:no-panic"]
 
 [dependencies]
-fixed = "1"
+fixed = "1.30"
+no-panic = { version = "0.1", optional = true }
 
 [dev-dependencies]
-criterion = { version = "0.8.1", features = ["html_reports"] }
+criterion = { version = "0.8", features = ["html_reports"] }
 
 [[bench]]
 name = "benchmarks"
 harness = false
 
+[[bin]]
+name = "verify_no_panic"
+required-features = ["verify-no-panic"]
+
 [profile.release]
 lto = true
 codegen-units = 1
 panic = "abort"
+
+[profile.no-panic-check]
+inherits = "release"
+lto = "fat"
+codegen-units = 1
+panic = "unwind"
 
 [profile.bench]
 lto = true

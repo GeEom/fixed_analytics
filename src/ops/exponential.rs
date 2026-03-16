@@ -37,6 +37,7 @@ use crate::traits::CordicNumber;
 /// }
 /// ```
 #[must_use]
+#[cfg_attr(feature = "verify-no-panic", no_panic::no_panic)]
 pub fn exp<T: CordicNumber>(x: T) -> T {
     let zero = T::zero();
     let one = T::one();
@@ -55,7 +56,7 @@ pub fn exp<T: CordicNumber>(x: T) -> T {
     // Reduce positive values
     let mut i = 0;
     while reduced > ln2 && i < 64 {
-        reduced -= ln2;
+        reduced = reduced.saturating_sub(ln2);
         scale += 1;
         i += 1;
     }
@@ -63,7 +64,7 @@ pub fn exp<T: CordicNumber>(x: T) -> T {
     // Reduce negative values
     i = 0;
     while reduced < -ln2 && i < 64 {
-        reduced += ln2;
+        reduced = reduced.saturating_add(ln2);
         scale -= 1;
         i += 1;
     }
@@ -100,6 +101,7 @@ pub fn exp<T: CordicNumber>(x: T) -> T {
 /// # Errors
 /// Returns `DomainError` if `x ≤ 0`.
 #[must_use = "returns the natural logarithm result which should be handled"]
+#[cfg_attr(feature = "verify-no-panic", no_panic::no_panic)]
 pub fn ln<T: CordicNumber>(x: T) -> Result<T> {
     let zero = T::zero();
     let one = T::one();
@@ -128,15 +130,15 @@ pub fn ln<T: CordicNumber>(x: T) -> Result<T> {
     let mut i = 0;
     while normalized > two && i < 128 {
         normalized = normalized >> 1;
-        k_ln2 += ln2;
+        k_ln2 = k_ln2.saturating_add(ln2);
         i += 1;
     }
 
     // For small x (< 0.5), multiply by 2 repeatedly
     i = 0;
     while normalized < half && i < 128 {
-        normalized = normalized + normalized;
-        k_ln2 -= ln2;
+        normalized = normalized.saturating_add(normalized);
+        k_ln2 = k_ln2.saturating_sub(ln2);
         i += 1;
     }
 
@@ -150,9 +152,9 @@ pub fn ln<T: CordicNumber>(x: T) -> Result<T> {
     let arg = OpenUnitInterval::from_normalized_ln_arg(norm);
 
     let atanh_val = atanh_open(arg);
-    let ln_normalized = atanh_val + atanh_val; // 2 * atanh
+    let ln_normalized = atanh_val.saturating_add(atanh_val); // 2 * atanh
 
-    Ok(ln_normalized + k_ln2)
+    Ok(ln_normalized.saturating_add(k_ln2))
 }
 
 /// Base-2 logarithm. Domain: `x > 0`.
@@ -160,6 +162,7 @@ pub fn ln<T: CordicNumber>(x: T) -> Result<T> {
 /// # Errors
 /// Returns `DomainError` if `x ≤ 0`.
 #[must_use = "returns the base-2 logarithm result which should be handled"]
+#[cfg_attr(feature = "verify-no-panic", no_panic::no_panic)]
 pub fn log2<T: CordicNumber>(x: T) -> Result<T> {
     let ln_x = ln(x)?;
     let ln_2 = T::ln_2();
@@ -171,6 +174,7 @@ pub fn log2<T: CordicNumber>(x: T) -> Result<T> {
 /// # Errors
 /// Returns `DomainError` if `x ≤ 0`.
 #[must_use = "returns the base-10 logarithm result which should be handled"]
+#[cfg_attr(feature = "verify-no-panic", no_panic::no_panic)]
 pub fn log10<T: CordicNumber>(x: T) -> Result<T> {
     let ln_x = ln(x)?;
     let ln_10 = T::ln_10();
@@ -192,6 +196,7 @@ pub fn log10<T: CordicNumber>(x: T) -> Result<T> {
 /// - **I16F16:** Saturates for x > ~15 or x < ~-16
 /// - **I32F32:** Saturates for x > ~31 or x < ~-32
 #[must_use]
+#[cfg_attr(feature = "verify-no-panic", no_panic::no_panic)]
 pub fn pow2<T: CordicNumber>(x: T) -> T {
     let ln_2 = T::ln_2();
     exp(x.saturating_mul(ln_2))
