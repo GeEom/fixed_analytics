@@ -1,7 +1,7 @@
 //! Trait definitions for types compatible with CORDIC algorithms.
 
 use core::ops::{Add, AddAssign, Mul, Neg, Shl, Shr, Sub, SubAssign};
-use fixed::traits::Fixed;
+use fixed::traits::{Fixed, FixedSigned};
 use fixed::types::extra::{IsLessOrEqual, LeEqU128, True, Unsigned};
 use fixed::{FixedI8, FixedI16, FixedI32, FixedI64, FixedI128};
 
@@ -177,7 +177,7 @@ macro_rules! impl_cordic_generic {
 
             #[inline]
             fn abs(self) -> Self {
-                if self.is_negative() { -self } else { self }
+                FixedSigned::saturating_abs(self)
             }
 
             #[inline]
@@ -276,7 +276,17 @@ macro_rules! impl_cordic_generic {
 
             #[inline]
             fn div(self, rhs: Self) -> Self {
-                self / rhs
+                match Fixed::checked_div(self, rhs) {
+                    Some(v) => v,
+                    // Division by zero or overflow: saturate based on sign agreement.
+                    None => {
+                        if self.is_negative() != rhs.is_negative() {
+                            Self::MIN
+                        } else {
+                            Self::MAX
+                        }
+                    }
+                }
             }
 
             #[inline]

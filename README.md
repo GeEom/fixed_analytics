@@ -1,6 +1,6 @@
 # fixed_analytics
 
-Fixed-point mathematical functions which are accurate, fast, safe, and machine independent.
+Fixed-point mathematical functions which are accurate, deterministic, and guaranteed not to panic.
 
 [![Crates.io](https://img.shields.io/crates/v/fixed_analytics.svg)](https://crates.io/crates/fixed_analytics)
 [![CI](https://github.com/GeEom/fixed_analytics/actions/workflows/ci.yml/badge.svg)](https://github.com/GeEom/fixed_analytics/actions/workflows/ci.yml)
@@ -30,14 +30,14 @@ Requires Rust 1.88 or later.
 
 ```toml
 [dependencies]
-fixed_analytics = "0.5.1"
+fixed_analytics = "1.0.0"
 ```
 
 For `no_std` environments:
 
 ```toml
 [dependencies]
-fixed_analytics = { version = "0.5.1", default-features = false }
+fixed_analytics = { version = "1.0.0", default-features = false }
 ```
 
 ## Available Functions
@@ -54,7 +54,7 @@ fixed_analytics = { version = "0.5.1", default-features = false }
 | Exponential | `exp`, `pow2` | `ln`, `log2`, `log10` |
 | Algebraic | — | `sqrt` |
 
-Functions are calculated via CORDIC, Newton-Raphson, and Taylor series techniques.
+Functions are calculated via CORDIC, Newton-Raphson, and Taylor series techniques. Complete absence of panic is verified at the linker level via the [`no-panic`](https://github.com/dtolnay/no-panic) crate.
 
 ### Saturation Behavior
 
@@ -75,7 +75,7 @@ Where for `tan`, "pole" refers to ±π/2, ±3π/2, ±5π/2, ...
 <!-- ACCURACY_START -->
 ### Accuracy
 
-Relative error statistics measured against MPFR reference implementations. The file tools/accuracy-bench/baseline.json contains further measurements.
+Relative error statistics measured against MPFR reference implementations. Accuracy regressions are not permitted; every change is benchmarked against the baseline before merging. The file tools/accuracy-bench/baseline.json contains further measurements.
 
 | Function | I16F16 Mean | I16F16 Median | I16F16 P95 | I32F32 Mean | I32F32 Median | I32F32 P95 |
 |----------|-------------|---------------|------------|-------------|---------------|------------|

@@ -58,27 +58,25 @@ const ATANH_REDUCTION_THRESHOLD_I1F63: i64 = 0x6000_0000_0000_0000;
 /// at the same rate), so the relationship cosh²(x) - sinh²(x) = 1
 /// will not hold for saturated outputs.
 #[must_use]
+#[cfg_attr(feature = "verify-no-panic", no_panic::no_panic)]
 pub fn sinh_cosh<T: CordicNumber>(x: T) -> (T, T) {
     let zero = T::zero();
     let one = T::one();
     // Compute limit as 1 + fractional_part (~1.1182)
     let limit = one.saturating_add(T::from_i1f63(HYPERBOLIC_CONVERGENCE_LIMIT_FRAC_I1F63));
 
-    // Handle argument reduction for large values
-    if x.abs() > limit {
-        // Use the identities:
-        // sinh(2x) = 2 * sinh(x) * cosh(x)
-        // cosh(2x) = cosh²(x) + sinh²(x)
-        let half_x = x >> 1;
-        let (sh, ch) = sinh_cosh(half_x);
-
-        let sinh_result = sh.saturating_mul(ch).saturating_mul(T::two());
-        let cosh_result = ch.saturating_mul(ch).saturating_add(sh.saturating_mul(sh));
-
-        return (sinh_result, cosh_result);
+    // Iterative argument reduction for large values.
+    // Count how many halvings are needed, then rebuild on the way back.
+    let mut reduced = x;
+    let mut depth: u32 = 0;
+    // Max depth bounded by bit width: each halving shifts right by 1,
+    // so after total_bits iterations the value is zero and below the limit.
+    while reduced.abs() > limit && depth < T::total_bits() {
+        reduced = reduced >> 1;
+        depth += 1;
     }
 
-    // For very small x, use Taylor series approximation to avoid CORDIC
+    // For very small reduced, use Taylor series approximation to avoid CORDIC
     // overshoot on the first iteration (where atanh(0.5) ≈ 0.549 is larger than x).
     // Use precision-dependent threshold and order.
     let threshold_bits = if T::frac_bits() >= 24 {
@@ -87,41 +85,47 @@ pub fn sinh_cosh<T: CordicNumber>(x: T) -> (T, T) {
         TAYLOR_THRESHOLD_LOW_PREC_I1F63
     };
     let small_threshold = T::from_i1f63(threshold_bits);
-    if x.abs() < small_threshold {
-        let x_sq = x.saturating_mul(x);
-        let x_cu = x_sq.saturating_mul(x);
+    let (mut sh, mut ch) = if reduced.abs() < small_threshold {
+        let x_sq = reduced.saturating_mul(reduced);
+        let x_cu = x_sq.saturating_mul(reduced);
         let x_qu = x_sq.saturating_mul(x_sq);
 
         // Higher precision benefits from higher-order Taylor terms
         if T::frac_bits() >= 24 {
             // sinh(x) ≈ x + x³/6 + x⁵/120, cosh(x) ≈ 1 + x²/2 + x⁴/24 + x⁶/720
-            let x_5 = x_qu.saturating_mul(x);
+            let x_5 = x_qu.saturating_mul(reduced);
             let x_6 = x_qu.saturating_mul(x_sq);
-            // cosh base: 1 + x²/2 + x⁴/24
             let cosh_base = one
                 .saturating_add(x_sq >> 1)
                 .saturating_add(x_qu.div(T::from_num(24)));
             let cosh_approx = cosh_base.saturating_add(x_6.div(T::from_num(720)));
-            // sinh base: x + x³/6
-            let sinh_base = x.saturating_add(x_cu.div(T::from_num(6)));
+            let sinh_base = reduced.saturating_add(x_cu.div(T::from_num(6)));
             let sinh_approx = sinh_base.saturating_add(x_5.div(T::from_num(120)));
-            return (sinh_approx, cosh_approx);
+            (sinh_approx, cosh_approx)
+        } else {
+            // sinh(x) ≈ x + x³/6, cosh(x) ≈ 1 + x²/2 + x⁴/24
+            let c = one.saturating_add(x_sq >> 1);
+            let cosh_approx = c.saturating_add(x_qu.div(T::from_num(24)));
+            let sinh_approx = reduced.saturating_add(x_cu.div(T::from_num(6)));
+            (sinh_approx, cosh_approx)
         }
-        // sinh(x) ≈ x + x³/6, cosh(x) ≈ 1 + x²/2 + x⁴/24
-        let c = one.saturating_add(x_sq >> 1);
-        let cosh_approx = c.saturating_add(x_qu.div(T::from_num(24)));
-        let sinh_approx = x.saturating_add(x_cu.div(T::from_num(6)));
-        return (sinh_approx, cosh_approx);
+    } else {
+        // For moderate x, use CORDIC directly.
+        let inv_gain = hyperbolic_gain_inv();
+        let (cosh_val, sinh_val, _) = hyperbolic_rotation(inv_gain, zero, reduced);
+        (sinh_val, cosh_val)
+    };
+
+    // Reconstruct via doubling: sinh(2x) = 2·sinh(x)·cosh(x),
+    //                           cosh(2x) = cosh²(x) + sinh²(x)
+    for _ in 0..depth {
+        let new_sh = sh.saturating_mul(ch).saturating_mul(T::two());
+        let new_ch = ch.saturating_mul(ch).saturating_add(sh.saturating_mul(sh));
+        sh = new_sh;
+        ch = new_ch;
     }
 
-    // For moderate x, use CORDIC directly.
-    // Hyperbolic CORDIC scales results by 1/K_h ≈ 1.2075.
-    // To compensate, we pre-multiply by 1/K_h (using precomputed constant).
-    let inv_gain = hyperbolic_gain_inv(); // 1/K_h ≈ 1.2075
-
-    let (cosh_val, sinh_val, _) = hyperbolic_rotation(inv_gain, zero, x);
-
-    (sinh_val, cosh_val)
+    (sh, ch)
 }
 
 /// Hyperbolic sine.
@@ -144,6 +148,7 @@ pub fn sinh_cosh<T: CordicNumber>(x: T) -> (T, T) {
 /// with argument reduction for |x| > 1.118.
 #[inline]
 #[must_use]
+#[cfg_attr(feature = "verify-no-panic", no_panic::no_panic)]
 pub fn sinh<T: CordicNumber>(x: T) -> T {
     sinh_cosh(x).0
 }
@@ -166,12 +171,14 @@ pub fn sinh<T: CordicNumber>(x: T) -> T {
 /// - **I32F32:** Saturates for |x| > ~21.5
 #[inline]
 #[must_use]
+#[cfg_attr(feature = "verify-no-panic", no_panic::no_panic)]
 pub fn cosh<T: CordicNumber>(x: T) -> T {
     sinh_cosh(x).1
 }
 
 /// Hyperbolic tangent. Result in `(-1, 1)`.
 #[must_use]
+#[cfg_attr(feature = "verify-no-panic", no_panic::no_panic)]
 pub fn tanh<T: CordicNumber>(x: T) -> T {
     let (s, c) = sinh_cosh(x);
     s.div(c)
@@ -182,6 +189,7 @@ pub fn tanh<T: CordicNumber>(x: T) -> T {
 /// # Errors
 /// Returns `DomainError` if `x = 0`.
 #[must_use = "returns the hyperbolic cotangent result which should be handled"]
+#[cfg_attr(feature = "verify-no-panic", no_panic::no_panic)]
 pub fn coth<T: CordicNumber>(x: T) -> Result<T> {
     if x == T::zero() {
         return Err(Error::domain("coth", "non-zero value"));
@@ -192,6 +200,7 @@ pub fn coth<T: CordicNumber>(x: T) -> Result<T> {
 
 /// Inverse hyperbolic sine. Accepts any value.
 #[must_use]
+#[cfg_attr(feature = "verify-no-panic", no_panic::no_panic)]
 pub fn asinh<T: CordicNumber>(x: T) -> T {
     if x == T::zero() {
         return T::zero();
@@ -212,6 +221,7 @@ pub fn asinh<T: CordicNumber>(x: T) -> T {
 /// # Errors
 /// Returns `DomainError` if `x < 1`.
 #[must_use = "returns the inverse hyperbolic cosine result which should be handled"]
+#[cfg_attr(feature = "verify-no-panic", no_panic::no_panic)]
 pub fn acosh<T: CordicNumber>(x: T) -> Result<T> {
     let at_least_one = AtLeastOne::new(x).ok_or_else(|| Error::domain("acosh", "value >= 1"))?;
 
@@ -234,6 +244,7 @@ pub fn acosh<T: CordicNumber>(x: T) -> Result<T> {
 /// # Errors
 /// Returns `DomainError` if `|x| ≥ 1`.
 #[must_use = "returns the inverse hyperbolic tangent result which should be handled"]
+#[cfg_attr(feature = "verify-no-panic", no_panic::no_panic)]
 pub fn atanh<T: CordicNumber>(x: T) -> Result<T> {
     OpenUnitInterval::new(x)
         .map(atanh_open)
@@ -248,6 +259,7 @@ pub fn atanh<T: CordicNumber>(x: T) -> Result<T> {
 /// Use this when the input is known to be in (-1, 1) through mathematical
 /// invariants (e.g., `x / sqrt(1 + x²)`).
 #[must_use]
+#[cfg_attr(feature = "verify-no-panic", no_panic::no_panic)]
 pub fn atanh_open<T: CordicNumber>(x: OpenUnitInterval<T>) -> T {
     atanh_core(x.get())
 }
@@ -263,31 +275,36 @@ fn atanh_core<T: CordicNumber>(x: T) -> T {
 
     let threshold = T::from_i1f63(ATANH_REDUCTION_THRESHOLD_I1F63);
 
+    // Fast path: no argument reduction needed, use CORDIC directly.
     if x.abs() <= threshold {
-        // Direct CORDIC computation
         let (_, _, z) = hyperbolic_vectoring(one, x, zero);
         return z;
     }
 
-    // Argument reduction using the identity:
-    // atanh(x) = atanh(a) + atanh((x - a) / (1 - a*x))
-    // We use a = 0.5, for which atanh(0.5) is a precomputed constant.
+    // Argument reduction needed. Work with |x| and track sign.
     let half = T::half();
     let atanh_half = T::from_i1f63(crate::tables::hyperbolic::ATANH_HALF);
-
     let sign = if x.is_negative() { -one } else { one };
-    let abs_x = x.abs();
+    let mut abs_x = x.abs();
 
-    // Compute reduced argument: (|x| - 0.5) / (1 - 0.5*|x|)
-    let numerator = abs_x - half;
-    let denominator = one - half.saturating_mul(abs_x);
-    let reduced = numerator.div(denominator);
+    // Iterative argument reduction: each step reduces |x| and accumulates
+    // atanh(0.5) into the result. Max iterations bounded by frac_bits since
+    // each reduction roughly halves the distance from the threshold.
+    let mut accumulated = zero;
+    let mut i: u32 = 0;
+    while abs_x > threshold && i < T::frac_bits() {
+        // atanh(x) = atanh(0.5) + atanh((x - 0.5) / (1 - 0.5*x))
+        let numerator = abs_x.saturating_sub(half);
+        let denominator = one.saturating_sub(half.saturating_mul(abs_x));
+        abs_x = numerator.div(denominator);
+        accumulated = accumulated.saturating_add(atanh_half);
+        i += 1;
+    }
 
-    // Recursively compute atanh of reduced argument
-    let atanh_reduced = atanh_core(reduced);
+    // Direct CORDIC computation on the reduced argument
+    let (_, _, z) = hyperbolic_vectoring(one, abs_x, zero);
 
-    // atanh(x) = sign * (atanh(0.5) + atanh(reduced))
-    sign.saturating_mul(atanh_half.saturating_add(atanh_reduced))
+    sign.saturating_mul(accumulated.saturating_add(z))
 }
 
 /// Inverse hyperbolic cotangent. Domain: `|x| > 1`.
@@ -295,6 +312,7 @@ fn atanh_core<T: CordicNumber>(x: T) -> T {
 /// # Errors
 /// Returns `DomainError` if `|x| ≤ 1`.
 #[must_use = "returns the inverse hyperbolic cotangent result which should be handled"]
+#[cfg_attr(feature = "verify-no-panic", no_panic::no_panic)]
 pub fn acoth<T: CordicNumber>(x: T) -> Result<T> {
     let one = T::one();
 

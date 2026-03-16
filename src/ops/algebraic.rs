@@ -9,6 +9,7 @@ use crate::traits::CordicNumber;
 /// # Errors
 /// Returns `DomainError` if `x < 0`.
 #[must_use = "returns the square root result which should be handled"]
+#[cfg_attr(feature = "verify-no-panic", no_panic::no_panic)]
 pub fn sqrt<T: CordicNumber>(x: T) -> Result<T> {
     NonNegative::new(x)
         .map(sqrt_nonneg)
@@ -23,6 +24,7 @@ pub fn sqrt<T: CordicNumber>(x: T) -> Result<T> {
 /// Use this when the non-negativity of the input is already established
 /// through mathematical invariants (e.g., `1 + x²`, `1 - x²` for `|x| ≤ 1`).
 #[must_use]
+#[cfg_attr(feature = "verify-no-panic", no_panic::no_panic)]
 pub fn sqrt_nonneg<T: CordicNumber>(x: NonNegative<T>) -> T {
     let x = x.get();
     let zero = T::zero();
@@ -85,9 +87,9 @@ pub fn sqrt_nonneg<T: CordicNumber>(x: NonNegative<T>) -> T {
         let new_guess = sum.saturating_mul(half);
 
         let diff = if new_guess > guess {
-            new_guess - guess
+            new_guess.saturating_sub(guess)
         } else {
-            guess - new_guess
+            guess.saturating_sub(new_guess)
         };
 
         if diff <= epsilon {

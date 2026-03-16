@@ -8,6 +8,7 @@ use crate::traits::CordicNumber;
 
 /// Sine and cosine. More efficient than separate calls. Accepts any angle.
 #[must_use]
+#[cfg_attr(feature = "verify-no-panic", no_panic::no_panic)]
 pub fn sin_cos<T: CordicNumber>(angle: T) -> (T, T) {
     let pi = T::pi();
     let frac_pi_2 = T::frac_pi_2();
@@ -58,6 +59,7 @@ pub fn sin_cos<T: CordicNumber>(angle: T) -> (T, T) {
 /// Sine. Accepts any angle (reduced internally).
 #[inline]
 #[must_use]
+#[cfg_attr(feature = "verify-no-panic", no_panic::no_panic)]
 pub fn sin<T: CordicNumber>(angle: T) -> T {
     sin_cos(angle).0
 }
@@ -65,6 +67,7 @@ pub fn sin<T: CordicNumber>(angle: T) -> T {
 /// Cosine. Accepts any angle (reduced internally).
 #[inline]
 #[must_use]
+#[cfg_attr(feature = "verify-no-panic", no_panic::no_panic)]
 pub fn cos<T: CordicNumber>(angle: T) -> T {
     sin_cos(angle).1
 }
@@ -108,6 +111,7 @@ pub fn cos<T: CordicNumber>(angle: T) -> T {
 /// }
 /// ```
 #[must_use]
+#[cfg_attr(feature = "verify-no-panic", no_panic::no_panic)]
 pub fn tan<T: CordicNumber>(angle: T) -> T {
     let (s, c) = sin_cos(angle);
     s.div(c)
@@ -118,6 +122,7 @@ pub fn tan<T: CordicNumber>(angle: T) -> T {
 /// # Errors
 /// Returns `DomainError` if `|x| > 1`.
 #[must_use = "returns the arcsine result which should be handled"]
+#[cfg_attr(feature = "verify-no-panic", no_panic::no_panic)]
 pub fn asin<T: CordicNumber>(x: T) -> Result<T> {
     let Some(unit_x) = UnitInterval::new(x) else {
         return Err(Error::domain("asin", "value in range [-1, 1]"));
@@ -156,13 +161,15 @@ pub fn asin<T: CordicNumber>(x: T) -> Result<T> {
 /// # Errors
 /// Returns `DomainError` if `|x| > 1`.
 #[must_use = "returns the arccosine result which should be handled"]
+#[cfg_attr(feature = "verify-no-panic", no_panic::no_panic)]
 pub fn acos<T: CordicNumber>(x: T) -> Result<T> {
     // acos(x) = π/2 - asin(x)
-    asin(x).map(|a| T::frac_pi_2() - a)
+    asin(x).map(|a| T::frac_pi_2().saturating_sub(a))
 }
 
 /// Arctangent. Accepts any value. Returns angle in `(-π/2, π/2)`.
 #[must_use]
+#[cfg_attr(feature = "verify-no-panic", no_panic::no_panic)]
 pub fn atan<T: CordicNumber>(x: T) -> T {
     let zero = T::zero();
     let one = T::one();
@@ -192,6 +199,7 @@ pub fn atan<T: CordicNumber>(x: T) -> T {
 
 /// Four-quadrant arctangent. Returns angle in `[-π, π]`. Returns 0 for (0, 0).
 #[must_use]
+#[cfg_attr(feature = "verify-no-panic", no_panic::no_panic)]
 pub fn atan2<T: CordicNumber>(y: T, x: T) -> T {
     let zero = T::zero();
     let pi = T::pi();
