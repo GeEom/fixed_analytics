@@ -4,7 +4,7 @@ use crate::bounded::{NonNegative, UnitInterval};
 use crate::error::{Error, Result};
 use crate::kernel::circular_vectoring;
 use crate::ops::algebraic::sqrt_nonneg;
-use crate::tables::chebyshev::{horner, COS_Q_HI, COS_Q_LO, SIN_P_HI, SIN_P_LO};
+use crate::tables::chebyshev::{COS_Q_HI, COS_Q_LO, SIN_P_HI, SIN_P_LO, horner};
 use crate::traits::CordicNumber;
 
 /// Sine and cosine. More efficient than separate calls. Accepts any angle.
@@ -68,17 +68,13 @@ pub fn sin_cos<T: CordicNumber>(angle: T) -> (T, T) {
     let (sp_val, cp_val) = if T::frac_bits() >= 24 {
         // High precision: degree 15 sin, degree 14 cos
         let sp = horner(&SIN_P_HI, u);
-        let sin_approx = poly_arg.saturating_add(
-            poly_arg.saturating_mul(u).saturating_mul(sp),
-        );
+        let sin_approx = poly_arg.saturating_add(poly_arg.saturating_mul(u).saturating_mul(sp));
         let cp = horner(&COS_Q_HI, u);
         (sin_approx, one.saturating_add(u.saturating_mul(cp)))
     } else {
         // Low precision: degree 9 sin, degree 8 cos
         let sp = horner(&SIN_P_LO, u);
-        let sin_approx = poly_arg.saturating_add(
-            poly_arg.saturating_mul(u).saturating_mul(sp),
-        );
+        let sin_approx = poly_arg.saturating_add(poly_arg.saturating_mul(u).saturating_mul(sp));
         let cp = horner(&COS_Q_LO, u);
         (sin_approx, one.saturating_add(u.saturating_mul(cp)))
     };

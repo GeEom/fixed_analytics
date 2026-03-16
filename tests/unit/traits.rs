@@ -83,6 +83,22 @@ mod tests {
     }
 
     #[test]
+    fn div_overflow_saturates_to_min() {
+        // Dividing a negative number by zero should saturate to MIN
+        // (signs disagree: negative / "positive zero").
+        let neg = I16F16::from_num(-1);
+        let zero = I16F16::ZERO;
+        assert_eq!(neg.div(zero), I16F16::MIN);
+    }
+
+    #[test]
+    fn div_by_zero_positive_saturates_to_max() {
+        let pos = I16F16::from_num(1);
+        let zero = I16F16::ZERO;
+        assert_eq!(pos.div(zero), I16F16::MAX);
+    }
+
+    #[test]
     fn frac_pi_4_values() {
         // Test the frac_pi_4() default implementation
         // π/4 ≈ 0.7854

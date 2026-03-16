@@ -60,10 +60,7 @@ mod tests {
         ] {
             for (i, &bits) in table.iter().enumerate() {
                 let val = i1f63_to_f64(bits).abs();
-                assert!(
-                    val < 1.0,
-                    "{name}[{i}] = {val}, exceeds I1F63 range"
-                );
+                assert!(val < 1.0, "{name}[{i}] = {val}, exceeds I1F63 range");
             }
         }
     }

@@ -84,4 +84,3 @@ pub const COS_Q_HI: [i64; 7] = [
      0x0555_5555_5555_5435,  // +4.167e-02
     -0x3FFF_FFFF_FFFF_FFFE,  // -5.000e-01
 ];
-
