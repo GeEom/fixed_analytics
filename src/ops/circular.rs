@@ -2,8 +2,9 @@
 
 use crate::bounded::{NonNegative, UnitInterval};
 use crate::error::{Error, Result};
-use crate::kernel::{circular_rotation, circular_vectoring, cordic_scale_factor};
+use crate::kernel::circular_vectoring;
 use crate::ops::algebraic::sqrt_nonneg;
+use crate::tables::chebyshev::{COS_Q_HI, COS_Q_LO, SIN_P_HI, SIN_P_LO, horner};
 use crate::traits::CordicNumber;
 
 /// Sine and cosine. More efficient than separate calls. Accepts any angle.
@@ -12,7 +13,6 @@ use crate::traits::CordicNumber;
 pub fn sin_cos<T: CordicNumber>(angle: T) -> (T, T) {
     let pi = T::pi();
     let frac_pi_2 = T::frac_pi_2();
-    let zero = T::zero();
     let two_pi = pi + pi;
 
     // Reduce angle to [-π, π] using direct quotient computation.
@@ -45,9 +45,52 @@ pub fn sin_cos<T: CordicNumber>(angle: T) -> (T, T) {
         (reduced, false)
     };
 
-    // Run CORDIC with unit vector scaled by inverse gain
-    let inv_gain = cordic_scale_factor();
-    let (cos_val, sin_val, _) = circular_rotation(inv_gain, zero, reduced);
+    // Polynomial evaluation via factored Horner form.
+    // To avoid catastrophic cancellation near π/2, reduce to [0, π/4]:
+    //   For |x| ∈ [0, π/4]:      sin(x) = sin_poly(x), cos(x) = cos_poly(x)
+    //   For |x| ∈ (π/4, π/2]:    sin(x) = cos_poly(π/2-|x|), cos(x) = sin_poly(π/2-|x|)
+    let one = T::one();
+    let frac_pi_4 = T::frac_pi_4();
+    let abs_reduced = reduced.abs();
+    let (poly_arg, swapped) = if abs_reduced >= frac_pi_4 {
+        (frac_pi_2.saturating_sub(abs_reduced), true)
+    } else {
+        (abs_reduced, false)
+    };
+    let u = poly_arg.saturating_mul(poly_arg);
+
+    // Evaluate sin and cos polynomials over [0, π/4] using minimax
+    // (Chebyshev) coefficients. Uses multiply-by-constant instead of
+    // division, avoiding cumulative rounding error from per-step divides.
+    //
+    // sin(x) = x + x³·P(x²)   where P = minimax poly of (sin(x)-x)/x³
+    // cos(x) = 1 + x²·Q(x²)   where Q = minimax poly of (cos(x)-1)/x²
+    let (sp_val, cp_val) = if T::frac_bits() >= 24 {
+        // High precision: degree 15 sin, degree 14 cos
+        let sp = horner(&SIN_P_HI, u);
+        let sin_approx = poly_arg.saturating_add(poly_arg.saturating_mul(u).saturating_mul(sp));
+        let cp = horner(&COS_Q_HI, u);
+        (sin_approx, one.saturating_add(u.saturating_mul(cp)))
+    } else {
+        // Low precision: degree 9 sin, degree 8 cos
+        let sp = horner(&SIN_P_LO, u);
+        let sin_approx = poly_arg.saturating_add(poly_arg.saturating_mul(u).saturating_mul(sp));
+        let cp = horner(&COS_Q_LO, u);
+        (sin_approx, one.saturating_add(u.saturating_mul(cp)))
+    };
+
+    // Map back: if we swapped, sin(x) = cos_poly, cos(x) = sin_poly
+    // Also restore sign of sin for negative angles.
+    let (sin_unsigned, cos_val) = if swapped {
+        (cp_val, sp_val)
+    } else {
+        (sp_val, cp_val)
+    };
+    let sin_val = if reduced < T::zero() {
+        -sin_unsigned
+    } else {
+        sin_unsigned
+    };
 
     if negate {
         (-sin_val, -cos_val)

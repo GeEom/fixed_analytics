@@ -7,9 +7,7 @@
     reason = "test code uses direct indexing and f64 casts"
 )]
 mod tests {
-    use fixed_analytics::tables::hyperbolic::{
-        ATANH_HALF, ATANH_TABLE, HYPERBOLIC_GAIN, HYPERBOLIC_GAIN_INV, needs_repeat,
-    };
+    use fixed_analytics::tables::hyperbolic::{ATANH_HALF, ATANH_TABLE, needs_repeat};
 
     /// Repeat indices for hyperbolic CORDIC convergence (used only in tests).
     const REPEAT_INDICES: [u32; 5] = [4, 13, 40, 121, 364];
@@ -61,20 +59,6 @@ mod tests {
         assert!(!needs_repeat(100));
         assert!(!needs_repeat(0));
         assert!(!needs_repeat(3));
-    }
-
-    #[test]
-    fn hyperbolic_gain_value() {
-        // K_h ≈ 0.8282 in I1F63 format
-        // Expected value: 0x6A01_203D_99A6_3986
-        assert_eq!(HYPERBOLIC_GAIN, 0x6A01_203D_99A6_3986);
-    }
-
-    #[test]
-    fn hyperbolic_gain_inv_value() {
-        // 1/K_h ≈ 1.2075 in I2F62 format
-        // Expected value: 0x4D47_A1C8_03BB_08CA
-        assert_eq!(HYPERBOLIC_GAIN_INV, 0x4D47_A1C8_03BB_08CA);
     }
 
     #[test]

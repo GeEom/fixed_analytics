@@ -458,9 +458,9 @@ mod tests {
         #[test]
         fn tan_i16f16_near_positive_pole() {
             // tan saturates to MAX when approaching π/2 from below
-            // Threshold is approximately 0.00008 (8e-5)
+            // Saturation occurs within ~3 ULPs of π/2 (≈ 0.00005)
             let far_from_pole = I16F16::from_num(FRAC_PI_2 - 0.0001);
-            let near_pole = I16F16::from_num(FRAC_PI_2 - 0.00005);
+            let near_pole = I16F16::from_num(FRAC_PI_2 - 0.00003);
 
             assert!(
                 !is_max_16(tan(far_from_pole)),
@@ -468,7 +468,7 @@ mod tests {
             );
             assert!(
                 is_max_16(tan(near_pole)),
-                "tan(π/2 - 0.00005) should saturate to MAX"
+                "tan(π/2 - 0.00003) should saturate to MAX"
             );
         }
 

@@ -2,7 +2,7 @@
 
 use crate::bounded::{NormalizedLnArg, OpenUnitInterval};
 use crate::error::{Error, Result};
-use crate::ops::hyperbolic::{atanh_open, sinh_cosh};
+use crate::ops::hyperbolic::atanh_open;
 use crate::traits::CordicNumber;
 
 /// Exponential function (e^x).
@@ -14,11 +14,11 @@ use crate::traits::CordicNumber;
 /// | Condition | Result | Example (I16F16) |
 /// |-----------|--------|------------------|
 /// | x > `ln(T::MAX)` | `T::MAX` | x > ~10.4 → 32767.99 |
-/// | x < `ln(T::MIN_POSITIVE)` | `T::ZERO` | x < ~-10.4 → 0 |
+/// | x < `ln(T::MIN_POSITIVE)` | `T::ZERO` | x < ~-11.1 → 0 |
 ///
 /// The exact thresholds depend on the type's range:
-/// - **I16F16:** Saturates for x > ~10.4 or x < ~-20
-/// - **I32F32:** Saturates for x > ~21.5 or x < ~-45
+/// - **I16F16:** Saturates to MAX for x > ~10.4, to zero for x < ~-11.1
+/// - **I32F32:** Saturates to MAX for x > ~21.5, to zero for x < ~-22.2
 ///
 /// Saturation is silent and deterministic. If you need to detect overflow,
 /// check the input range before calling:
@@ -48,51 +48,62 @@ pub fn exp<T: CordicNumber>(x: T) -> T {
         return one;
     }
 
-    // For large |x|, use argument reduction: exp(x) = 2^k * exp(r)
-    // where r is reduced to (-ln2, ln2) range
-    let mut reduced = x;
-    let mut scale: i32 = 0;
-
-    // Reduce positive values
-    let mut i = 0;
-    while reduced > ln2 && i < 64 {
-        reduced = reduced.saturating_sub(ln2);
-        scale += 1;
-        i += 1;
-    }
-
-    // Reduce negative values
-    i = 0;
-    while reduced < -ln2 && i < 64 {
-        reduced = reduced.saturating_add(ln2);
-        scale -= 1;
-        i += 1;
-    }
-
-    // Compute exp(reduced) = cosh(reduced) + sinh(reduced)
-    let (sinh_r, cosh_r) = sinh_cosh(reduced);
-    let exp_r = cosh_r.saturating_add(sinh_r);
-
-    // Scale by 2^scale using bit shifts
+    // Argument reduction: exp(x) = 2^k * exp(r), where r ∈ (-ln2, ln2).
+    // Compute k = trunc(x / ln2) in one step, then r = x - k*ln2 in one
+    // subtraction. Truncation toward zero matches the old iterative
+    // subtraction behavior while avoiding error accumulation.
     #[allow(clippy::cast_possible_wrap, reason = "total_bits bounded by type size")]
     let max_shift = (T::total_bits() - 1) as i32;
+    let scale = x.div(ln2).to_i32();
 
+    // Early exit for values that will saturate after scaling
+    if scale > max_shift {
+        return T::max_value();
+    }
+    if scale < -max_shift {
+        return zero;
+    }
+
+    let r = x.saturating_sub(T::from_num(scale).saturating_mul(ln2));
+
+    // Factored Taylor: exp(r) = 1 + r*(1 + r/2*(1 + r/3*(1 + ... r/n)))
+    let mut p = one;
+    if T::frac_bits() >= 24 {
+        // High precision: degree 12 Taylor
+        // Truncation error: |r^13/13!| ≤ (ln2)^13/13! ≈ 3.4e-15
+        p = one.saturating_add(r.div(T::from_num(12)).saturating_mul(p));
+        p = one.saturating_add(r.div(T::from_num(11)).saturating_mul(p));
+        p = one.saturating_add(r.div(T::from_num(10)).saturating_mul(p));
+        p = one.saturating_add(r.div(T::from_num(9)).saturating_mul(p));
+        p = one.saturating_add(r.div(T::from_num(8)).saturating_mul(p));
+    }
+    // Common terms (degree 7 base)
+    // Low-precision truncation error: |r^8/8!| ≤ (ln2)^8/8! ≈ 8.9e-7
+    p = one.saturating_add(r.div(T::from_num(7)).saturating_mul(p));
+    p = one.saturating_add(r.div(T::from_num(6)).saturating_mul(p));
+    p = one.saturating_add(r.div(T::from_num(5)).saturating_mul(p));
+    p = one.saturating_add(r.div(T::from_num(4)).saturating_mul(p));
+    p = one.saturating_add(r.div(T::from_num(3)).saturating_mul(p));
+    p = one.saturating_add(r.div(T::from_num(2)).saturating_mul(p));
+    let exp_r = one.saturating_add(r.saturating_mul(p));
+
+    // Scale by 2^scale using bit shifts.
+    // scale is already bounded to [-max_shift, max_shift] by the early exits above.
     #[allow(clippy::cast_sign_loss, reason = "scale >= 0 checked before cast")]
-    if scale >= 0 {
-        if scale > max_shift {
-            T::max_value()
-        } else {
+    match scale.cmp(&0) {
+        core::cmp::Ordering::Greater => {
             let shift = scale as u32;
-            exp_r << shift
+            // Detect overflow before shifting: if exp_r > MAX >> shift,
+            // the left shift would wrap, so saturate to MAX instead.
+            let headroom = T::max_value() >> shift;
+            if exp_r > headroom {
+                T::max_value()
+            } else {
+                exp_r << shift
+            }
         }
-    } else {
-        let neg_scale = -scale;
-        if neg_scale > max_shift {
-            zero
-        } else {
-            let shift = neg_scale as u32;
-            exp_r >> shift
-        }
+        core::cmp::Ordering::Less => exp_r >> ((-scale) as u32),
+        core::cmp::Ordering::Equal => exp_r,
     }
 }
 

@@ -13,7 +13,7 @@ pub fn generate_accuracy_section(results: &[FunctionResult]) -> String {
     writeln!(out, "### Accuracy\n").unwrap();
     writeln!(
         out,
-        "Relative error statistics measured against MPFR reference implementations.\n"
+        "Relative error statistics measured against MPFR reference implementations. Accuracy regressions are not permitted; every change is benchmarked against the baseline before merging. The file tools/accuracy-bench/baseline.json contains further measurements.\n"
     )
     .unwrap();
 
@@ -206,7 +206,7 @@ mod tests {
         let section = r#"
 ### Accuracy
 
-Relative error statistics measured against MPFR reference implementations.
+Relative error statistics measured against MPFR reference implementations. Accuracy regressions are not permitted; every change is benchmarked against the baseline before merging. The file tools/accuracy-bench/baseline.json contains further measurements.
 
 | Function | I16F16 Mean | I16F16 Median | I16F16 P95 | I32F32 Mean | I32F32 Median | I32F32 P95 |
 |----------|-------------|---------------|------------|-------------|---------------|------------|

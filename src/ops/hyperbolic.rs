@@ -2,7 +2,7 @@
 
 use crate::bounded::{AtLeastOne, NonNegative, OpenUnitInterval};
 use crate::error::{Error, Result};
-use crate::kernel::{hyperbolic_gain_inv, hyperbolic_rotation, hyperbolic_vectoring};
+use crate::kernel::hyperbolic_vectoring;
 use crate::ops::algebraic::sqrt_nonneg;
 use crate::traits::CordicNumber;
 
@@ -10,28 +10,6 @@ use crate::traits::CordicNumber;
 /// Stored as fractional part (0.1182) since I1F63 can't hold 1.x.
 /// Full limit = 1 + this value.
 const HYPERBOLIC_CONVERGENCE_LIMIT_FRAC_I1F63: i64 = 0x0F22_3D70_A3D7_0A3D;
-
-/// Taylor series threshold for sinh/cosh with high-precision types (≥24 frac bits).
-///
-/// Below this threshold, 6th-order Taylor series is used instead of CORDIC:
-/// ```text
-/// sinh(x) ≈ x + x³/6 + x⁵/120
-/// cosh(x) ≈ 1 + x²/2 + x⁴/24 + x⁶/720
-/// ```
-///
-/// Optimal value: 0.1366 (tuned via golden section search).
-const TAYLOR_THRESHOLD_HIGH_PREC_I1F63: i64 = 0x117B_9236_B6A0_8400;
-
-/// Taylor series threshold for sinh/cosh with low-precision types (<24 frac bits).
-///
-/// Below this threshold, 4th-order Taylor series is used instead of CORDIC:
-/// ```text
-/// sinh(x) ≈ x + x³/6
-/// cosh(x) ≈ 1 + x²/2 + x⁴/24
-/// ```
-///
-/// Optimal value: 0.2776 (tuned via golden section search).
-const TAYLOR_THRESHOLD_LOW_PREC_I1F63: i64 = 0x2389_AF6C_4171_EC00;
 
 /// Argument reduction threshold for atanh.
 ///
@@ -60,7 +38,6 @@ const ATANH_REDUCTION_THRESHOLD_I1F63: i64 = 0x6000_0000_0000_0000;
 #[must_use]
 #[cfg_attr(feature = "verify-no-panic", no_panic::no_panic)]
 pub fn sinh_cosh<T: CordicNumber>(x: T) -> (T, T) {
-    let zero = T::zero();
     let one = T::one();
     // Compute limit as 1 + fractional_part (~1.1182)
     let limit = one.saturating_add(T::from_i1f63(HYPERBOLIC_CONVERGENCE_LIMIT_FRAC_I1F63));
@@ -76,44 +53,54 @@ pub fn sinh_cosh<T: CordicNumber>(x: T) -> (T, T) {
         depth += 1;
     }
 
-    // For very small reduced, use Taylor series approximation to avoid CORDIC
-    // overshoot on the first iteration (where atanh(0.5) ≈ 0.549 is larger than x).
-    // Use precision-dependent threshold and order.
-    let threshold_bits = if T::frac_bits() >= 24 {
-        TAYLOR_THRESHOLD_HIGH_PREC_I1F63
-    } else {
-        TAYLOR_THRESHOLD_LOW_PREC_I1F63
-    };
-    let small_threshold = T::from_i1f63(threshold_bits);
-    let (mut sh, mut ch) = if reduced.abs() < small_threshold {
-        let x_sq = reduced.saturating_mul(reduced);
-        let x_cu = x_sq.saturating_mul(reduced);
-        let x_qu = x_sq.saturating_mul(x_sq);
+    // Factored Taylor evaluation. After argument reduction, |reduced| ≤ 1.1182.
+    //
+    // sinh(x) = x * (1 + u/6 * (1 + u/20 * (1 + u/42 * ...)))
+    // cosh(x) = 1 + u/2 * (1 + u/12 * (1 + u/30 * ...))
+    // where u = x².
+    //
+    // Integer division (u/K) is used because it computes the quotient in one
+    // step without pre-rounding a reciprocal, and the factored form keeps each
+    // step's multiplicand u/K below 1 for K ≥ 2.
+    let u = reduced.saturating_mul(reduced);
 
-        // Higher precision benefits from higher-order Taylor terms
-        if T::frac_bits() >= 24 {
-            // sinh(x) ≈ x + x³/6 + x⁵/120, cosh(x) ≈ 1 + x²/2 + x⁴/24 + x⁶/720
-            let x_5 = x_qu.saturating_mul(reduced);
-            let x_6 = x_qu.saturating_mul(x_sq);
-            let cosh_base = one
-                .saturating_add(x_sq >> 1)
-                .saturating_add(x_qu.div(T::from_num(24)));
-            let cosh_approx = cosh_base.saturating_add(x_6.div(T::from_num(720)));
-            let sinh_base = reduced.saturating_add(x_cu.div(T::from_num(6)));
-            let sinh_approx = sinh_base.saturating_add(x_5.div(T::from_num(120)));
-            (sinh_approx, cosh_approx)
-        } else {
-            // sinh(x) ≈ x + x³/6, cosh(x) ≈ 1 + x²/2 + x⁴/24
-            let c = one.saturating_add(x_sq >> 1);
-            let cosh_approx = c.saturating_add(x_qu.div(T::from_num(24)));
-            let sinh_approx = reduced.saturating_add(x_cu.div(T::from_num(6)));
-            (sinh_approx, cosh_approx)
-        }
+    // High-precision path requires enough integer bits for divisors up to 182.
+    let mut sp = one;
+    let (mut sh, mut ch) = if T::frac_bits() >= 24 && T::total_bits() >= T::frac_bits() + 9 {
+        // High precision: degree 13 sinh, degree 14 cosh
+        sp = one.saturating_add(u.div(T::from_num(156)).saturating_mul(sp));
+        sp = one.saturating_add(u.div(T::from_num(110)).saturating_mul(sp));
+        sp = one.saturating_add(u.div(T::from_num(72)).saturating_mul(sp));
+        sp = one.saturating_add(u.div(T::from_num(42)).saturating_mul(sp));
+        sp = one.saturating_add(u.div(T::from_num(20)).saturating_mul(sp));
+        sp = one.saturating_add(u.div(T::from_num(6)).saturating_mul(sp));
+        let sinh_approx = reduced.saturating_mul(sp);
+
+        let mut cp = one;
+        cp = one.saturating_add(u.div(T::from_num(182)).saturating_mul(cp));
+        cp = one.saturating_add(u.div(T::from_num(132)).saturating_mul(cp));
+        cp = one.saturating_add(u.div(T::from_num(90)).saturating_mul(cp));
+        cp = one.saturating_add(u.div(T::from_num(56)).saturating_mul(cp));
+        cp = one.saturating_add(u.div(T::from_num(30)).saturating_mul(cp));
+        cp = one.saturating_add(u.div(T::from_num(12)).saturating_mul(cp));
+        cp = one.saturating_add(u.div(T::from_num(2)).saturating_mul(cp));
+        (sinh_approx, cp)
     } else {
-        // For moderate x, use CORDIC directly.
-        let inv_gain = hyperbolic_gain_inv();
-        let (cosh_val, sinh_val, _) = hyperbolic_rotation(inv_gain, zero, reduced);
-        (sinh_val, cosh_val)
+        // Low precision: degree 9 sinh, degree 10 cosh
+        sp = one;
+        sp = one.saturating_add(u.div(T::from_num(72)).saturating_mul(sp));
+        sp = one.saturating_add(u.div(T::from_num(42)).saturating_mul(sp));
+        sp = one.saturating_add(u.div(T::from_num(20)).saturating_mul(sp));
+        sp = one.saturating_add(u.div(T::from_num(6)).saturating_mul(sp));
+        let sinh_approx = reduced.saturating_mul(sp);
+
+        let mut cp = one;
+        cp = one.saturating_add(u.div(T::from_num(90)).saturating_mul(cp));
+        cp = one.saturating_add(u.div(T::from_num(56)).saturating_mul(cp));
+        cp = one.saturating_add(u.div(T::from_num(30)).saturating_mul(cp));
+        cp = one.saturating_add(u.div(T::from_num(12)).saturating_mul(cp));
+        cp = one.saturating_add(u.div(T::from_num(2)).saturating_mul(cp));
+        (sinh_approx, cp)
     };
 
     // Reconstruct via doubling: sinh(2x) = 2·sinh(x)·cosh(x),
@@ -137,15 +124,15 @@ pub fn sinh_cosh<T: CordicNumber>(x: T) -> (T, T) {
 ///
 /// | Condition | Result | Example (I16F16) |
 /// |-----------|--------|------------------|
-/// | x > `asinh(T::MAX)` | `T::MAX` | x > ~10.4 → 32767.99 |
-/// | x < `-asinh(T::MAX)` | `T::MIN` | x < ~-10.4 → -32768.0 |
+/// | x > `asinh(T::MAX)` | `T::MAX` | x > ~11.1 → 32767.99 |
+/// | x < `-asinh(T::MAX)` | `T::MIN` | x < ~-11.1 → -32768.0 |
 ///
 /// The exact thresholds:
-/// - **I16F16:** Saturates for |x| > ~10.4
-/// - **I32F32:** Saturates for |x| > ~21.5
+/// - **I16F16:** Saturates for |x| > ~11.1
+/// - **I32F32:** Saturates for |x| > ~22.2
 ///
-/// Within the non-saturating range, sinh is computed accurately via CORDIC
-/// with argument reduction for |x| > 1.118.
+/// Within the non-saturating range, sinh is computed via polynomial
+/// evaluation with argument reduction (halving/doubling) for |x| > 1.118.
 #[inline]
 #[must_use]
 #[cfg_attr(feature = "verify-no-panic", no_panic::no_panic)]
@@ -162,13 +149,13 @@ pub fn sinh<T: CordicNumber>(x: T) -> T {
 ///
 /// | Condition | Result | Example (I16F16) |
 /// |-----------|--------|------------------|
-/// | \|x\| > `acosh(T::MAX)` | `T::MAX` | \|x\| > ~10.4 → 32767.99 |
+/// | \|x\| > `acosh(T::MAX)` | `T::MAX` | \|x\| > ~11.1 → 32767.99 |
 ///
 /// Unlike sinh, cosh is always positive, so it only saturates to `T::MAX`.
 ///
 /// The exact thresholds:
-/// - **I16F16:** Saturates for |x| > ~10.4
-/// - **I32F32:** Saturates for |x| > ~21.5
+/// - **I16F16:** Saturates for |x| > ~11.1
+/// - **I32F32:** Saturates for |x| > ~22.2
 #[inline]
 #[must_use]
 #[cfg_attr(feature = "verify-no-panic", no_panic::no_panic)]

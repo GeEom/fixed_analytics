@@ -72,6 +72,3 @@ pub const ATAN_TABLE: [i64; 64] = [
     0x0000_0000_0000_0002,
     0x0000_0000_0000_0001,
 ];
-
-/// 1/K ≈ 0.6073 (I1F63). Pre-multiply initial vector to compensate for CORDIC gain.
-pub const CIRCULAR_GAIN_INV: i64 = 0x4DBA_76D4_21AF_2D34;

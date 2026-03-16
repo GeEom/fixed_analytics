@@ -73,9 +73,6 @@ pub const ATANH_TABLE: [i64; 64] = [
     0x0000_0000_0000_0001,  // rounds to 1 LSB
 ];
 
-/// `K_h` ≈ 0.828 (I1F63). Hyperbolic gain factor.
-pub const HYPERBOLIC_GAIN: i64 = 0x6A01_203D_99A6_3986;
-
 /// Returns true if iteration `i` must be repeated for hyperbolic CORDIC convergence.
 ///
 /// The repeat sequence is 4, 13, 40, 121, 364, ... (each term is 3×previous + 1).
@@ -84,9 +81,6 @@ pub const HYPERBOLIC_GAIN: i64 = 0x6A01_203D_99A6_3986;
 pub const fn needs_repeat(index: u32) -> bool {
     matches!(index, 4 | 13 | 40 | 121 | 364)
 }
-
-/// `1/K_h` ≈ 1.2075 (I2F62). Pre-multiply to compensate for hyperbolic gain.
-pub const HYPERBOLIC_GAIN_INV: i64 = 0x4D47_A1C8_03BB_08CA;
 
 /// atanh(0.5) ≈ 0.549 (I1F63). Used for argument reduction.
 pub const ATANH_HALF: i64 = 0x464F_A9EA_B40C_2A5E;

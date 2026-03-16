@@ -7,7 +7,7 @@
     reason = "test code uses direct indexing and f64 casts"
 )]
 mod tests {
-    use fixed_analytics::tables::circular::{ATAN_TABLE, CIRCULAR_GAIN_INV};
+    use fixed_analytics::tables::circular::ATAN_TABLE;
 
     #[test]
     fn atan_table_has_64_entries() {
@@ -65,12 +65,5 @@ mod tests {
                 ATAN_TABLE[i - 1]
             );
         }
-    }
-
-    #[test]
-    fn cordic_scale_factor_value() {
-        // 1/K ≈ 0.6073 in I1F63 format
-        // Expected value: 0x4DBA_76D4_21AF_2D34
-        assert_eq!(CIRCULAR_GAIN_INV, 0x4DBA_76D4_21AF_2D34);
     }
 }

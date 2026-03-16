@@ -75,9 +75,6 @@ pub trait CordicNumber:
     /// Converts from a raw I1F63 representation (1 sign bit, 63 fractional bits).
     /// For constants in (-1, 1).
     fn from_i1f63(bits: i64) -> Self;
-    /// Converts from a raw I2F62 representation (2 integer bits, 62 fractional bits).
-    /// For constants in [1, 4).
-    fn from_i2f62(bits: i64) -> Self;
     /// Returns true if negative.
     fn is_negative(self) -> bool;
     /// Returns true if positive.
@@ -214,37 +211,6 @@ macro_rules! impl_cordic_generic {
                 } else {
                     // We have more frac bits than I1F63, shift left
                     // Must cast first to avoid losing sign bit
-                    #[allow(
-                        clippy::cast_possible_truncation,
-                        reason = "intentional truncation to target type"
-                    )]
-                    let wide = bits as $bits_type;
-                    Self::from_bits(wide << (-shift))
-                }
-            }
-
-            #[inline]
-            // Casts are safe: frac_bits ≤ 128, shift amounts bounded by type size
-            #[allow(
-                clippy::cast_possible_wrap,
-                clippy::cast_lossless,
-                reason = "frac_bits bounded by type size"
-            )]
-            fn from_i2f62(bits: i64) -> Self {
-                // Convert from I2F62 representation to our type.
-                // I2F62 has 62 fractional bits.
-                let our_frac = Self::FRAC_NBITS as i32;
-                let shift = 62 - our_frac;
-
-                if shift >= 0 {
-                    // We have fewer frac bits than I2F62, shift right
-                    #[allow(
-                        clippy::cast_possible_truncation,
-                        reason = "intentional truncation to target type"
-                    )]
-                    Self::from_bits((bits >> shift) as $bits_type)
-                } else {
-                    // We have more frac bits than I2F62, shift left
                     #[allow(
                         clippy::cast_possible_truncation,
                         reason = "intentional truncation to target type"
