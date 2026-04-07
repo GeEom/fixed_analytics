@@ -46,7 +46,7 @@
 //!
 //! # Features
 //!
-//! - **`std`** (default): Enables [`std::error::Error`] impl on [`Error`]
+//! - **`std`** (default): Enables `std::error::Error` impl on [`Error`]
 //!
 //! See the [`kernel`] module for algorithm details.
 
