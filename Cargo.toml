@@ -1,8 +1,8 @@
 [package]
 name = "fixed_analytics"
-version = "2.0.1"
+version = "2.1.0"
 edition = "2024"
-rust-version = "1.88"
+rust-version = "1.95"
 authors = ["David Gathercole"]
 description = "Fixed-point mathematical functions. Accurate, deterministic, and panic free."
 repository = "https://github.com/GeEom/fixed_analytics"
@@ -22,7 +22,7 @@ std = []
 verify-no-panic = ["dep:no-panic"]
 
 [dependencies]
-fixed = "1.30"
+fixed = "1.31"
 no-panic = { version = "0.1", optional = true }
 
 [dev-dependencies]
