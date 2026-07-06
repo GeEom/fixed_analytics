@@ -41,6 +41,36 @@ const fn table_lookup(table: &[i64; 64], index: u32) -> i64 {
     table[index as usize]
 }
 
+/// Converts an I1F63 table constant to `T`, rounding to nearest.
+///
+/// `CordicNumber::from_i1f63` truncates, which biases every converted
+/// angle low by up to one ulp. For circular CORDIC the accumulated z is
+/// dominated by this table quantization, so rounding to nearest halves
+/// the worst case and removes the systematic bias.
+///
+/// Hyperbolic CORDIC deliberately keeps the truncating conversion: its
+/// datapath shifts carry their own bias, which the truncated table
+/// angles partially cancel (measured, not designed — see the accuracy
+/// baseline history).
+fn from_i1f63_rounded<T: CordicNumber>(bits: i64) -> T {
+    let truncated = T::from_i1f63(bits);
+    let frac = T::frac_bits();
+    if frac >= 63 {
+        // Conversion is exact; nothing to round.
+        return truncated;
+    }
+    // The conversion discards the low (63 - frac) bits. If the highest
+    // discarded bit is set, the true value is at least half an output
+    // ulp above the truncated result, so round up by one ulp.
+    let shift = 63 - frac;
+    if (bits >> (shift - 1)) & 1 == 1 {
+        let ulp = T::one() >> frac;
+        truncated.saturating_add(ulp)
+    } else {
+        truncated
+    }
+}
+
 /// Performs circular CORDIC in vectoring mode.
 ///
 /// Given an initial vector (x, y), rotates it until y ≈ 0.
@@ -68,7 +98,7 @@ pub fn circular_vectoring<T: CordicNumber>(mut x: T, mut y: T, mut z: T) -> (T, 
     let iterations = T::frac_bits().min(62);
 
     for i in 0..iterations {
-        let angle = T::from_i1f63(table_lookup(&ATAN_TABLE, i));
+        let angle = from_i1f63_rounded::<T>(table_lookup(&ATAN_TABLE, i));
 
         if y < zero {
             // y is negative, rotate counter-clockwise to bring y toward zero
