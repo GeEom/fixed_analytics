@@ -26,11 +26,11 @@ assert!((log.to_num::<f32>() - 1.0).abs() < 0.01);
 
 ## Installation
 
-Requires Rust 1.88 or later.
+Requires Rust 1.95 or later.
 
 ```toml
 [dependencies]
-fixed_analytics = "2.0.1"
+fixed_analytics = "2.1.0"
 ```
 
 For `no_std` environments:
