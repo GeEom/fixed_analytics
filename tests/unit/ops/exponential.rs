@@ -285,8 +285,9 @@ mod tests {
         }
 
         // ===== exp saturation thresholds =====
-        // I16F16: saturates to MAX at x >= 10.4, to zero at x <= -11.1
-        // I32F32: saturates to MAX at x >= 21.49, to zero at x <= -22.2
+        // The result is zero once e^x rounds to nearest below half an ulp.
+        // I16F16: saturates to MAX at x >= 10.4, to zero at x <= -11.8
+        // I32F32: saturates to MAX at x >= 21.49, to zero at x <= -22.9
 
         #[test]
         fn exp_i16f16_upper_threshold() {
@@ -304,15 +305,15 @@ mod tests {
 
         #[test]
         fn exp_i16f16_lower_threshold() {
-            // Above threshold: should NOT be zero
+            // Above threshold: rounds to one ulp, should NOT be zero
             assert!(
-                !is_zero_16(exp(I16F16::from_num(-11.0))),
-                "exp(-11.0) should not be zero"
+                !is_zero_16(exp(I16F16::from_num(-11.7))),
+                "exp(-11.7) should not be zero"
             );
-            // At threshold: should be zero
+            // At threshold: rounds below half an ulp, should be zero
             assert!(
-                is_zero_16(exp(I16F16::from_num(-11.1))),
-                "exp(-11.1) should be zero"
+                is_zero_16(exp(I16F16::from_num(-11.8))),
+                "exp(-11.8) should be zero"
             );
         }
 
@@ -332,21 +333,22 @@ mod tests {
 
         #[test]
         fn exp_i32f32_lower_threshold() {
-            // Above threshold: should NOT be zero
+            // Above threshold: rounds to one ulp, should NOT be zero
             assert!(
-                !is_zero_32(exp(I32F32::from_num(-22.1))),
-                "exp(-22.1) should not be zero"
+                !is_zero_32(exp(I32F32::from_num(-22.8))),
+                "exp(-22.8) should not be zero"
             );
-            // At threshold: should be zero
+            // At threshold: rounds below half an ulp, should be zero
             assert!(
-                is_zero_32(exp(I32F32::from_num(-22.2))),
-                "exp(-22.2) should be zero"
+                is_zero_32(exp(I32F32::from_num(-22.9))),
+                "exp(-22.9) should be zero"
             );
         }
 
         // ===== pow2 saturation thresholds =====
-        // I16F16: saturates to MAX at x >= 15.0, to zero at x <= -16.1
-        // I32F32: saturates to MAX at x >= 31.0, to zero at x <= -32.1
+        // The result is zero once 2^x rounds to nearest below half an ulp.
+        // I16F16: saturates to MAX at x >= 15.0, to zero at x <= -17.1
+        // I32F32: saturates to MAX at x >= 31.0, to zero at x <= -33.1
 
         #[test]
         fn pow2_i16f16_upper_threshold() {
@@ -364,15 +366,15 @@ mod tests {
 
         #[test]
         fn pow2_i16f16_lower_threshold() {
-            // Above threshold: should NOT be zero
+            // Above threshold: rounds to one ulp, should NOT be zero
             assert!(
-                !is_zero_16(pow2(I16F16::from_num(-16.0))),
-                "pow2(-16.0) should not be zero"
+                !is_zero_16(pow2(I16F16::from_num(-16.9))),
+                "pow2(-16.9) should not be zero"
             );
-            // At threshold: should be zero
+            // At threshold: rounds below half an ulp, should be zero
             assert!(
-                is_zero_16(pow2(I16F16::from_num(-16.1))),
-                "pow2(-16.1) should be zero"
+                is_zero_16(pow2(I16F16::from_num(-17.1))),
+                "pow2(-17.1) should be zero"
             );
         }
 
@@ -392,15 +394,15 @@ mod tests {
 
         #[test]
         fn pow2_i32f32_lower_threshold() {
-            // Above threshold: should NOT be zero
+            // Above threshold: rounds to one ulp, should NOT be zero
             assert!(
-                !is_zero_32(pow2(I32F32::from_num(-32.0))),
-                "pow2(-32.0) should not be zero"
+                !is_zero_32(pow2(I32F32::from_num(-32.9))),
+                "pow2(-32.9) should not be zero"
             );
-            // At threshold: should be zero
+            // At threshold: rounds below half an ulp, should be zero
             assert!(
-                is_zero_32(pow2(I32F32::from_num(-32.1))),
-                "pow2(-32.1) should be zero"
+                is_zero_32(pow2(I32F32::from_num(-33.1))),
+                "pow2(-33.1) should be zero"
             );
         }
     }

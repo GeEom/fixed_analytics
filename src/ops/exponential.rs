@@ -5,6 +5,27 @@ use crate::error::{Error, Result};
 use crate::ops::hyperbolic::atanh_open;
 use crate::traits::CordicNumber;
 
+/// Right-shifts a non-negative value by `n`, rounding to nearest.
+///
+/// A plain `>>` truncates, which biases results low by up to a full ulp.
+/// That matters for the final scaling of `exp`, where the true result may
+/// be only a few ulps: rounding halves the worst case and removes the bias.
+fn shr_rounded<T: CordicNumber>(x: T, n: u32) -> T {
+    if n == 0 {
+        return x;
+    }
+    let ulp = T::one() >> T::frac_bits();
+    let shifted = x >> n;
+    // Reconstruct the discarded low bits: rem ∈ [0, 2^n) ulps.
+    let rem = x.saturating_sub(shifted << n);
+    let half = ulp << (n - 1);
+    if rem >= half {
+        shifted.saturating_add(ulp)
+    } else {
+        shifted
+    }
+}
+
 /// Exponential function (e^x).
 ///
 /// # Saturation Behavior
@@ -14,11 +35,12 @@ use crate::traits::CordicNumber;
 /// | Condition | Result | Example (I16F16) |
 /// |-----------|--------|------------------|
 /// | x > `ln(T::MAX)` | `T::MAX` | x > ~10.4 → 32767.99 |
-/// | x < `ln(T::MIN_POSITIVE)` | `T::ZERO` | x < ~-11.1 → 0 |
+/// | x < `ln(T::MIN_POSITIVE / 2)` | `T::ZERO` | x < ~-11.8 → 0 |
 ///
+/// The zero threshold is where e^x rounds to nearest below half an ulp.
 /// The exact thresholds depend on the type's range:
-/// - **I16F16:** Saturates to MAX for x > ~10.4, to zero for x < ~-11.1
-/// - **I32F32:** Saturates to MAX for x > ~21.5, to zero for x < ~-22.2
+/// - **I16F16:** Saturates to MAX for x > ~10.4, to zero for x < ~-11.8
+/// - **I32F32:** Saturates to MAX for x > ~21.5, to zero for x < ~-22.9
 ///
 /// Saturation is silent and deterministic. If you need to detect overflow,
 /// check the input range before calling:
@@ -48,15 +70,18 @@ pub fn exp<T: CordicNumber>(x: T) -> T {
         return one;
     }
 
-    // Argument reduction: exp(x) = 2^k * exp(r), where r ∈ (-ln2, ln2).
-    // Compute k = trunc(x / ln2) in one step, then r = x - k*ln2 in one
-    // subtraction. Truncation toward zero matches the old iterative
-    // subtraction behavior while avoiding error accumulation.
+    // Argument reduction: exp(x) = 2^k * exp(r), where r ∈ [0, ln2).
+    // Compute k = floor(x / ln2): start from the truncated quotient and
+    // adjust once if the remainder is negative (the quotient error is
+    // below one ulp, so a single adjustment suffices). Keeping r
+    // non-negative gives exp(r) ∈ [1, 2) — a full significand ahead of
+    // the final scaling shift.
     #[allow(clippy::cast_possible_wrap, reason = "total_bits bounded by type size")]
     let max_shift = (T::total_bits() - 1) as i32;
-    let scale = x.div(ln2).to_i32();
+    let mut scale = x.div(ln2).to_i32();
 
-    // Early exit for values that will saturate after scaling
+    // Early exit for values that will saturate after scaling. This also
+    // keeps `scale` small enough that scale * ln2 below cannot overflow.
     if scale > max_shift {
         return T::max_value();
     }
@@ -64,7 +89,14 @@ pub fn exp<T: CordicNumber>(x: T) -> T {
         return zero;
     }
 
-    let r = x.saturating_sub(T::from_num(scale).saturating_mul(ln2));
+    let mut r = x.saturating_sub(T::from_num(scale).saturating_mul(ln2));
+    if r < zero {
+        scale -= 1;
+        r = r.saturating_add(ln2);
+        if scale < -max_shift {
+            return zero;
+        }
+    }
 
     // Factored Taylor: exp(r) = 1 + r*(1 + r/2*(1 + r/3*(1 + ... r/n)))
     let mut p = one;
@@ -102,7 +134,7 @@ pub fn exp<T: CordicNumber>(x: T) -> T {
                 exp_r << shift
             }
         }
-        core::cmp::Ordering::Less => exp_r >> ((-scale) as u32),
+        core::cmp::Ordering::Less => shr_rounded(exp_r, (-scale) as u32),
         core::cmp::Ordering::Equal => exp_r,
     }
 }
@@ -201,11 +233,12 @@ pub fn log10<T: CordicNumber>(x: T) -> Result<T> {
 /// | Condition | Result | Example (I16F16) |
 /// |-----------|--------|------------------|
 /// | x > `log2(T::MAX)` | `T::MAX` | x > ~15 → 32767.99 |
-/// | x < `log2(T::MIN_POSITIVE)` | `T::ZERO` | x < ~-16 → 0 |
+/// | x < `log2(T::MIN_POSITIVE / 2)` | `T::ZERO` | x < ~-17 → 0 |
 ///
+/// The zero threshold is where 2^x rounds to nearest below half an ulp.
 /// The exact thresholds:
-/// - **I16F16:** Saturates for x > ~15 or x < ~-16
-/// - **I32F32:** Saturates for x > ~31 or x < ~-32
+/// - **I16F16:** Saturates for x > ~15 or x < ~-17
+/// - **I32F32:** Saturates for x > ~31 or x < ~-33
 #[must_use]
 #[cfg_attr(feature = "verify-no-panic", no_panic::no_panic)]
 pub fn pow2<T: CordicNumber>(x: T) -> T {
