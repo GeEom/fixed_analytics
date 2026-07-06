@@ -121,21 +121,23 @@ pub fn exp<T: CordicNumber>(x: T) -> T {
 
     // Scale by 2^scale using bit shifts.
     // scale is already bounded to [-max_shift, max_shift] by the early exits above.
-    #[allow(clippy::cast_sign_loss, reason = "scale >= 0 checked before cast")]
-    match scale.cmp(&0) {
-        core::cmp::Ordering::Greater => {
-            let shift = scale as u32;
-            // Detect overflow before shifting: if exp_r > MAX >> shift,
-            // the left shift would wrap, so saturate to MAX instead.
-            let headroom = T::max_value() >> shift;
-            if exp_r > headroom {
-                T::max_value()
-            } else {
-                exp_r << shift
-            }
+    #[allow(
+        clippy::cast_sign_loss,
+        reason = "sign of scale checked before each cast"
+    )]
+    if scale > 0 {
+        let shift = scale as u32;
+        // Detect overflow before shifting: if exp_r > MAX >> shift,
+        // the left shift would wrap, so saturate to MAX instead.
+        let headroom = T::max_value() >> shift;
+        if exp_r > headroom {
+            T::max_value()
+        } else {
+            exp_r << shift
         }
-        core::cmp::Ordering::Less => shr_rounded(exp_r, (-scale) as u32),
-        core::cmp::Ordering::Equal => exp_r,
+    } else {
+        // scale ≤ 0: rounded right shift (shr_rounded(x, 0) is the identity)
+        shr_rounded(exp_r, (-scale) as u32)
     }
 }
 

@@ -318,6 +318,23 @@ mod tests {
         }
 
         #[test]
+        fn exp_deep_negative_band_is_zero() {
+            // Exercises the floor-adjustment path where the truncated
+            // quotient sits exactly at -max_shift and the adjustment
+            // pushes it past: trunc(-21.6/ln2) = -31 = -max_shift for
+            // I16F16, then r < 0 decrements scale to -32.
+            assert!(
+                is_zero_16(exp(I16F16::from_num(-21.6))),
+                "exp(-21.6) should be zero"
+            );
+            // Same band for I32F32: trunc(-43.7/ln2) = -63 = -max_shift.
+            assert!(
+                is_zero_32(exp(I32F32::from_num(-43.7))),
+                "exp(-43.7) should be zero"
+            );
+        }
+
+        #[test]
         fn exp_i32f32_upper_threshold() {
             // Below threshold: should NOT saturate
             assert!(
