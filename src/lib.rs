@@ -27,7 +27,7 @@
 //! |--------------|-------|----------|
 //! | Trigonometric | [`sin`], [`cos`], [`tan`], [`sin_cos`], [`atan`], [`atan2`] | [`asin`], [`acos`] |
 //! | Hyperbolic | [`sinh`], [`cosh`], [`tanh`], [`sinh_cosh`], [`asinh`] | [`acosh`], [`atanh`], [`acoth`], [`coth`] |
-//! | Exponential | [`exp`], [`pow2`] | [`ln`], [`log2`], [`log10`] |
+//! | Exponential | [`exp`], [`pow2`] | [`ln`], [`log2`], [`log10`], [`pow`] |
 //! | Algebraic | — | [`sqrt`] |
 //!
 //! Functions use polynomial evaluation, CORDIC, and Newton-Raphson techniques.
@@ -70,5 +70,5 @@ pub use traits::CordicNumber;
 // Re-export all mathematical functions at crate root for convenience
 pub use ops::algebraic::sqrt;
 pub use ops::circular::{acos, asin, atan, atan2, cos, sin, sin_cos, tan};
-pub use ops::exponential::{exp, ln, log2, log10, pow2};
+pub use ops::exponential::{exp, ln, log2, log10, pow, pow2};
 pub use ops::hyperbolic::{acosh, acoth, asinh, atanh, cosh, coth, sinh, sinh_cosh, tanh};

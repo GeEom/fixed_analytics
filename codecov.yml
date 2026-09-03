@@ -20,4 +20,5 @@ comment:
   behavior: default
 
 ignore:
-  - "benches/**/*"
+  - "benches"
+  - "src/bin"

@@ -424,3 +424,199 @@ mod tests {
         }
     }
 }
+
+/// Argument reduction, saturation, and the bit-scan normalisation in `ln`.
+#[cfg(test)]
+#[allow(clippy::unwrap_used, reason = "test code uses unwrap for conciseness")]
+mod reduction {
+    use crate::unit::support::Lcg;
+    use fixed::types::{I4F60, I16F16, I24F8, I32F32, I64F64};
+    use fixed_analytics::{CordicNumber, exp, ln, log2, pow, pow2, sqrt};
+
+    #[test]
+    fn exp_saturates_at_the_extremes_of_wide_types() {
+        // x / ln2 does not fit in i32 here; the conversion saturates.
+        assert_eq!(exp(I32F32::MAX), I32F32::MAX);
+        assert_eq!(exp(I32F32::MIN), I32F32::ZERO);
+        assert_eq!(exp(I32F32::from_num(2e9)), I32F32::MAX);
+        assert_eq!(exp(I64F64::MAX), I64F64::MAX);
+        assert_eq!(exp(I64F64::MIN), I64F64::ZERO);
+        assert_eq!(exp(I64F64::from_num(1.5e9)), I64F64::MAX);
+        assert_eq!(exp(I64F64::from_num(-1.5e9)), I64F64::ZERO);
+        assert_eq!(exp(I16F16::MAX), I16F16::MAX);
+        assert_eq!(exp(I16F16::MIN), I16F16::ZERO);
+        assert_eq!(pow2(I64F64::MAX), I64F64::MAX);
+        assert_eq!(pow2(I64F64::MIN), I64F64::ZERO);
+    }
+
+    #[test]
+    fn exp_thresholds_after_correction_i16f16() {
+        // k reaches 15 (overflow) or -18 (zero) only after the correction.
+        assert_eq!(exp(I16F16::from_num(10.5)), I16F16::MAX);
+        assert!(exp(I16F16::from_num(10.39)) < I16F16::MAX);
+        assert_eq!(exp(I16F16::from_num(-12.1)), I16F16::ZERO);
+        assert!(exp(I16F16::from_num(-11.4)) > I16F16::ZERO);
+    }
+
+    #[test]
+    fn exp_estimate_corrected_downward() {
+        // Just below a negative multiple of ln2 the reciprocal estimate
+        // rounds up to the multiple; r < 0 then steps k down.
+        let x16 = I16F16::LN_2.mul_int(-3) - I16F16::from_bits(1);
+        let got16: f64 = exp(x16).to_num();
+        assert!((got16 - 0.125).abs() < 3e-5, "exp({x16}) = {got16}");
+        let x64 = I64F64::LN_2.mul_int(-3) - I64F64::from_bits(1);
+        let got64: f64 = exp(x64).to_num();
+        assert!((got64 - 0.125).abs() < 1e-12, "exp({x64}) = {got64}");
+    }
+
+    #[test]
+    fn exp_tracks_f64_at_i64f64() {
+        let mut rng = Lcg(0xE4);
+        for i in 0..2000 {
+            let v = if i < 1000 {
+                -40.0 + 80.0 * f64::from(i) / 1000.0
+            } else {
+                rng.range(-8.0, 8.0)
+            };
+            let x = I64F64::from_num(v);
+            let got: f64 = exp(x).to_num();
+            let want = x.to_num::<f64>().exp();
+            // The f64 reference loses 2^-53·|x| of relative precision in x.
+            let tol = 8.0f64.mul_add(2f64.powi(-64), 5e-16 * (1.0 + v.abs()) * want);
+            assert!((got - want).abs() < tol, "exp({v}) = {got}, want {want}");
+        }
+    }
+
+    #[test]
+    fn exp_works_on_types_with_few_integer_bits() {
+        // I4F60 (range ±8) cannot hold the Taylor divisors or k·ln2 in T.
+        for i in 0..=200 {
+            let v = -2.0 + 4.0 * f64::from(i) / 200.0;
+            let x = I4F60::from_num(v);
+            let got: f64 = exp(x).to_num();
+            let want = x.to_num::<f64>().exp();
+            assert!(
+                ((got - want) / want).abs() < 5e-15,
+                "I4F60 exp({v}) = {got}, want {want}"
+            );
+        }
+        assert_eq!(exp(I4F60::from_num(3)), I4F60::MAX);
+    }
+
+    #[test]
+    fn exp_on_a_type_with_more_integer_than_fractional_bits() {
+        // I24F8 divides for the estimate; k·ln2 carries k·0.0017 of quantisation.
+        for i in 0..=100 {
+            let v = -5.0 + 8.0 * f64::from(i) / 100.0;
+            let x = I24F8::from_num(v);
+            let got: f64 = exp(x).to_num();
+            let want = x.to_num::<f64>().exp();
+            assert!(
+                (got - want).abs() < 0.01 * want.max(1.0),
+                "I24F8 exp({v}) = {got}, want {want}"
+            );
+        }
+        assert_eq!(exp(I24F8::MAX), I24F8::MAX);
+        assert_eq!(exp(I24F8::MIN), I24F8::ZERO);
+    }
+
+    #[test]
+    fn ln_normalisation_branches() {
+        let ulp = I64F64::from_bits(1);
+        let cases: [(I64F64, &str); 8] = [
+            (I64F64::from_num(2), "exactly two"),
+            (I64F64::from_num(4) + ulp, "lands on two after one shift"),
+            (
+                I64F64::from_num(4) + ulp + ulp,
+                "lands on 1 + ulp after two shifts",
+            ),
+            (I64F64::from_num(5), "in (2, 4)"),
+            (I64F64::from_num(1000), "large"),
+            (I64F64::from_num(0.3), "below one half"),
+            (I64F64::from_num(0.25), "exactly one quarter"),
+            (I64F64::from_bits(1), "one ulp"),
+        ];
+        for (x, label) in cases {
+            let got: f64 = ln(x).unwrap().to_num();
+            let want: f64 = x.to_num::<f64>().ln();
+            assert!(
+                (got - want).abs() < 1e-15 * want.abs().max(1.0),
+                "ln({x}) [{label}] = {got}, want {want}"
+            );
+        }
+        for k in 1..=60 {
+            let want = f64::from(k) * core::f64::consts::LN_2;
+            let got_log2: f64 = log2(I64F64::from_num(1u64 << k)).unwrap().to_num();
+            assert!(
+                (got_log2 - f64::from(k)).abs() < 1e-14,
+                "log2(2^{k}) = {got_log2}"
+            );
+            let got_ln: f64 = ln(I64F64::from_num(1u64 << k)).unwrap().to_num();
+            assert!(
+                (got_ln - want).abs() < 1e-14,
+                "ln(2^{k}) = {got_ln}, want {want}"
+            );
+        }
+        assert!(ln(I16F16::from_num(4) + I16F16::from_bits(1)).is_ok());
+    }
+
+    #[test]
+    fn pow_special_cases_and_domain() {
+        assert_eq!(pow(I16F16::ZERO, I16F16::ZERO).unwrap(), I16F16::ONE);
+        assert_eq!(pow(I16F16::from_num(7), I16F16::ZERO).unwrap(), I16F16::ONE);
+        assert_eq!(
+            pow(I16F16::ZERO, I16F16::from_num(2)).unwrap(),
+            I16F16::ZERO
+        );
+        assert_eq!(pow(I16F16::ONE, I16F16::from_num(-9)).unwrap(), I16F16::ONE);
+        assert!(pow(I16F16::ZERO, -I16F16::ONE).is_err());
+        assert!(pow(-I16F16::ONE, I16F16::from_num(2)).is_err());
+        assert_eq!(
+            pow(I16F16::from_num(200), I16F16::from_num(3)).unwrap(),
+            I16F16::MAX
+        );
+        let got: f64 = pow(I16F16::from_num(2), I16F16::from_num(10))
+            .unwrap()
+            .to_num();
+        assert!((got - 1024.0).abs() < 0.5, "I16F16 2^10 = {got}");
+    }
+
+    #[test]
+    fn pow_tracks_f64_at_i64f64() {
+        let mut rng = Lcg(0x90);
+        for _ in 0..2000 {
+            let base = I64F64::from_num((rng.range(-20.0, 20.0)).exp2());
+            let exponent = I64F64::from_num(rng.range(-3.0, 3.0));
+            let (b, e): (f64, f64) = (base.to_num(), exponent.to_num());
+            let got: f64 = pow(base, exponent).unwrap().to_num();
+            let want = b.powf(e);
+            // Small results are quantised to a few raw ulps.
+            let tol = 8.0f64.mul_add(2f64.powi(-64), 1e-14 * want);
+            assert!(
+                (got - want).abs() < tol,
+                "pow({b}, {e}) = {got}, want {want}"
+            );
+        }
+        let x = I64F64::from_num(2.5);
+        let root: f64 = pow(x, I64F64::from_num(0.5)).unwrap().to_num();
+        let want: f64 = sqrt(x).unwrap().to_num();
+        assert!((root - want).abs() < 1e-15, "2.5^0.5 = {root}, want {want}");
+        let inv: f64 = pow(x, -I64F64::ONE).unwrap().to_num();
+        assert!((inv - 0.4).abs() < 1e-15, "2.5^-1 = {inv}");
+    }
+
+    #[test]
+    fn ln_tracks_f64_at_i64f64() {
+        let mut rng = Lcg(0x1A);
+        for _ in 0..3000 {
+            let x = I64F64::from_num((rng.range(-60.0, 62.0)).exp2());
+            let got: f64 = ln(x).unwrap().to_num();
+            let want = x.to_num::<f64>().ln();
+            assert!(
+                (got - want).abs() < 1e-15 * want.abs().max(1.0),
+                "ln({x}) = {got}, want {want}"
+            );
+        }
+    }
+}

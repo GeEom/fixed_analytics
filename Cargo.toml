@@ -1,6 +1,6 @@
 [package]
 name = "fixed_analytics"
-version = "2.1.0"
+version = "3.0.0"
 edition = "2024"
 rust-version = "1.95"
 authors = ["David Gathercole"]
@@ -23,7 +23,7 @@ verify-no-panic = ["dep:no-panic"]
 
 [dependencies]
 fixed = "1.31"
-no-panic = { version = "0.1", optional = true }
+no-panic = { version = "0.1.37", optional = true }
 
 [dev-dependencies]
 criterion = { version = "0.8", features = ["html_reports"] }

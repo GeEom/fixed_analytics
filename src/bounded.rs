@@ -103,6 +103,13 @@ impl<T: CordicNumber> UnitInterval<T> {
         (value >= -one && value <= one).then_some(Self(value))
     }
 
+    /// Constructs `1 / x` where `x >= 1`, which is always in (0, 1].
+    #[inline]
+    #[must_use]
+    pub fn from_reciprocal(x: AtLeastOne<T>) -> Self {
+        Self(T::one().div(x.0))
+    }
+
     /// Unwraps the inner value.
     #[inline]
     #[must_use]
@@ -257,6 +264,15 @@ mod tests {
         assert!(UnitInterval::new(I16F16::from_num(-1)).is_some());
         assert!(UnitInterval::new(I16F16::from_num(1.1)).is_none());
         assert!(UnitInterval::new(I16F16::from_num(-1.1)).is_none());
+    }
+
+    #[test]
+    fn unit_interval_from_reciprocal() {
+        let at_least = AtLeastOne::new(I16F16::from_num(4)).unwrap();
+        assert_eq!(
+            UnitInterval::from_reciprocal(at_least).get(),
+            I16F16::from_num(0.25)
+        );
     }
 
     #[test]

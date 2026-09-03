@@ -487,3 +487,113 @@ mod tests {
         }
     }
 }
+
+/// Integer-bit-poor types, and the logarithmic inverse forms.
+#[cfg(test)]
+#[allow(clippy::unwrap_used, reason = "test code uses unwrap for conciseness")]
+mod wide_and_narrow {
+    use crate::unit::support::Lcg;
+    use fixed::types::{I4F12, I4F60, I16F16, I32F32, I64F64};
+    use fixed_analytics::{acosh, asinh, sinh_cosh};
+
+    #[test]
+    fn sinh_cosh_works_on_types_with_few_integer_bits() {
+        // I4F12 and I4F60 (range ±8) cannot hold the Taylor divisors in T.
+        for i in 0..=100 {
+            let v = -1.5 + 3.0 * f64::from(i) / 100.0;
+            let x12 = I4F12::from_num(v);
+            let (s12, c12) = sinh_cosh(x12);
+            let (s12, c12, v12): (f64, f64, f64) = (s12.to_num(), c12.to_num(), x12.to_num());
+            assert!((s12 - v12.sinh()).abs() < 5e-3, "I4F12 sinh({v12}) = {s12}");
+            assert!((c12 - v12.cosh()).abs() < 5e-3, "I4F12 cosh({v12}) = {c12}");
+            let x60 = I4F60::from_num(v);
+            let (s60, c60) = sinh_cosh(x60);
+            let (s60, c60, v60): (f64, f64, f64) = (s60.to_num(), c60.to_num(), x60.to_num());
+            assert!(
+                (s60 - v60.sinh()).abs() < 4e-15,
+                "I4F60 sinh({v60}) = {s60}"
+            );
+            assert!(
+                (c60 - v60.cosh()).abs() < 4e-15,
+                "I4F60 cosh({v60}) = {c60}"
+            );
+        }
+    }
+
+    #[test]
+    fn asinh_acosh_track_f64_at_i64f64() {
+        let mut rng = Lcg(0xA5);
+        for _ in 0..2000 {
+            let sign = if rng.unit() < 0.5 { -1.0 } else { 1.0 };
+            let x = I64F64::from_num(sign * (rng.range(-20.0, 60.0)).exp2());
+            let got: f64 = asinh(x).to_num();
+            let want = x.to_num::<f64>().asinh();
+            assert!(
+                (got - want).abs() < 1e-15 * want.abs().max(1.0),
+                "asinh({x}) = {got}, want {want}"
+            );
+            // acosh is ill-conditioned near 1; start where f64 is trustworthy.
+            let w = I64F64::from_num(1.0 + (rng.range(-10.0, 61.0)).exp2());
+            let got_w: f64 = acosh(w).unwrap().to_num();
+            let want_w = w.to_num::<f64>().acosh();
+            assert!(
+                (got_w - want_w).abs() < 1e-13 * want_w.abs().max(1.0),
+                "acosh({w}) = {got_w}, want {want_w}"
+            );
+        }
+        // Both branches around the 1.5 threshold of acosh.
+        for w in [1.01f64, 1.25, 1.49, 1.5, 1.51, 2.0] {
+            let got: f64 = acosh(I64F64::from_num(w)).unwrap().to_num();
+            assert!((got - w.acosh()).abs() < 1e-9, "acosh({w}) = {got}");
+        }
+    }
+
+    #[test]
+    fn asinh_acosh_near_the_type_bounds() {
+        // The product would overflow, so the logarithm is split.
+        for (x, want) in [
+            (I16F16::MAX, (2.0 * I16F16::MAX.to_num::<f64>()).ln()),
+            (I16F16::from_num(10_000), 10_000f64.asinh()),
+            (I16F16::MIN, -(2.0 * I16F16::MAX.to_num::<f64>()).ln()),
+        ] {
+            let got: f64 = asinh(x).to_num();
+            assert!((got - want).abs() < 2e-4, "asinh({x}) = {got}, want {want}");
+        }
+        for x in [I16F16::MAX, I16F16::from_num(20_000)] {
+            let want = (2.0f64 * x.to_num::<f64>()).ln();
+            let got: f64 = acosh(x).unwrap().to_num();
+            assert!((got - want).abs() < 2e-4, "acosh({x}) = {got}, want {want}");
+        }
+        let want_32 = (2.0f64 * I32F32::MAX.to_num::<f64>()).ln();
+        let got_32: f64 = acosh(I32F32::MAX).unwrap().to_num();
+        assert!(
+            (got_32 - want_32).abs() < 1e-8,
+            "acosh(I32F32::MAX) = {got_32}"
+        );
+        let want_64 = (2.0f64 * I64F64::MAX.to_num::<f64>()).ln();
+        let got_64: f64 = acosh(I64F64::MAX).unwrap().to_num();
+        assert!(
+            (got_64 - want_64).abs() < 1e-12,
+            "acosh(I64F64::MAX) = {got_64}"
+        );
+        let got_asinh: f64 = asinh(I64F64::MAX).to_num();
+        assert!(
+            (got_asinh - want_64).abs() < 1e-12,
+            "asinh(MAX) = {got_asinh}, want {want_64}"
+        );
+        assert_eq!(asinh(-I64F64::from_num(3)), -asinh(I64F64::from_num(3)));
+    }
+
+    #[test]
+    fn asinh_is_accurate_for_moderate_arguments_at_i16f16() {
+        for i in 1..=200 {
+            let v = f64::from(i).mul_add(0.1, 1.0);
+            let got: f64 = asinh(I16F16::from_num(v)).to_num();
+            let want = v.asinh();
+            assert!(
+                (got - want).abs() < 16.0 / 65_536.0,
+                "asinh({v}) = {got}, want {want}"
+            );
+        }
+    }
+}

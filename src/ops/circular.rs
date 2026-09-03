@@ -7,6 +7,9 @@ use crate::ops::algebraic::sqrt_nonneg;
 use crate::tables::chebyshev::{COS_Q_HI, COS_Q_LO, SIN_P_HI, SIN_P_LO, horner};
 use crate::traits::CordicNumber;
 
+/// `1/(2π)` as I1F63, for the angle reduction multiply in [`sin_cos`].
+const FRAC_1_2PI_I1F63: i64 = 0x145F_306D_C9C8_82A5;
+
 /// Sine and cosine. More efficient than separate calls. Accepts any angle.
 #[must_use]
 #[cfg_attr(feature = "verify-no-panic", no_panic::no_panic)]
@@ -18,10 +21,20 @@ pub fn sin_cos<T: CordicNumber>(angle: T) -> (T, T) {
     // Reduce angle to [-π, π] using direct quotient computation.
     // This handles arbitrarily large angles without iteration limits.
     let reduced = if angle > pi || angle < -pi {
-        // Compute n = round(angle / 2π), then reduced = angle - n * 2π
-        let quotient = angle.div(two_pi);
+        // Compute n = round(angle / 2π), then reduced = angle - n * 2π.
+        // The reciprocal multiply is within |angle|·1.5·2^-frac + 2^-frac < 1
+        // of the true quotient when the integer bits do not outnumber the
+        // fractional bits, so n is off by at most one and the clamp below
+        // absorbs it bit for bit; other types keep the division.
+        let quotient = if T::total_bits() <= 2 * T::frac_bits() {
+            angle.saturating_mul(T::from_i1f63(FRAC_1_2PI_I1F63))
+        } else {
+            angle.div(two_pi)
+        };
         let n = quotient.round();
-        angle.saturating_sub(n.saturating_mul(two_pi))
+        // n·2π is exact and the difference small, so wrapping arithmetic
+        // recovers it even when n·2π exceeds MAX (angles within π of MAX).
+        angle.wrapping_sub(n.wrapping_mul(two_pi))
     } else {
         angle
     };
@@ -164,6 +177,11 @@ pub fn tan<T: CordicNumber>(angle: T) -> T {
 ///
 /// # Errors
 /// Returns `DomainError` if `|x| > 1`.
+#[allow(
+    clippy::inline_always,
+    reason = "inlined into acos so the no-panic link check sees only nounwind callees"
+)]
+#[inline(always)]
 #[must_use = "returns the arcsine result which should be handled"]
 #[cfg_attr(feature = "verify-no-panic", no_panic::no_panic)]
 pub fn asin<T: CordicNumber>(x: T) -> Result<T> {

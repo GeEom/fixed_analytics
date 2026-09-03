@@ -516,3 +516,102 @@ mod tests {
         }
     }
 }
+
+/// Angle reduction near the type bounds and inverse-function accuracy.
+#[cfg(test)]
+#[allow(clippy::unwrap_used, reason = "test code uses unwrap for conciseness")]
+mod reduction_and_accuracy {
+    use crate::unit::support::Lcg;
+    use fixed::types::{I24F8, I32F32, I64F64};
+    use fixed_analytics::{CordicNumber, acos, asin, atan, atan2, sin_cos};
+
+    /// Reference reduction with the type's own 2π, in f64.
+    fn reduced_f64<T: CordicNumber + fixed::traits::Fixed>(angle: T) -> f64 {
+        let two_pi: f64 = (T::pi() + T::pi()).to_num();
+        let a: f64 = angle.to_num();
+        (a / two_pi).round().mul_add(-two_pi, a)
+    }
+
+    #[test]
+    fn sin_cos_is_correct_within_pi_of_max() {
+        // n·2π exceeds MAX here; saturation used to return (0, 1).
+        for angle in [I32F32::MAX, I32F32::MIN, I32F32::MAX - I32F32::ONE] {
+            let (s, c) = sin_cos(angle);
+            let r = reduced_f64(angle);
+            let (s, c): (f64, f64) = (s.to_num(), c.to_num());
+            assert!(
+                (s - r.sin()).abs() < 1e-5,
+                "sin({angle}) = {s}, want {}",
+                r.sin()
+            );
+            assert!(
+                (c - r.cos()).abs() < 1e-5,
+                "cos({angle}) = {c}, want {}",
+                r.cos()
+            );
+        }
+        for angle in [I24F8::MAX, I24F8::MIN] {
+            let (s, c) = sin_cos(angle);
+            let r = reduced_f64(angle);
+            let (s, c): (f64, f64) = (s.to_num(), c.to_num());
+            assert!(
+                (s - r.sin()).abs() < 0.02,
+                "sin({angle}) = {s}, want {}",
+                r.sin()
+            );
+            assert!(
+                (c - r.cos()).abs() < 0.02,
+                "cos({angle}) = {c}, want {}",
+                r.cos()
+            );
+        }
+    }
+
+    #[test]
+    fn sin_cos_large_angles_i64f64() {
+        let mut rng = Lcg(0x51);
+        for _ in 0..500 {
+            let v = rng.range(-1e6, 1e6);
+            let angle = I64F64::from_num(v);
+            let (s, c) = sin_cos(angle);
+            let r = reduced_f64(angle);
+            let (s, c): (f64, f64) = (s.to_num(), c.to_num());
+            assert!(
+                (s - r.sin()).abs() < 1e-9,
+                "sin({v}) = {s}, want {}",
+                r.sin()
+            );
+            assert!(
+                (c - r.cos()).abs() < 1e-9,
+                "cos({v}) = {c}, want {}",
+                r.cos()
+            );
+        }
+    }
+
+    #[test]
+    fn inverse_functions_track_f64_at_i64f64() {
+        let mut rng = Lcg(0xA7A);
+        for _ in 0..2000 {
+            let v = rng.range(-1.0, 1.0);
+            let x = I64F64::from_num(v);
+            let asin_v: f64 = asin(x).unwrap().to_num();
+            assert!((asin_v - v.asin()).abs() < 2e-15, "asin({v}) = {asin_v}");
+            let acos_v: f64 = acos(x).unwrap().to_num();
+            assert!((acos_v - v.acos()).abs() < 2e-15, "acos({v}) = {acos_v}");
+            let big = (rng.range(-30.0, 30.0)).exp2() * v.signum();
+            let atan_v: f64 = atan(I64F64::from_num(big)).to_num();
+            assert!(
+                (atan_v - big.atan()).abs() < 1e-15,
+                "atan({big}) = {atan_v}"
+            );
+            let y = rng.range(-5.0, 5.0);
+            let x2 = rng.range(-5.0, 5.0);
+            let atan2_v: f64 = atan2(I64F64::from_num(y), I64F64::from_num(x2)).to_num();
+            assert!(
+                (atan2_v - y.atan2(x2)).abs() < 1e-15,
+                "atan2({y}, {x2}) = {atan2_v}"
+            );
+        }
+    }
+}

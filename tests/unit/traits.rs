@@ -121,3 +121,106 @@ mod tests {
         );
     }
 }
+
+/// The integer and wrapping helpers added for the fast paths.
+#[cfg(test)]
+#[allow(clippy::unwrap_used, reason = "test code uses unwrap for conciseness")]
+mod fast_path_helpers {
+    use fixed::types::{I4F4, I8F8, I16F16, I32F32, I64F64};
+    use fixed_analytics::CordicNumber;
+
+    #[test]
+    fn div_int_matches_fixed_point_division_for_non_negative() {
+        for raw in [0i64, 1, 7, 12, 65_536, 100_000, i64::from(i32::MAX)] {
+            let x = I32F32::from_bits(raw << 20);
+            for k in 1..=200u32 {
+                assert_eq!(
+                    x.div_int(k),
+                    CordicNumber::div(x, I32F32::from_num(k)),
+                    "{x} / {k}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn div_int_truncates_toward_zero_and_saturates_on_zero() {
+        let x = I16F16::from_num(-1.5);
+        assert_eq!(x.div_int(4), I16F16::from_num(-0.375));
+        assert_eq!(I16F16::from_bits(-7).div_int(2), I16F16::from_bits(-3));
+        assert_eq!(I16F16::ONE.div_int(0), I16F16::MAX);
+        assert_eq!((-I16F16::ONE).div_int(0), I16F16::MIN);
+        // A divisor beyond the raw type's range exceeds |bits|.
+        assert_eq!(I4F4::MAX.div_int(200), I4F4::ZERO);
+        assert_eq!(I4F4::MIN.div_int(200), I4F4::ZERO);
+    }
+
+    #[test]
+    fn mul_int_is_exact_and_saturates() {
+        assert_eq!(
+            I16F16::LN_2.mul_int(3),
+            I16F16::LN_2 + I16F16::LN_2 + I16F16::LN_2
+        );
+        assert_eq!(I16F16::LN_2.mul_int(-2), -(I16F16::LN_2 + I16F16::LN_2));
+        assert_eq!(I16F16::LN_2.mul_int(0), I16F16::ZERO);
+        assert_eq!(I16F16::from_num(2).mul_int(100_000), I16F16::MAX);
+        assert_eq!(I16F16::from_num(-2).mul_int(100_000), I16F16::MIN);
+        assert_eq!(I8F8::ONE.mul_int(40_000), I8F8::MAX);
+        assert_eq!(I8F8::ONE.mul_int(-40_000), I8F8::MIN);
+        assert_eq!((-I8F8::ONE).mul_int(40_000), I8F8::MIN);
+        assert_eq!((-I8F8::ONE).mul_int(-40_000), I8F8::MAX);
+        assert_eq!(I8F8::ZERO.mul_int(40_000), I8F8::ZERO);
+        assert_eq!(I4F4::ONE.mul_int(200), I4F4::MAX);
+    }
+
+    #[test]
+    fn wrapping_ops_match_saturating_ops_in_range() {
+        let a = I64F64::from_num(0.617);
+        let b = I64F64::from_num(-0.1667);
+        assert_eq!(a.wrapping_mul(b), a.saturating_mul(b));
+        assert_eq!(a.wrapping_add(b), a.saturating_add(b));
+        assert_eq!(a.wrapping_sub(b), a.saturating_sub(b));
+        assert_eq!(I16F16::MAX.wrapping_add(I16F16::from_bits(1)), I16F16::MIN);
+        assert_eq!(I16F16::MIN.wrapping_sub(I16F16::from_bits(1)), I16F16::MAX);
+    }
+
+    #[test]
+    fn checked_int_log2_is_floor_of_log2() {
+        assert_eq!(I16F16::ONE.checked_int_log2(), Some(0));
+        assert_eq!(I16F16::from_num(0.5).checked_int_log2(), Some(-1));
+        assert_eq!(I16F16::from_num(0.49).checked_int_log2(), Some(-2));
+        assert_eq!(I16F16::from_num(6).checked_int_log2(), Some(2));
+        assert_eq!(I16F16::from_num(8).checked_int_log2(), Some(3));
+        assert_eq!(I16F16::from_bits(1).checked_int_log2(), Some(-16));
+        assert_eq!(I16F16::ZERO.checked_int_log2(), None);
+        assert_eq!(I16F16::from_num(-1).checked_int_log2(), None);
+        assert_eq!(I64F64::MAX.checked_int_log2(), Some(62));
+    }
+
+    #[test]
+    fn to_i32_and_round_saturate() {
+        assert_eq!(I32F32::MAX.to_i32(), i32::MAX);
+        assert_eq!(I32F32::MIN.to_i32(), i32::MIN);
+        assert_eq!(I64F64::from_num(1e12).to_i32(), i32::MAX);
+        assert_eq!(I64F64::from_num(-1e12).to_i32(), i32::MIN);
+        assert_eq!(I16F16::from_num(-2.7).to_i32(), -3);
+        assert_eq!(I16F16::from_num(2.7).to_i32(), 2);
+        assert_eq!(CordicNumber::round(I16F16::MAX), I16F16::MAX);
+        assert_eq!(CordicNumber::round(I16F16::MIN), I16F16::MIN);
+        assert_eq!(
+            CordicNumber::round(I16F16::from_num(2.5)),
+            I16F16::from_num(3)
+        );
+        assert_eq!(
+            CordicNumber::round(I16F16::from_num(-2.5)),
+            I16F16::from_num(-3)
+        );
+    }
+
+    #[test]
+    fn sqrt_round_of_negative_is_root_of_magnitude() {
+        assert_eq!(I16F16::from_num(-4).sqrt_round(), I16F16::from_num(2));
+        assert_eq!(I64F64::from_num(-4).sqrt_round(), I64F64::from_num(2));
+        assert_eq!(I16F16::ZERO.sqrt_round(), I16F16::ZERO);
+    }
+}
