@@ -30,14 +30,14 @@ Requires Rust 1.95 or later.
 
 ```toml
 [dependencies]
-fixed_analytics = "3.0.0"
+fixed_analytics = "3.1.0"
 ```
 
 For `no_std` environments:
 
 ```toml
 [dependencies]
-fixed_analytics = { version = "3.0.0", default-features = false }
+fixed_analytics = { version = "3.1.0", default-features = false }
 ```
 
 ## Available Functions
@@ -98,5 +98,6 @@ Relative error statistics measured against MPFR reference implementations. Accur
 | log2 | 9.98e-6 | 6.72e-6 | 2.01e-5 | 1.92e-10 | 1.31e-10 | 3.90e-10 |
 | log10 | 1.25e-5 | 8.96e-6 | 2.36e-5 | 4.06e-10 | 3.57e-10 | 6.39e-10 |
 | pow2 | 3.62e-4 | 2.24e-5 | 2.37e-3 | 5.64e-9 | 4.29e-10 | 3.67e-8 |
+| pow | 6.90e-4 | 6.83e-5 | 3.13e-3 | 1.09e-8 | 1.23e-9 | 4.86e-8 |
 | sqrt | 8.88e-8 | 5.80e-8 | 2.42e-7 | 1.37e-12 | 8.85e-13 | 3.62e-12 |
 <!-- ACCURACY_END -->

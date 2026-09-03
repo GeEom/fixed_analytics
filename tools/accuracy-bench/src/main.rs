@@ -3,9 +3,7 @@
 //! Run with: cargo run --release
 //! Compare: cargo run --release -- --baseline path/to/baseline.json
 
-use accuracy_bench::{
-    build_registry, readme, report::Report, sampling::SampleStrategy, test_function,
-};
+use accuracy_bench::{build_registry, readme, report::Report, sampling::SampleStrategy};
 use rayon::prelude::*;
 use std::{env, fs, path::Path, process};
 
@@ -34,7 +32,7 @@ fn main() {
         .par_iter()
         .map(|f| {
             eprintln!("  {}", f.name());
-            test_function(f.as_ref(), &strategy)
+            f.run(&strategy)
         })
         .collect();
 

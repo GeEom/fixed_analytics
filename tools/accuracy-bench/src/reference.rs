@@ -70,6 +70,10 @@ pub mod exponential {
     pub fn pow2(x: &Float) -> Float {
         x.clone().exp2()
     }
+    pub fn pow(x: &Float, y: &Float) -> Float {
+        use rug::ops::Pow;
+        x.clone().pow(y)
+    }
 }
 
 pub mod algebraic {

@@ -52,6 +52,44 @@ pub trait TestedFunction: Send + Sync {
     fn compute_i32f32(&self, x: fixed::types::I32F32) -> fixed::types::I32F32;
 }
 
+/// A function of two arguments, sampled over a domain for each.
+pub trait TestedBinaryFunction: Send + Sync {
+    fn name(&self) -> &'static str;
+    fn domains(&self) -> (Domain, Domain);
+    fn reference(&self, x: &Float, y: &Float) -> Float;
+    fn compute_i16f16(
+        &self,
+        x: fixed::types::I16F16,
+        y: fixed::types::I16F16,
+    ) -> fixed::types::I16F16;
+    fn compute_i32f32(
+        &self,
+        x: fixed::types::I32F32,
+        y: fixed::types::I32F32,
+    ) -> fixed::types::I32F32;
+}
+
+pub enum Tested {
+    Unary(Box<dyn TestedFunction>),
+    Binary(Box<dyn TestedBinaryFunction>),
+}
+
+impl Tested {
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::Unary(f) => f.name(),
+            Self::Binary(f) => f.name(),
+        }
+    }
+
+    pub fn run(&self, strategy: &SampleStrategy) -> FunctionResult {
+        match self {
+            Self::Unary(f) => test_function(f.as_ref(), strategy),
+            Self::Binary(f) => test_binary_function(f.as_ref(), strategy),
+        }
+    }
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct FunctionResult {
     pub name: String,
@@ -102,6 +140,63 @@ pub fn test_function(func: &dyn TestedFunction, strategy: &SampleStrategy) -> Fu
     }
 }
 
+pub fn test_binary_function(
+    func: &dyn TestedBinaryFunction,
+    strategy: &SampleStrategy,
+) -> FunctionResult {
+    let (domain_x, domain_y) = func.domains();
+    let (xlo, xhi) = domain_x.sampling_bounds();
+    let (ylo, yhi) = domain_y.sampling_bounds();
+    let xs = strategy.generate(xlo, xhi);
+    let ys = strategy.generate(ylo, yhi);
+
+    let mut i16f16_errors = Vec::new();
+    let mut i32f32_errors = Vec::new();
+    let mut tested = 0;
+
+    for (i, &x_f64) in xs.iter().enumerate() {
+        // Both lists are sorted; a large coprime stride pairs each x with a y
+        // from elsewhere in its list so the two arguments vary independently.
+        let y_f64 = ys[(i * 7919) % ys.len()];
+        if !domain_x.contains(x_f64) || !domain_y.contains(y_f64) {
+            continue;
+        }
+
+        let x_mpfr = Float::with_val(REFERENCE_PRECISION, x_f64);
+        let y_mpfr = Float::with_val(REFERENCE_PRECISION, y_f64);
+        let ref_f64 = func.reference(&x_mpfr, &y_mpfr).to_f64();
+
+        if let (Some(x), Some(y)) = (
+            try_from_f64::<fixed::types::I16F16>(x_f64),
+            try_from_f64::<fixed::types::I16F16>(y_f64),
+        ) {
+            let result: f64 = func.compute_i16f16(x, y).to_num();
+            if let Some(err) = metrics::compute_error(result, ref_f64) {
+                i16f16_errors.push(err);
+            }
+        }
+
+        if let (Some(x), Some(y)) = (
+            try_from_f64::<fixed::types::I32F32>(x_f64),
+            try_from_f64::<fixed::types::I32F32>(y_f64),
+        ) {
+            let result: f64 = func.compute_i32f32(x, y).to_num();
+            if let Some(err) = metrics::compute_error(result, ref_f64) {
+                i32f32_errors.push(err);
+            }
+        }
+
+        tested += 1;
+    }
+
+    FunctionResult {
+        name: func.name().to_string(),
+        i16f16: ErrorStats::from_errors(&i16f16_errors),
+        i32f32: ErrorStats::from_errors(&i32f32_errors),
+        samples_tested: tested,
+    }
+}
+
 fn try_from_f64<T: Fixed>(x: f64) -> Option<T> {
     let max: f64 = T::MAX.to_num();
     let min: f64 = T::MIN.to_num();
@@ -111,13 +206,34 @@ fn try_from_f64<T: Fixed>(x: f64) -> Option<T> {
     Some(T::from_num(x))
 }
 
-pub type FunctionRegistry = Vec<Box<dyn TestedFunction>>;
+pub type FunctionRegistry = Vec<Tested>;
 
 pub fn build_registry() -> FunctionRegistry {
     let mut reg: FunctionRegistry = Vec::new();
-    reg.extend(functions::circular::register());
-    reg.extend(functions::hyperbolic::register());
-    reg.extend(functions::exponential::register());
-    reg.extend(functions::algebraic::register());
+    reg.extend(
+        functions::circular::register()
+            .into_iter()
+            .map(Tested::Unary),
+    );
+    reg.extend(
+        functions::hyperbolic::register()
+            .into_iter()
+            .map(Tested::Unary),
+    );
+    reg.extend(
+        functions::exponential::register()
+            .into_iter()
+            .map(Tested::Unary),
+    );
+    reg.extend(
+        functions::exponential::register_binary()
+            .into_iter()
+            .map(Tested::Binary),
+    );
+    reg.extend(
+        functions::algebraic::register()
+            .into_iter()
+            .map(Tested::Unary),
+    );
     reg
 }
