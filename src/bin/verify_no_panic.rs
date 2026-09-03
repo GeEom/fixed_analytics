@@ -16,7 +16,7 @@ use fixed_analytics::ops::algebraic::sqrt_nonneg;
 use fixed_analytics::ops::hyperbolic::atanh_open;
 use fixed_analytics::{
     acos, acosh, acoth, asin, asinh, atan, atan2, atanh, cos, cosh, coth, exp, ln, log2, log10,
-    pow2, sin, sin_cos, sinh, sinh_cosh, sqrt, tan, tanh,
+    pow, pow2, sin, sin_cos, sinh, sinh_cosh, sqrt, tan, tanh,
 };
 
 fn exercise<T: CordicNumber>(x: T, y: T, two: T) {
@@ -47,6 +47,7 @@ fn exercise<T: CordicNumber>(x: T, y: T, two: T) {
     let _ = std::hint::black_box(atanh(x));
     let _ = std::hint::black_box(coth(x));
     let _ = std::hint::black_box(acoth(two));
+    let _ = std::hint::black_box(pow(two, x));
 
     // Type-safe wrapper functions
     if let Some(nn) = NonNegative::new(x) {

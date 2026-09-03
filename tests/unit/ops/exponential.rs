@@ -431,7 +431,7 @@ mod tests {
 mod reduction {
     use crate::unit::support::Lcg;
     use fixed::types::{I4F60, I16F16, I24F8, I32F32, I64F64};
-    use fixed_analytics::{CordicNumber, exp, ln, log2, pow2};
+    use fixed_analytics::{CordicNumber, exp, ln, log2, pow, pow2, sqrt};
 
     #[test]
     fn exp_saturates_at_the_extremes_of_wide_types() {
@@ -559,6 +559,51 @@ mod reduction {
             );
         }
         assert!(ln(I16F16::from_num(4) + I16F16::from_bits(1)).is_ok());
+    }
+
+    #[test]
+    fn pow_special_cases_and_domain() {
+        assert_eq!(pow(I16F16::ZERO, I16F16::ZERO).unwrap(), I16F16::ONE);
+        assert_eq!(pow(I16F16::from_num(7), I16F16::ZERO).unwrap(), I16F16::ONE);
+        assert_eq!(
+            pow(I16F16::ZERO, I16F16::from_num(2)).unwrap(),
+            I16F16::ZERO
+        );
+        assert_eq!(pow(I16F16::ONE, I16F16::from_num(-9)).unwrap(), I16F16::ONE);
+        assert!(pow(I16F16::ZERO, -I16F16::ONE).is_err());
+        assert!(pow(-I16F16::ONE, I16F16::from_num(2)).is_err());
+        assert_eq!(
+            pow(I16F16::from_num(200), I16F16::from_num(3)).unwrap(),
+            I16F16::MAX
+        );
+        let got: f64 = pow(I16F16::from_num(2), I16F16::from_num(10))
+            .unwrap()
+            .to_num();
+        assert!((got - 1024.0).abs() < 2.0, "I16F16 2^10 = {got}");
+    }
+
+    #[test]
+    fn pow_tracks_f64_at_i64f64() {
+        let mut rng = Lcg(0x90);
+        for _ in 0..2000 {
+            let base = I64F64::from_num((rng.range(-20.0, 20.0)).exp2());
+            let exponent = I64F64::from_num(rng.range(-3.0, 3.0));
+            let (b, e): (f64, f64) = (base.to_num(), exponent.to_num());
+            let got: f64 = pow(base, exponent).unwrap().to_num();
+            let want = b.powf(e);
+            // Small results are quantised to a few raw ulps.
+            let tol = 8.0f64.mul_add(2f64.powi(-64), 3e-12 * want);
+            assert!(
+                (got - want).abs() < tol,
+                "pow({b}, {e}) = {got}, want {want}"
+            );
+        }
+        let x = I64F64::from_num(2.5);
+        let root: f64 = pow(x, I64F64::from_num(0.5)).unwrap().to_num();
+        let want: f64 = sqrt(x).unwrap().to_num();
+        assert!((root - want).abs() < 1e-13, "2.5^0.5 = {root}, want {want}");
+        let inv: f64 = pow(x, -I64F64::ONE).unwrap().to_num();
+        assert!((inv - 0.4).abs() < 1e-13, "2.5^-1 = {inv}");
     }
 
     #[test]

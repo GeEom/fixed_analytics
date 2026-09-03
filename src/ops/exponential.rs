@@ -156,6 +156,33 @@ pub fn exp<T: CordicNumber>(x: T) -> T {
     }
 }
 
+/// Power function `base^exponent`, computed as `exp(exponent · ln(base))`.
+/// Domain: `base > 0`, or `base = 0` with `exponent ≥ 0`.
+///
+/// The logarithm's rounding error is multiplied by the exponent, so the
+/// relative error grows with `|exponent|`. Saturates like [`exp`].
+///
+/// # Errors
+/// Returns `DomainError` if `base < 0`, or if `base = 0` and `exponent < 0`.
+#[must_use = "returns the power result which should be handled"]
+#[cfg_attr(feature = "verify-no-panic", no_panic::no_panic)]
+pub fn pow<T: CordicNumber>(base: T, exponent: T) -> Result<T> {
+    let zero = T::zero();
+    if base < zero || (base == zero && exponent < zero) {
+        return Err(Error::domain(
+            "pow",
+            "positive base, or zero base with non-negative exponent",
+        ));
+    }
+    if exponent == zero {
+        return Ok(T::one());
+    }
+    if base == zero {
+        return Ok(zero);
+    }
+    Ok(exp(exponent.saturating_mul(ln_positive(base))))
+}
+
 /// Natural logarithm. Domain: `x > 0`.
 ///
 /// # Errors
@@ -163,16 +190,20 @@ pub fn exp<T: CordicNumber>(x: T) -> T {
 #[must_use = "returns the natural logarithm result which should be handled"]
 #[cfg_attr(feature = "verify-no-panic", no_panic::no_panic)]
 pub fn ln<T: CordicNumber>(x: T) -> Result<T> {
+    if x <= T::zero() {
+        return Err(Error::domain("ln", "positive value"));
+    }
+    Ok(ln_positive(x))
+}
+
+/// Natural logarithm of a positive value. The caller must ensure `x > 0`.
+pub(crate) fn ln_positive<T: CordicNumber>(x: T) -> T {
     let zero = T::zero();
     let one = T::one();
     let two = T::two();
 
-    if x <= zero {
-        return Err(Error::domain("ln", "positive value"));
-    }
-
     if x == one {
-        return Ok(zero);
+        return zero;
     }
 
     // For x far from 1, use argument reduction:
@@ -215,7 +246,7 @@ pub fn ln<T: CordicNumber>(x: T) -> Result<T> {
     let atanh_val = atanh_open(arg);
     let ln_normalized = atanh_val.saturating_add(atanh_val); // 2 * atanh
 
-    Ok(ln_normalized.saturating_add(k_ln2))
+    ln_normalized.saturating_add(k_ln2)
 }
 
 /// Base-2 logarithm. Domain: `x > 0`.

@@ -51,7 +51,7 @@ fixed_analytics = { version = "2.0.1", default-features = false }
 |----------|-----------------|-------------------|
 | Trigonometric | `sin`, `cos`, `tan`, `sin_cos`, `atan`, `atan2` | `asin`, `acos` |
 | Hyperbolic | `sinh`, `cosh`, `tanh`, `sinh_cosh`, `asinh` | `acosh`, `atanh`, `acoth`, `coth` |
-| Exponential | `exp`, `pow2` | `ln`, `log2`, `log10` |
+| Exponential | `exp`, `pow2` | `ln`, `log2`, `log10`, `pow` |
 | Algebraic | — | `sqrt` |
 
 Functions are calculated via polynomial evaluation, CORDIC, and Newton-Raphson techniques. Complete absence of panic is verified at the linker level via the [`no-panic`](https://github.com/dtolnay/no-panic) crate.

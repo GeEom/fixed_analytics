@@ -8,7 +8,7 @@ use criterion::{Criterion, criterion_group, criterion_main};
 use fixed::types::{I16F16, I64F64};
 use fixed_analytics::{
     CordicNumber, acos, acosh, acoth, asin, asinh, atan, atan2, atanh, cos, cosh, coth, exp, ln,
-    log2, log10, pow2, sin, sin_cos, sinh, sinh_cosh, sqrt, tan, tanh,
+    log2, log10, pow, pow2, sin, sin_cos, sinh, sinh_cosh, sqrt, tan, tanh,
 };
 
 fn bench_type<T: CordicNumber>(c: &mut Criterion, name: &str) {
@@ -58,6 +58,9 @@ fn bench_type<T: CordicNumber>(c: &mut Criterion, name: &str) {
         g.bench_function("ln", |b| b.iter(|| ln(black_box(pos_x))));
         g.bench_function("log2", |b| b.iter(|| log2(black_box(pos_x))));
         g.bench_function("log10", |b| b.iter(|| log10(black_box(pos_x))));
+        g.bench_function("pow", |b| {
+            b.iter(|| pow(black_box(pos_x), black_box(x)));
+        });
         g.finish();
     }
     {
