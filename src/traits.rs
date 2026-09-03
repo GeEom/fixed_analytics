@@ -90,19 +90,44 @@ pub trait CordicNumber:
     /// Saturating subtraction.
     #[must_use]
     fn saturating_sub(self, rhs: Self) -> Self;
+    /// Wrapping multiplication, for use only where overflow is provably
+    /// impossible: then it matches [`saturating_mul`](Self::saturating_mul)
+    /// bit for bit without the overflow check.
+    #[must_use]
+    fn wrapping_mul(self, rhs: Self) -> Self;
+    /// Wrapping addition. Same contract as [`wrapping_mul`](Self::wrapping_mul).
+    #[must_use]
+    fn wrapping_add(self, rhs: Self) -> Self;
+    /// Wrapping subtraction. Same contract as [`wrapping_mul`](Self::wrapping_mul).
+    #[must_use]
+    fn wrapping_sub(self, rhs: Self) -> Self;
+    /// Saturating multiplication by an integer. Exact unless it saturates.
+    #[must_use]
+    fn mul_int(self, rhs: i32) -> Self;
+    /// Division by a positive integer, truncated toward zero. Matches
+    /// [`div`](Self::div) bit for bit for non-negative `self` but divides the
+    /// raw representation directly, which is several times cheaper on
+    /// 128-bit types. A zero divisor saturates like [`div`](Self::div).
+    #[must_use]
+    fn div_int(self, divisor: u32) -> Self;
     /// Division.
     #[must_use]
     fn div(self, rhs: Self) -> Self;
+    /// Integer part of the base-2 logarithm, `⌊log₂(self)⌋`, or `None` if
+    /// `self ≤ 0`.
+    fn checked_int_log2(self) -> Option<i32>;
     /// Convert from numeric type.
     fn from_num<N: fixed::traits::ToFixed>(n: N) -> Self;
     /// Maximum value.
     fn max_value() -> Self;
     /// Minimum value.
     fn min_value() -> Self;
-    /// Round to nearest integer (half away from zero).
+    /// Round to nearest integer (half away from zero), saturating at the
+    /// type's bounds.
     #[must_use]
     fn round(self) -> Self;
-    /// Convert to i32 (truncates toward zero).
+    /// Convert to i32, rounding toward −∞ and saturating if the value does
+    /// not fit.
     #[must_use]
     fn to_i32(self) -> i32;
 }
@@ -241,6 +266,59 @@ macro_rules! impl_cordic_generic {
             }
 
             #[inline]
+            fn wrapping_mul(self, rhs: Self) -> Self {
+                Fixed::wrapping_mul(self, rhs)
+            }
+
+            #[inline]
+            fn wrapping_add(self, rhs: Self) -> Self {
+                Fixed::wrapping_add(self, rhs)
+            }
+
+            #[inline]
+            fn wrapping_sub(self, rhs: Self) -> Self {
+                Fixed::wrapping_sub(self, rhs)
+            }
+
+            #[inline]
+            fn mul_int(self, rhs: i32) -> Self {
+                match <$bits_type>::try_from(rhs) {
+                    Ok(k) => Fixed::saturating_mul_int(self, k),
+                    // |rhs| exceeds the raw type's range (8- and 16-bit types
+                    // only), so the exact product saturates unless self is 0.
+                    Err(_) => {
+                        if self == Self::ZERO {
+                            Self::ZERO
+                        } else if self.is_negative() != (rhs < 0) {
+                            Self::MIN
+                        } else {
+                            Self::MAX
+                        }
+                    }
+                }
+            }
+
+            #[inline]
+            fn div_int(self, divisor: u32) -> Self {
+                match <$bits_type>::try_from(divisor) {
+                    Ok(k) => match Fixed::checked_div_int(self, k) {
+                        Some(v) => v,
+                        // Division by zero: saturate based on sign.
+                        None => {
+                            if self.is_negative() {
+                                Self::MIN
+                            } else {
+                                Self::MAX
+                            }
+                        }
+                    },
+                    // The divisor exceeds the raw type's range, so it exceeds
+                    // |self| in raw units and the truncated quotient is zero.
+                    Err(_) => Self::ZERO,
+                }
+            }
+
+            #[inline]
             fn div(self, rhs: Self) -> Self {
                 match Fixed::checked_div(self, rhs) {
                     Some(v) => v,
@@ -253,6 +331,11 @@ macro_rules! impl_cordic_generic {
                         }
                     }
                 }
+            }
+
+            #[inline]
+            fn checked_int_log2(self) -> Option<i32> {
+                Fixed::checked_int_log2(self)
             }
 
             #[inline]
@@ -272,16 +355,12 @@ macro_rules! impl_cordic_generic {
 
             #[inline]
             fn round(self) -> Self {
-                Fixed::round(self)
+                Fixed::saturating_round(self)
             }
 
             #[inline]
-            #[allow(
-                clippy::cast_possible_truncation,
-                reason = "intentional truncation to target type"
-            )]
             fn to_i32(self) -> i32 {
-                self.to_num::<i32>()
+                self.saturating_to_num::<i32>()
             }
         }
     };

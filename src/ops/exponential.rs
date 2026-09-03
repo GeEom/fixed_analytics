@@ -5,6 +5,9 @@ use crate::error::{Error, Result};
 use crate::ops::hyperbolic::atanh_open;
 use crate::traits::CordicNumber;
 
+/// `1/ln 2 − 1` as I1F63 (`1/ln 2` itself exceeds 1).
+const FRAC_1_LN2_MINUS_1_I1F63: i64 = 0x38AA_3B29_5C17_F0BC;
+
 /// Right-shifts a non-negative value by `n`, rounding to nearest.
 ///
 /// A plain `>>` truncates, which biases results low by up to a full ulp.
@@ -70,57 +73,69 @@ pub fn exp<T: CordicNumber>(x: T) -> T {
         return one;
     }
 
-    // Argument reduction: exp(x) = 2^k * exp(r), where r ∈ [0, ln2).
-    // Compute k = floor(x / ln2): start from the truncated quotient and
-    // adjust once if the remainder is negative (the quotient error is
-    // below one ulp, so a single adjustment suffices). Keeping r
-    // non-negative gives exp(r) ∈ [1, 2) — a full significand ahead of
-    // the final scaling shift.
-    #[allow(clippy::cast_possible_wrap, reason = "total_bits bounded by type size")]
-    let max_shift = (T::total_bits() - 1) as i32;
-    let mut scale = x.div(ln2).to_i32();
+    // Argument reduction: exp(x) = 2^k * exp(r), where r ∈ [0, ln2), so
+    // exp(r) ∈ [1, 2) carries a full significand into the scaling shift.
+    // k = ⌊x / ln2⌋ is estimated to within one (`to_i32` floors; the
+    // reciprocal multiply is within |x|·1.5·2^-frac + 2^-frac < 1 when the
+    // integer bits do not outnumber the fractional bits, and other types
+    // divide) and then corrected once in either direction.
+    #[allow(clippy::cast_possible_wrap, reason = "bit counts bounded by type size")]
+    let (int_bits, frac_bits) = (
+        (T::total_bits() - T::frac_bits()) as i32,
+        T::frac_bits() as i32,
+    );
+    let quotient = if T::total_bits() <= 2 * T::frac_bits() {
+        x.saturating_add(x.saturating_mul(T::from_i1f63(FRAC_1_LN2_MINUS_1_I1F63)))
+    } else {
+        x.div(ln2)
+    };
+    let mut scale = quotient.to_i32();
 
-    // Early exit for values that will saturate after scaling. This also
-    // keeps `scale` small enough that scale * ln2 below cannot overflow.
-    if scale > max_shift {
+    // 2^k·exp(r) exceeds MAX once k ≥ int_bits − 1 and rounds to zero once
+    // k ≤ −(frac_bits + 2); allow one of slack until k is corrected.
+    if scale >= int_bits {
         return T::max_value();
     }
-    if scale < -max_shift {
+    if scale < -(frac_bits + 2) {
         return zero;
     }
 
-    let mut r = x.saturating_sub(T::from_num(scale).saturating_mul(ln2));
+    let mut r = x.saturating_sub(ln2.mul_int(scale));
     if r < zero {
         scale -= 1;
         r = r.saturating_add(ln2);
-        if scale < -max_shift {
-            return zero;
-        }
+    } else if r >= ln2 {
+        scale += 1;
+        r = r.saturating_sub(ln2);
+    }
+    if scale >= int_bits - 1 {
+        return T::max_value();
+    }
+    if scale <= -(frac_bits + 2) {
+        return zero;
     }
 
-    // Factored Taylor: exp(r) = 1 + r*(1 + r/2*(1 + r/3*(1 + ... r/n)))
+    // Factored Taylor: exp(r) = 1 + r*(1 + r/2*(1 + r/3*(1 + ... r/n))).
+    // The omitted term (ln2)^(n+1)/(n+1)! is 1.3e-6 at degree 7 and 1.4e-12
+    // at degree 12: below half an ulp up to 18 and 38 fractional bits.
     let mut p = one;
     if T::frac_bits() >= 24 {
-        // High precision: degree 12 Taylor
-        // Truncation error: |r^13/13!| ≤ (ln2)^13/13! ≈ 3.4e-15
-        p = one.saturating_add(r.div(T::from_num(12)).saturating_mul(p));
-        p = one.saturating_add(r.div(T::from_num(11)).saturating_mul(p));
-        p = one.saturating_add(r.div(T::from_num(10)).saturating_mul(p));
-        p = one.saturating_add(r.div(T::from_num(9)).saturating_mul(p));
-        p = one.saturating_add(r.div(T::from_num(8)).saturating_mul(p));
+        p = one.saturating_add(r.div_int(12).saturating_mul(p));
+        p = one.saturating_add(r.div_int(11).saturating_mul(p));
+        p = one.saturating_add(r.div_int(10).saturating_mul(p));
+        p = one.saturating_add(r.div_int(9).saturating_mul(p));
+        p = one.saturating_add(r.div_int(8).saturating_mul(p));
     }
-    // Common terms (degree 7 base)
-    // Low-precision truncation error: |r^8/8!| ≤ (ln2)^8/8! ≈ 8.9e-7
-    p = one.saturating_add(r.div(T::from_num(7)).saturating_mul(p));
-    p = one.saturating_add(r.div(T::from_num(6)).saturating_mul(p));
-    p = one.saturating_add(r.div(T::from_num(5)).saturating_mul(p));
-    p = one.saturating_add(r.div(T::from_num(4)).saturating_mul(p));
-    p = one.saturating_add(r.div(T::from_num(3)).saturating_mul(p));
-    p = one.saturating_add(r.div(T::from_num(2)).saturating_mul(p));
+    p = one.saturating_add(r.div_int(7).saturating_mul(p));
+    p = one.saturating_add(r.div_int(6).saturating_mul(p));
+    p = one.saturating_add(r.div_int(5).saturating_mul(p));
+    p = one.saturating_add(r.div_int(4).saturating_mul(p));
+    p = one.saturating_add(r.div_int(3).saturating_mul(p));
+    p = one.saturating_add(r.div_int(2).saturating_mul(p));
     let exp_r = one.saturating_add(r.saturating_mul(p));
 
     // Scale by 2^scale using bit shifts.
-    // scale is already bounded to [-max_shift, max_shift] by the early exits above.
+    // scale is already bounded to (-(frac_bits + 2), int_bits - 1) by the exits above.
     #[allow(
         clippy::cast_sign_loss,
         reason = "sign of scale checked before each cast"
@@ -165,27 +180,28 @@ pub fn ln<T: CordicNumber>(x: T) -> Result<T> {
     // where k is chosen so that x * 2^(-k) is close to 1
 
     let ln2 = T::ln_2();
-    let mut normalized = x;
-    let mut k_ln2 = zero;
 
-    // Reduce to range [0.5, 2] for better convergence.
-    let half = T::half();
-
-    // For large x, divide by 2 repeatedly
-    let mut i = 0;
-    while normalized > two && i < 128 {
-        normalized = normalized >> 1;
-        k_ln2 = k_ln2.saturating_add(ln2);
-        i += 1;
-    }
-
-    // For small x (< 0.5), multiply by 2 repeatedly
-    i = 0;
-    while normalized < half && i < 128 {
-        normalized = normalized.saturating_add(normalized);
-        k_ln2 = k_ln2.saturating_sub(ln2);
-        i += 1;
-    }
+    // Reduce to [0.5, 2] from the leading bit e = ⌊log₂ x⌋: x > 2 shifts
+    // right until ≤ 2 (stopping early when a shift lands exactly on 2),
+    // x < 0.5 doubles until ≥ 0.5.
+    let e = x.checked_int_log2().unwrap_or(0);
+    #[allow(
+        clippy::cast_sign_loss,
+        reason = "shift counts are non-negative by construction"
+    )]
+    let (normalized, k) = if e >= 1 {
+        let candidate = x >> (e - 1) as u32;
+        if candidate == two {
+            (candidate, e - 1)
+        } else {
+            (x >> e as u32, e)
+        }
+    } else if e <= -2 {
+        (x << (-1 - e) as u32, e + 1)
+    } else {
+        (x, 0)
+    };
+    let k_ln2 = ln2.mul_int(k);
 
     // Now compute ln(normalized) where 0.5 <= normalized <= 2
     // Using ln(x) = 2 * atanh((x-1)/(x+1))

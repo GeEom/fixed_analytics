@@ -24,13 +24,18 @@ use crate::traits::CordicNumber;
 ///
 /// Stored highest-degree first: `[cₙ, cₙ₋₁, …, c₀]`.
 /// Evaluates P(x) = cₙ·xⁿ + cₙ₋₁·xⁿ⁻¹ + ··· + c₀ via Horner's method.
+///
+/// Uses wrapping arithmetic, so the caller must keep the evaluation in
+/// range: for the tables in this module and `0 ≤ x ≤ (π/4)²` every
+/// intermediate stays below 1 in magnitude, so wrapping and saturating
+/// arithmetic are bit-identical and the overflow checks would be pure cost.
 #[inline]
 pub fn horner<T: CordicNumber, const N: usize>(coeffs: &[i64; N], x: T) -> T {
     let mut iter = coeffs.iter();
     // First element is the highest-degree coefficient (N ≥ 3 for all tables).
     let mut result = T::from_i1f63(*iter.next().unwrap_or(&0));
     for &coeff in iter {
-        result = T::from_i1f63(coeff).saturating_add(x.saturating_mul(result));
+        result = T::from_i1f63(coeff).wrapping_add(x.wrapping_mul(result));
     }
     result
 }

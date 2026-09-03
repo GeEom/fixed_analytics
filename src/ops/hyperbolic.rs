@@ -64,44 +64,28 @@ pub fn sinh_cosh<T: CordicNumber>(x: T) -> (T, T) {
     // step's multiplicand u/K below 1 for K ≥ 2.
     let u = reduced.saturating_mul(reduced);
 
-    // High-precision path requires enough integer bits for divisors up to 182.
+    // Divisors are (2k)(2k+1) for sinh and (2k-1)(2k) for cosh. At |x| ≤
+    // 1.1182 the omitted relative term is 7.7e-8 / 8.0e-9 at degrees 9 / 10
+    // and 3.7e-12 / 2.9e-13 at 13 / 14: below half an ulp up to 22 and 37
+    // fractional bits respectively.
     let mut sp = one;
-    let (mut sh, mut ch) = if T::frac_bits() >= 24 && T::total_bits() >= T::frac_bits() + 9 {
-        // High precision: degree 13 sinh, degree 14 cosh
-        sp = one.saturating_add(u.div(T::from_num(156)).saturating_mul(sp));
-        sp = one.saturating_add(u.div(T::from_num(110)).saturating_mul(sp));
-        sp = one.saturating_add(u.div(T::from_num(72)).saturating_mul(sp));
-        sp = one.saturating_add(u.div(T::from_num(42)).saturating_mul(sp));
-        sp = one.saturating_add(u.div(T::from_num(20)).saturating_mul(sp));
-        sp = one.saturating_add(u.div(T::from_num(6)).saturating_mul(sp));
-        let sinh_approx = reduced.saturating_mul(sp);
-
-        let mut cp = one;
-        cp = one.saturating_add(u.div(T::from_num(182)).saturating_mul(cp));
-        cp = one.saturating_add(u.div(T::from_num(132)).saturating_mul(cp));
-        cp = one.saturating_add(u.div(T::from_num(90)).saturating_mul(cp));
-        cp = one.saturating_add(u.div(T::from_num(56)).saturating_mul(cp));
-        cp = one.saturating_add(u.div(T::from_num(30)).saturating_mul(cp));
-        cp = one.saturating_add(u.div(T::from_num(12)).saturating_mul(cp));
-        cp = one.saturating_add(u.div(T::from_num(2)).saturating_mul(cp));
-        (sinh_approx, cp)
-    } else {
-        // Low precision: degree 9 sinh, degree 10 cosh
-        sp = one;
-        sp = one.saturating_add(u.div(T::from_num(72)).saturating_mul(sp));
-        sp = one.saturating_add(u.div(T::from_num(42)).saturating_mul(sp));
-        sp = one.saturating_add(u.div(T::from_num(20)).saturating_mul(sp));
-        sp = one.saturating_add(u.div(T::from_num(6)).saturating_mul(sp));
-        let sinh_approx = reduced.saturating_mul(sp);
-
-        let mut cp = one;
-        cp = one.saturating_add(u.div(T::from_num(90)).saturating_mul(cp));
-        cp = one.saturating_add(u.div(T::from_num(56)).saturating_mul(cp));
-        cp = one.saturating_add(u.div(T::from_num(30)).saturating_mul(cp));
-        cp = one.saturating_add(u.div(T::from_num(12)).saturating_mul(cp));
-        cp = one.saturating_add(u.div(T::from_num(2)).saturating_mul(cp));
-        (sinh_approx, cp)
-    };
+    let mut cp = one;
+    if T::frac_bits() >= 24 {
+        sp = one.saturating_add(u.div_int(156).saturating_mul(sp));
+        sp = one.saturating_add(u.div_int(110).saturating_mul(sp));
+        cp = one.saturating_add(u.div_int(182).saturating_mul(cp));
+        cp = one.saturating_add(u.div_int(132).saturating_mul(cp));
+    }
+    sp = one.saturating_add(u.div_int(72).saturating_mul(sp));
+    sp = one.saturating_add(u.div_int(42).saturating_mul(sp));
+    sp = one.saturating_add(u.div_int(20).saturating_mul(sp));
+    sp = one.saturating_add(u.div_int(6).saturating_mul(sp));
+    cp = one.saturating_add(u.div_int(90).saturating_mul(cp));
+    cp = one.saturating_add(u.div_int(56).saturating_mul(cp));
+    cp = one.saturating_add(u.div_int(30).saturating_mul(cp));
+    cp = one.saturating_add(u.div_int(12).saturating_mul(cp));
+    cp = one.saturating_add(u.div_int(2).saturating_mul(cp));
+    let (mut sh, mut ch) = (reduced.saturating_mul(sp), cp);
 
     // Reconstruct via doubling: sinh(2x) = 2·sinh(x)·cosh(x),
     //                           cosh(2x) = cosh²(x) + sinh²(x)

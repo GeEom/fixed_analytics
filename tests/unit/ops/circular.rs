@@ -516,3 +516,76 @@ mod tests {
         }
     }
 }
+
+/// Angle reduction near the type bounds and inverse-function accuracy.
+#[cfg(test)]
+#[allow(clippy::unwrap_used, reason = "test code uses unwrap for conciseness")]
+mod reduction_and_accuracy {
+    use crate::unit::support::Lcg;
+    use fixed::types::{I24F8, I32F32, I64F64};
+    use fixed_analytics::{CordicNumber, sin_cos};
+
+    /// Reference reduction with the type's own 2π, in f64.
+    fn reduced_f64<T: CordicNumber + fixed::traits::Fixed>(angle: T) -> f64 {
+        let two_pi: f64 = (T::pi() + T::pi()).to_num();
+        let a: f64 = angle.to_num();
+        (a / two_pi).round().mul_add(-two_pi, a)
+    }
+
+    #[test]
+    fn sin_cos_is_correct_within_pi_of_max() {
+        // n·2π exceeds MAX here; saturation used to return (0, 1).
+        for angle in [I32F32::MAX, I32F32::MIN, I32F32::MAX - I32F32::ONE] {
+            let (s, c) = sin_cos(angle);
+            let r = reduced_f64(angle);
+            let (s, c): (f64, f64) = (s.to_num(), c.to_num());
+            assert!(
+                (s - r.sin()).abs() < 1e-5,
+                "sin({angle}) = {s}, want {}",
+                r.sin()
+            );
+            assert!(
+                (c - r.cos()).abs() < 1e-5,
+                "cos({angle}) = {c}, want {}",
+                r.cos()
+            );
+        }
+        for angle in [I24F8::MAX, I24F8::MIN] {
+            let (s, c) = sin_cos(angle);
+            let r = reduced_f64(angle);
+            let (s, c): (f64, f64) = (s.to_num(), c.to_num());
+            assert!(
+                (s - r.sin()).abs() < 0.02,
+                "sin({angle}) = {s}, want {}",
+                r.sin()
+            );
+            assert!(
+                (c - r.cos()).abs() < 0.02,
+                "cos({angle}) = {c}, want {}",
+                r.cos()
+            );
+        }
+    }
+
+    #[test]
+    fn sin_cos_large_angles_i64f64() {
+        let mut rng = Lcg(0x51);
+        for _ in 0..500 {
+            let v = rng.range(-1e6, 1e6);
+            let angle = I64F64::from_num(v);
+            let (s, c) = sin_cos(angle);
+            let r = reduced_f64(angle);
+            let (s, c): (f64, f64) = (s.to_num(), c.to_num());
+            assert!(
+                (s - r.sin()).abs() < 1e-9,
+                "sin({v}) = {s}, want {}",
+                r.sin()
+            );
+            assert!(
+                (c - r.cos()).abs() < 1e-9,
+                "cos({v}) = {c}, want {}",
+                r.cos()
+            );
+        }
+    }
+}

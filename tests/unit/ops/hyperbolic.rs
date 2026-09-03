@@ -487,3 +487,35 @@ mod tests {
         }
     }
 }
+
+/// Integer-bit-poor types, and the logarithmic inverse forms.
+#[cfg(test)]
+#[allow(clippy::unwrap_used, reason = "test code uses unwrap for conciseness")]
+mod wide_and_narrow {
+    use fixed::types::{I4F12, I4F60};
+    use fixed_analytics::sinh_cosh;
+
+    #[test]
+    fn sinh_cosh_works_on_types_with_few_integer_bits() {
+        // I4F12 and I4F60 (range ±8) cannot hold the Taylor divisors in T.
+        for i in 0..=100 {
+            let v = -1.5 + 3.0 * f64::from(i) / 100.0;
+            let x12 = I4F12::from_num(v);
+            let (s12, c12) = sinh_cosh(x12);
+            let (s12, c12, v12): (f64, f64, f64) = (s12.to_num(), c12.to_num(), x12.to_num());
+            assert!((s12 - v12.sinh()).abs() < 5e-3, "I4F12 sinh({v12}) = {s12}");
+            assert!((c12 - v12.cosh()).abs() < 5e-3, "I4F12 cosh({v12}) = {c12}");
+            let x60 = I4F60::from_num(v);
+            let (s60, c60) = sinh_cosh(x60);
+            let (s60, c60, v60): (f64, f64, f64) = (s60.to_num(), c60.to_num(), x60.to_num());
+            assert!(
+                (s60 - v60.sinh()).abs() < 1e-11,
+                "I4F60 sinh({v60}) = {s60}"
+            );
+            assert!(
+                (c60 - v60.cosh()).abs() < 1e-11,
+                "I4F60 cosh({v60}) = {c60}"
+            );
+        }
+    }
+}
