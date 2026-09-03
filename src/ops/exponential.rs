@@ -166,31 +166,45 @@ pub fn exp<T: CordicNumber>(x: T) -> T {
     }
 }
 
-/// Power function `base^exponent`, computed as `exp(exponent · ln(base))`.
-/// Domain: `base > 0`, or `base = 0` with `exponent ≥ 0`.
+/// Power function `base^exponent`, computed as `exp(exponent · ln|base|)`.
 ///
+/// Domain: `base > 0`; `base = 0` with `exponent ≥ 0`; or `base < 0` with
+/// an integer exponent, where the sign follows the exponent's parity.
 /// The logarithm's rounding error is multiplied by the exponent, so the
 /// relative error grows with `|exponent|`. Saturates like [`exp`].
 ///
 /// # Errors
-/// Returns `DomainError` if `base < 0`, or if `base = 0` and `exponent < 0`.
+/// Returns `DomainError` for a negative base with a non-integer exponent
+/// (no real result, as for [`sqrt`](crate::sqrt)) or a zero base with a
+/// negative exponent.
 #[must_use = "returns the power result which should be handled"]
 #[cfg_attr(feature = "verify-no-panic", no_panic::no_panic)]
 pub fn pow<T: CordicNumber>(base: T, exponent: T) -> Result<T> {
     let zero = T::zero();
-    if base < zero || (base == zero && exponent < zero) {
-        return Err(Error::domain(
-            "pow",
-            "positive base, or zero base with non-negative exponent",
-        ));
-    }
     if exponent == zero {
         return Ok(T::one());
     }
     if base == zero {
-        return Ok(zero);
+        return if exponent > zero {
+            Ok(zero)
+        } else {
+            Err(Error::domain(
+                "pow",
+                "non-negative exponent for a zero base",
+            ))
+        };
     }
-    Ok(exp(exponent.saturating_mul(ln_positive(base))))
+    let magnitude = exp(exponent.saturating_mul(ln_positive(base.abs())));
+    if !base.is_negative() {
+        return Ok(magnitude);
+    }
+    // Shifting the raw bits isolates the integer part exactly at any magnitude.
+    let integer_part = exponent >> T::frac_bits();
+    if integer_part << T::frac_bits() != exponent {
+        return Err(Error::domain("pow", "integer exponent for a negative base"));
+    }
+    let odd = (integer_part >> 1) << 1 != integer_part;
+    Ok(if odd { -magnitude } else { magnitude })
 }
 
 /// Natural logarithm. Domain: `x > 0`.

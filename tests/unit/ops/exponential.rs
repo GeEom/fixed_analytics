@@ -571,11 +571,53 @@ mod reduction {
         );
         assert_eq!(pow(I16F16::ONE, I16F16::from_num(-9)).unwrap(), I16F16::ONE);
         assert!(pow(I16F16::ZERO, -I16F16::ONE).is_err());
-        assert!(pow(-I16F16::ONE, I16F16::from_num(2)).is_err());
+        assert!(pow(-I16F16::ONE, I16F16::from_num(0.5)).is_err());
+        assert!(pow(-I16F16::from_num(2), I16F16::from_num(-1.5)).is_err());
         assert_eq!(
             pow(I16F16::from_num(200), I16F16::from_num(3)).unwrap(),
             I16F16::MAX
         );
+        assert_eq!(
+            pow(-I16F16::from_num(200), I16F16::from_num(3)).unwrap(),
+            -I16F16::MAX
+        );
+        assert_eq!(
+            pow(-I16F16::from_num(3), I16F16::ZERO).unwrap(),
+            I16F16::ONE
+        );
+        assert_eq!(
+            pow(-I16F16::ONE, I16F16::from_num(7)).unwrap(),
+            -I16F16::ONE
+        );
+        assert_eq!(
+            pow(-I16F16::ONE, I16F16::from_num(-8)).unwrap(),
+            I16F16::ONE
+        );
+        for (b, e, want) in [
+            (-2.0, 3.0, -8.0),
+            (-2.0, 2.0, 4.0),
+            (-2.0, -1.0, -0.5),
+            (-0.5, 3.0, -0.125),
+        ] {
+            let got16: f64 = pow(I16F16::from_num(b), I16F16::from_num(e))
+                .unwrap()
+                .to_num();
+            assert!(
+                (got16 - want).abs() < 0.05,
+                "I16F16 {b}^{e} = {got16}, want {want}"
+            );
+            let got64: f64 = pow(I64F64::from_num(b), I64F64::from_num(e))
+                .unwrap()
+                .to_num();
+            assert!(
+                (got64 - want).abs() < 1e-11,
+                "I64F64 {b}^{e} = {got64}, want {want}"
+            );
+        }
+        // Parity is read from the raw bits, so it survives exponents beyond i32.
+        let huge = I64F64::from_num(1u64 << 40);
+        assert_eq!(pow(-I64F64::ONE, huge).unwrap(), I64F64::ONE);
+        assert_eq!(pow(-I64F64::ONE, huge + I64F64::ONE).unwrap(), -I64F64::ONE);
         let got: f64 = pow(I16F16::from_num(2), I16F16::from_num(10))
             .unwrap()
             .to_num();
