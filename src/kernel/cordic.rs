@@ -20,25 +20,28 @@
 //! - σ = ±1 (direction of rotation)
 //! - d = +1 for circular, -1 for hyperbolic, 0 for linear
 //! - angle[i] = atan(2^-i) for circular, atanh(2^-i) for hyperbolic
+//!
+//! Both kernels stop after about a third of the fractional bits and close
+//! the residual angle with one division: for `|w| = |y/x| < 2^-⌈frac/3⌉`,
+//! `atan(w)` and `atanh(w)` differ from `w` by under `|w|³/3 < 2^-frac/3`.
 
 use crate::tables::hyperbolic::needs_repeat;
 use crate::tables::{ATAN_TABLE, ATANH_TABLE};
 use crate::traits::CordicNumber;
 
-/// Table lookup for CORDIC iteration.
-///
-/// Index is bounded by CORDIC iteration limits:
-/// - Circular mode: `min(frac_bits, 62)` → max index 61
-/// - Hyperbolic mode: `min(frac_bits, 54)` with `i.saturating_sub(1)` → max index 53
-///
-/// Since the tables have 64 elements and max index is 61, bounds are always satisfied.
+/// Index of the last shift stage before the closing division: after the
+/// stage with shift `2^-k` the residual angle, and so `|y/x|`, is below
+/// `2^-k`. At most 42, so every table lookup is in bounds.
+const fn last_stage(frac_bits: u32) -> u32 {
+    frac_bits.div_ceil(3)
+}
+
+/// Table lookup for CORDIC iteration. The modulo is a no-op that keeps the
+/// access provably in bounds for the no-panic check.
 #[inline]
 const fn table_lookup(table: &[i64; 64], index: u32) -> i64 {
-    #[allow(
-        clippy::indexing_slicing,
-        reason = "index bounded by CORDIC iteration limits"
-    )]
-    table[index as usize]
+    #[allow(clippy::indexing_slicing, reason = "index reduced modulo table length")]
+    table[index as usize % table.len()]
 }
 
 /// Converts an I1F63 table constant to `T`, rounding to nearest.
@@ -73,21 +76,21 @@ fn from_i1f63_rounded<T: CordicNumber>(bits: i64) -> T {
 
 /// Performs circular CORDIC in vectoring mode.
 ///
-/// Given an initial vector (x, y), rotates it until y ≈ 0.
-/// After iteration:
-/// - x ≈ K * sqrt(x₀² + y₀²)
-/// - y ≈ 0
-/// - z ≈ z₀ + atan(y₀/x₀)
+/// Given an initial vector (x, y) with x > 0, rotates it toward the x axis
+/// through `⌈frac/3⌉ + 1` shift stages, then closes the residual angle
+/// with one division.
 ///
 /// # Arguments
 ///
-/// * `x` - Initial x coordinate (should be positive for standard use)
+/// * `x` - Initial x coordinate (must be positive)
 /// * `y` - Initial y coordinate
 /// * `z` - Initial angle accumulator (usually 0)
 ///
 /// # Returns
 ///
-/// Tuple of (x, y, z) after CORDIC iterations.
+/// Tuple of (x, y, z): z ≈ z₀ + atan(y₀/x₀); x ≈ K·sqrt(x₀² + y₀²) with K
+/// the gain of the stages run; y is the residual the shift stages left,
+/// whose angle is already in z.
 ///
 /// # Note
 ///
@@ -95,9 +98,8 @@ fn from_i1f63_rounded<T: CordicNumber>(bits: i64) -> T {
 #[must_use]
 pub fn circular_vectoring<T: CordicNumber>(mut x: T, mut y: T, mut z: T) -> (T, T, T) {
     let zero = T::zero();
-    let iterations = T::frac_bits().min(62);
 
-    for i in 0..iterations {
+    for i in 0..=last_stage(T::frac_bits()) {
         let angle = from_i1f63_rounded::<T>(table_lookup(&ATAN_TABLE, i));
 
         if y < zero {
@@ -115,17 +117,17 @@ pub fn circular_vectoring<T: CordicNumber>(mut x: T, mut y: T, mut z: T) -> (T, 
         }
     }
 
+    // Close the residual angle: atan(y/x) = y/x to within |y/x|³/3.
+    z = z.saturating_add(y.div(x));
+
     (x, y, z)
 }
 
 /// Performs hyperbolic CORDIC in vectoring mode.
 ///
-/// Drives y toward zero while accumulating the hyperbolic angle.
-///
-/// After iteration:
-/// - x ≈ `K_h` * sqrt(x₀² - y₀²) (for |x| > |y|)
-/// - y ≈ 0
-/// - z ≈ z₀ + atanh(y₀/x₀)
+/// Drives y toward zero through shift stages 1..=⌈frac/3⌉ (repeating 4,
+/// 13, 40, … for convergence), then closes the residual angle with one
+/// division.
 ///
 /// # Arguments
 ///
@@ -135,7 +137,9 @@ pub fn circular_vectoring<T: CordicNumber>(mut x: T, mut y: T, mut z: T) -> (T, 
 ///
 /// # Returns
 ///
-/// Tuple of (x, y, z) after CORDIC iterations.
+/// Tuple of (x, y, z): z ≈ z₀ + atanh(y₀/x₀); x ≈ `K_h`·sqrt(x₀² - y₀²)
+/// with `K_h` the gain of the stages run; y is the residual the shift
+/// stages left, whose angle is already in z.
 ///
 /// # Note
 ///
@@ -144,52 +148,36 @@ pub fn circular_vectoring<T: CordicNumber>(mut x: T, mut y: T, mut z: T) -> (T, 
 #[must_use]
 pub fn hyperbolic_vectoring<T: CordicNumber>(mut x: T, mut y: T, mut z: T) -> (T, T, T) {
     let zero = T::zero();
-    // Use at least 24 iterations for better accuracy, even for lower precision types.
-    let max_iterations = T::frac_bits().clamp(24, 54);
 
-    let mut i: u32 = 1;
-    let mut iteration_count: u32 = 0;
-    let mut repeated = false;
+    for i in 1..=last_stage(T::frac_bits()) {
+        let angle = T::from_i1f63(table_lookup(&ATANH_TABLE, i - 1));
+        // Stages 4, 13, 40, … run twice so the sequence converges.
+        let passes = if needs_repeat(i) { 2 } else { 1 };
 
-    while iteration_count < max_iterations && i < 64 {
-        let table_index = i.saturating_sub(1);
-        let angle = T::from_i1f63(table_lookup(&ATANH_TABLE, table_index));
-
-        // Hyperbolic pseudo-rotation equations:
-        // x' = x + σ*y*2^(-i)
-        // y' = y + σ*x*2^(-i)
-        // z' = z + σ*angle  (accumulating for vectoring)
-        // where σ = -sign(y) to drive y toward zero
-
-        if y < zero {
-            // y is negative: σ = +1
-            // x' = x + y*2^(-i) [y is negative, so this subtracts magnitude]
-            // y' = y + x*2^(-i) [adds positive to make less negative]
-            // z' = z - angle    [accumulate negative contribution]
-            let x_new = x.saturating_add(y >> i);
-            y = y.saturating_add(x >> i);
-            x = x_new;
-            z -= angle;
-        } else {
-            // y is positive or zero: σ = -1
-            // x' = x - y*2^(-i) [subtracts positive]
-            // y' = y - x*2^(-i) [subtracts to decrease toward zero]
-            // z' = z + angle    [accumulate positive contribution]
-            let x_new = x.saturating_sub(y >> i);
-            y = y.saturating_sub(x >> i);
-            x = x_new;
-            z += angle;
-        }
-
-        iteration_count += 1;
-
-        if needs_repeat(i) && !repeated {
-            repeated = true;
-        } else {
-            repeated = false;
-            i += 1;
+        for _ in 0..passes {
+            // Hyperbolic pseudo-rotation equations:
+            // x' = x + σ*y*2^(-i)
+            // y' = y + σ*x*2^(-i)
+            // z' = z + σ*angle  (accumulating for vectoring)
+            // where σ = -sign(y) to drive y toward zero
+            if y < zero {
+                // y is negative: σ = +1
+                let x_new = x.saturating_add(y >> i);
+                y = y.saturating_add(x >> i);
+                x = x_new;
+                z -= angle;
+            } else {
+                // y is positive or zero: σ = -1
+                let x_new = x.saturating_sub(y >> i);
+                y = y.saturating_sub(x >> i);
+                x = x_new;
+                z += angle;
+            }
         }
     }
+
+    // Close the residual angle: atanh(y/x) = y/x to within |y/x|³/3.
+    z = z.saturating_add(y.div(x));
 
     (x, y, z)
 }

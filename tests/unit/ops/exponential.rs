@@ -482,8 +482,8 @@ mod reduction {
             let x = I64F64::from_num(v);
             let got: f64 = exp(x).to_num();
             let want = x.to_num::<f64>().exp();
-            // Degree-12 Taylor: truncation ≈ r¹³/13! ≈ 1.4e-12 of the result.
-            let tol = 8.0f64.mul_add(2f64.powi(-64), 3e-12 * want);
+            // The f64 reference loses 2^-53·|x| of relative precision in x.
+            let tol = 8.0f64.mul_add(2f64.powi(-64), 5e-16 * (1.0 + v.abs()) * want);
             assert!((got - want).abs() < tol, "exp({v}) = {got}, want {want}");
         }
     }
@@ -497,7 +497,7 @@ mod reduction {
             let got: f64 = exp(x).to_num();
             let want = x.to_num::<f64>().exp();
             assert!(
-                ((got - want) / want).abs() < 3e-12,
+                ((got - want) / want).abs() < 5e-15,
                 "I4F60 exp({v}) = {got}, want {want}"
             );
         }
@@ -579,7 +579,7 @@ mod reduction {
         let got: f64 = pow(I16F16::from_num(2), I16F16::from_num(10))
             .unwrap()
             .to_num();
-        assert!((got - 1024.0).abs() < 2.0, "I16F16 2^10 = {got}");
+        assert!((got - 1024.0).abs() < 0.5, "I16F16 2^10 = {got}");
     }
 
     #[test]
@@ -592,7 +592,7 @@ mod reduction {
             let got: f64 = pow(base, exponent).unwrap().to_num();
             let want = b.powf(e);
             // Small results are quantised to a few raw ulps.
-            let tol = 8.0f64.mul_add(2f64.powi(-64), 3e-12 * want);
+            let tol = 8.0f64.mul_add(2f64.powi(-64), 1e-14 * want);
             assert!(
                 (got - want).abs() < tol,
                 "pow({b}, {e}) = {got}, want {want}"
@@ -601,9 +601,9 @@ mod reduction {
         let x = I64F64::from_num(2.5);
         let root: f64 = pow(x, I64F64::from_num(0.5)).unwrap().to_num();
         let want: f64 = sqrt(x).unwrap().to_num();
-        assert!((root - want).abs() < 1e-13, "2.5^0.5 = {root}, want {want}");
+        assert!((root - want).abs() < 1e-15, "2.5^0.5 = {root}, want {want}");
         let inv: f64 = pow(x, -I64F64::ONE).unwrap().to_num();
-        assert!((inv - 0.4).abs() < 1e-13, "2.5^-1 = {inv}");
+        assert!((inv - 0.4).abs() < 1e-15, "2.5^-1 = {inv}");
     }
 
     #[test]

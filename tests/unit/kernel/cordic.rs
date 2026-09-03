@@ -27,3 +27,54 @@ mod tests {
         );
     }
 }
+
+/// Sweep both early-terminating kernels against `f64` at three widths.
+#[cfg(test)]
+mod early_termination {
+    use crate::unit::support::Lcg;
+    use fixed::types::{I16F16, I32F32, I64F64};
+    use fixed_analytics::CordicNumber;
+    use fixed_analytics::kernel::{circular_vectoring, hyperbolic_vectoring};
+
+    fn sweep<T: CordicNumber + fixed::traits::Fixed>(tol_circ: f64, tol_hyp: f64) {
+        let mut rng = Lcg(0xC0DE);
+        for i in 0..=2000 {
+            let v = if i <= 1000 {
+                -1.0 + 2.0 * f64::from(i) / 1000.0
+            } else {
+                rng.range(-1.0, 1.0)
+            };
+            let y = <T as fixed::traits::Fixed>::from_num(v);
+            let z: f64 = circular_vectoring(T::one(), y, T::zero()).2.to_num();
+            let want = v.atan();
+            assert!(
+                (z - want).abs() < tol_circ,
+                "atan({v}) via kernel = {z}, want {want} (tol {tol_circ})"
+            );
+            if v.abs() <= 0.75 {
+                let zh: f64 = hyperbolic_vectoring(T::one(), y, T::zero()).2.to_num();
+                let want_h = v.atanh();
+                assert!(
+                    (zh - want_h).abs() < tol_hyp,
+                    "atanh({v}) via kernel = {zh}, want {want_h} (tol {tol_hyp})"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn kernels_track_f64_at_i16f16() {
+        sweep::<I16F16>(8e-5, 8e-5);
+    }
+
+    #[test]
+    fn kernels_track_f64_at_i32f32() {
+        sweep::<I32F32>(3e-9, 3e-9);
+    }
+
+    #[test]
+    fn kernels_track_f64_at_i64f64() {
+        // Above an f64 ulp: the libm reference varies by platform.
+        sweep::<I64F64>(6e-16, 6e-16);
+    }
+}

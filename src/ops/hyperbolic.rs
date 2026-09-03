@@ -1,9 +1,10 @@
 //! Hyperbolic functions via hyperbolic CORDIC.
 
-use crate::bounded::{AtLeastOne, NonNegative, OpenUnitInterval};
+use crate::bounded::{AtLeastOne, NonNegative, OpenUnitInterval, UnitInterval};
 use crate::error::{Error, Result};
 use crate::kernel::hyperbolic_vectoring;
 use crate::ops::algebraic::sqrt_nonneg;
+use crate::ops::exponential::ln_positive;
 use crate::traits::CordicNumber;
 
 /// Hyperbolic CORDIC converges for |x| < sum of atanh table ≈ 1.1182.
@@ -65,11 +66,21 @@ pub fn sinh_cosh<T: CordicNumber>(x: T) -> (T, T) {
     let u = reduced.saturating_mul(reduced);
 
     // Divisors are (2k)(2k+1) for sinh and (2k-1)(2k) for cosh. At |x| ≤
-    // 1.1182 the omitted relative term is 7.7e-8 / 8.0e-9 at degrees 9 / 10
-    // and 3.7e-12 / 2.9e-13 at 13 / 14: below half an ulp up to 22 and 37
-    // fractional bits respectively.
+    // 1.1182 the omitted relative term is 7.7e-8 / 8.0e-9 at degrees 9 / 10,
+    // 3.7e-12 / 2.9e-13 at 13 / 14 and 4.5e-22 / 2.4e-23 at 21 / 22: below
+    // half an ulp up to 22, 37 and 70 fractional bits respectively.
     let mut sp = one;
     let mut cp = one;
+    if T::frac_bits() >= 40 {
+        sp = one.saturating_add(u.div_int(420).saturating_mul(sp));
+        sp = one.saturating_add(u.div_int(342).saturating_mul(sp));
+        sp = one.saturating_add(u.div_int(272).saturating_mul(sp));
+        sp = one.saturating_add(u.div_int(210).saturating_mul(sp));
+        cp = one.saturating_add(u.div_int(462).saturating_mul(cp));
+        cp = one.saturating_add(u.div_int(380).saturating_mul(cp));
+        cp = one.saturating_add(u.div_int(306).saturating_mul(cp));
+        cp = one.saturating_add(u.div_int(240).saturating_mul(cp));
+    }
     if T::frac_bits() >= 24 {
         sp = one.saturating_add(u.div_int(156).saturating_mul(sp));
         sp = one.saturating_add(u.div_int(110).saturating_mul(sp));
@@ -173,18 +184,39 @@ pub fn coth<T: CordicNumber>(x: T) -> Result<T> {
 #[must_use]
 #[cfg_attr(feature = "verify-no-panic", no_panic::no_panic)]
 pub fn asinh<T: CordicNumber>(x: T) -> T {
-    if x == T::zero() {
-        return T::zero();
+    let zero = T::zero();
+    let one = T::one();
+
+    if x == zero {
+        return zero;
     }
 
-    // asinh(x) = atanh(x / sqrt(1 + x²))
-    // NonNegative::one_plus_square(x) returns 1 + x², which is always ≥ 1
-    let sqrt_term = sqrt_nonneg(NonNegative::one_plus_square(x));
+    let abs_x = x.abs();
+    if abs_x <= one {
+        // asinh(x) = atanh(x / sqrt(1 + x²)); the argument is at most 1/√2,
+        // inside the CORDIC's direct range, and 1 + x² is always ≥ 1.
+        let sqrt_term = sqrt_nonneg(NonNegative::one_plus_square(x));
+        let arg = OpenUnitInterval::from_div_by_sqrt_one_plus_square(x, sqrt_term);
+        return atanh_open(arg);
+    }
 
-    // x / sqrt(1 + x²) is always in (-1, 1) since sqrt(1 + x²) > |x|
-    let arg = OpenUnitInterval::from_div_by_sqrt_one_plus_square(x, sqrt_term);
-
-    atanh_open(arg)
+    // Beyond 1 that argument approaches 1, where each step of atanh's
+    // argument reduction triples the error, so use
+    //   asinh(x) = sign(x)·ln(|x|·(1 + sqrt(1 + 1/x²))),
+    // with 1/x² formed as (1/|x|)², which cannot overflow.
+    let recip = one.div(abs_x);
+    let factor = one.saturating_add(sqrt_nonneg(NonNegative::one_plus_square(recip)));
+    let magnitude = if abs_x > T::max_value() >> 2 {
+        // |x|·factor would overflow (factor < 2.42): split the logarithm.
+        ln_positive(abs_x).saturating_add(ln_positive(factor))
+    } else {
+        ln_positive(abs_x.saturating_mul(factor))
+    };
+    if x.is_negative() {
+        -magnitude
+    } else {
+        magnitude
+    }
 }
 
 /// Inverse hyperbolic cosine. Domain: `x ≥ 1`.
@@ -195,19 +227,34 @@ pub fn asinh<T: CordicNumber>(x: T) -> T {
 #[cfg_attr(feature = "verify-no-panic", no_panic::no_panic)]
 pub fn acosh<T: CordicNumber>(x: T) -> Result<T> {
     let at_least_one = AtLeastOne::new(x).ok_or_else(|| Error::domain("acosh", "value >= 1"))?;
+    let zero = T::zero();
+    let one = T::one();
 
-    if x == T::one() {
-        return Ok(T::zero());
+    if x == one {
+        return Ok(zero);
     }
 
-    // acosh(x) = atanh(sqrt(x² - 1) / x) for x > 1
-    // NonNegative::square_minus_one gives x² - 1, which is ≥ 0 since x ≥ 1
-    let sqrt_term = sqrt_nonneg(NonNegative::square_minus_one(at_least_one));
+    if x < one.saturating_add(T::half()) {
+        // acosh(x) = atanh(sqrt(x² - 1) / x); below 1.5 the argument is
+        // under 0.75, inside the CORDIC's direct range, and x² - 1 ≥ 0.
+        let sqrt_term = sqrt_nonneg(NonNegative::square_minus_one(at_least_one));
+        let arg = OpenUnitInterval::from_sqrt_square_minus_one_div(sqrt_term, at_least_one);
+        return Ok(atanh_open(arg));
+    }
 
-    // sqrt(x² - 1) / x is in (-1, 1) for x > 1 since sqrt(x² - 1) < x
-    let arg = OpenUnitInterval::from_sqrt_square_minus_one_div(sqrt_term, at_least_one);
-
-    Ok(atanh_open(arg))
+    // Beyond 1.5 that argument approaches 1, where each step of atanh's
+    // argument reduction triples the error, so use
+    //   acosh(x) = ln(x·(1 + sqrt(1 - 1/x²))),
+    // with 1/x² formed as (1/x)², which cannot overflow.
+    let recip = UnitInterval::from_reciprocal(at_least_one);
+    let factor = one.saturating_add(sqrt_nonneg(NonNegative::one_minus_square(recip)));
+    let result = if x > T::max_value() >> 1 {
+        // x·factor would overflow (factor < 2): split the logarithm.
+        ln_positive(x).saturating_add(ln_positive(factor))
+    } else {
+        ln_positive(x.saturating_mul(factor))
+    };
+    Ok(result)
 }
 
 /// Inverse hyperbolic tangent. Domain: `(-1, 1)`.

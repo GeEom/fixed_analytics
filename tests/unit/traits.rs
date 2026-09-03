@@ -216,4 +216,11 @@ mod fast_path_helpers {
             I16F16::from_num(-3)
         );
     }
+
+    #[test]
+    fn sqrt_round_of_negative_is_root_of_magnitude() {
+        assert_eq!(I16F16::from_num(-4).sqrt_round(), I16F16::from_num(2));
+        assert_eq!(I64F64::from_num(-4).sqrt_round(), I64F64::from_num(2));
+        assert_eq!(I16F16::ZERO.sqrt_round(), I16F16::ZERO);
+    }
 }

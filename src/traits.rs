@@ -116,6 +116,10 @@ pub trait CordicNumber:
     /// Integer part of the base-2 logarithm, `⌊log₂(self)⌋`, or `None` if
     /// `self ≤ 0`.
     fn checked_int_log2(self) -> Option<i32>;
+    /// Square root, rounded to the nearest representable value. `self` must
+    /// be non-negative; the `fixed` types return the root of the magnitude.
+    #[must_use]
+    fn sqrt_round(self) -> Self;
     /// Convert from numeric type.
     fn from_num<N: fixed::traits::ToFixed>(n: N) -> Self;
     /// Maximum value.
@@ -133,6 +137,126 @@ pub trait CordicNumber:
 }
 
 // =============================================================================
+// Square root helpers
+// =============================================================================
+
+/// Round-to-nearest square root when `X << (FRAC_NBITS + 2)` fits in
+/// `$wide`: the raw result is `⌊√N + ½⌋ = (⌊2√N⌋ + 1) >> 1` with
+/// `N = X·2^f`, and `⌊2√N⌋ = isqrt(4N)`.
+macro_rules! sqrt_round_widened {
+    ($self:expr, $bits:ty, $wide:ty) => {{
+        let n4 = <$wide>::from($self.to_bits().unsigned_abs()) << (Self::FRAC_NBITS + 2);
+        #[allow(
+            clippy::cast_possible_truncation,
+            clippy::cast_possible_wrap,
+            reason = "the root has at most (total_bits + frac_bits) / 2 + 1 bits"
+        )]
+        Self::from_bits(((n4.isqrt() + 1) >> 1) as $bits)
+    }};
+}
+
+/// Round-to-nearest square root for 128-bit raw representations, where
+/// `X·2^f` does not fit in a machine integer. See [`sqrt_round_u128`].
+macro_rules! sqrt_round_i128 {
+    ($self:expr, $bits:ty, $wide:ty) => {{
+        let root = sqrt_round_u128($self.to_bits().unsigned_abs(), Self::FRAC_NBITS, |a, b| {
+            // ⌊a·2^f / b⌋ for b ≥ √N is below 2^127, so this cannot
+            // overflow; the fallback only keeps the function total.
+            #[allow(clippy::cast_possible_wrap, reason = "operands below 2^127")]
+            let quotient =
+                Fixed::checked_div(Self::from_bits(a as i128), Self::from_bits(b as i128));
+            #[allow(clippy::cast_sign_loss, reason = "quotient of positive operands")]
+            {
+                quotient.map_or(i128::MAX, Self::to_bits) as u128
+            }
+        });
+        #[allow(clippy::cast_possible_wrap, reason = "root below 2^127")]
+        Self::from_bits(root as $bits)
+    }};
+}
+
+/// A 256-bit unsigned integer as `(high, low)` limbs.
+type U256 = (u128, u128);
+
+/// `a · b` as a 256-bit product.
+const fn wide_mul(a: u128, b: u128) -> U256 {
+    const MASK: u128 = u64::MAX as u128;
+    let (a_hi, a_lo) = (a >> 64, a & MASK);
+    let (b_hi, b_lo) = (b >> 64, b & MASK);
+    let ll = a_lo * b_lo;
+    let lh = a_lo * b_hi;
+    let hl = a_hi * b_lo;
+    let hh = a_hi * b_hi;
+    let (mid, mid_carry) = lh.overflowing_add(hl);
+    let (lo, lo_carry) = ll.overflowing_add(mid << 64);
+    let hi = hh + (mid >> 64) + ((mid_carry as u128) << 64) + (lo_carry as u128);
+    (hi, lo)
+}
+
+/// `x << shift` as a 256-bit value, for `0 < shift < 128`.
+const fn wide_shl(x: u128, shift: u32) -> U256 {
+    (x >> (128 - shift), x << shift)
+}
+
+/// `a > b` for 256-bit values.
+const fn wide_gt(a: U256, b: U256) -> bool {
+    a.0 > b.0 || (a.0 == b.0 && a.1 > b.1)
+}
+
+/// Low limb of `a − b`, for `a ≥ b` with a difference below 2^128.
+const fn wide_sub_lo(a: U256, b: U256) -> u128 {
+    a.1.wrapping_sub(b.1)
+}
+
+/// Round-to-nearest square root of `x / 2^frac` (`x < 2^127`), in raw units:
+/// `⌊√N + ½⌋` with `N = x·2^frac`, up to 254 bits.
+///
+/// `x` is shifted left by the largest `s ≤ leading_zeros(x)` with
+/// `s ≡ frac (mod 2)`, giving `q = isqrt(x·2^s)` with 64 significant bits.
+/// If `s ≥ frac`, `q >> ((s − frac)/2)` is exactly `⌊√N⌋`. Otherwise
+/// `seed = (q + 1) << m` lies above `√N` by less than `2^(m+1)`, one Newton
+/// step from above lands on `⌊√N⌋` or `⌊√N⌋ + 1` (its error is below
+/// `2^(m − 64)`, `m ≤ 63`), and a 256-bit remainder settles floor and
+/// rounding. `div_scaled(a, b)` must return `⌊a·2^frac / b⌋`; it is only
+/// called with `b ≥ √N`.
+fn sqrt_round_u128(x: u128, frac: u32, div_scaled: impl FnOnce(u128, u128) -> u128) -> u128 {
+    if x == 0 {
+        return 0;
+    }
+    let lz = x.leading_zeros();
+    let shift = lz - ((lz ^ frac) & 1);
+    let root_hi = (x << shift).isqrt();
+
+    if shift >= frac {
+        let excess = (shift - frac) / 2;
+        if excess >= 1 {
+            // ⌊2√N⌋ = root_hi >> (excess − 1); round half up.
+            return ((root_hi >> (excess - 1)) + 1) >> 1;
+        }
+        // root_hi = ⌊√N⌋, and N fits in 128 bits since shift = frac ≤ lz.
+        let root_sq = root_hi * root_hi;
+        let rem = (x << frac) - root_sq;
+        return if rem > root_hi { root_hi + 1 } else { root_hi };
+    }
+
+    let missing = (frac - shift) / 2;
+    #[allow(clippy::cast_sign_loss, reason = "i128::MAX is positive")]
+    let seed = ((root_hi + 1) << missing).min(i128::MAX as u128);
+    let newton = u128::midpoint(seed, div_scaled(x, seed));
+
+    let n = wide_shl(x, frac);
+    let newton_sq = wide_mul(newton, newton);
+    let (root, rem) = if wide_gt(newton_sq, n) {
+        // newton = ⌊√N⌋ + 1: N − (newton − 1)² = (2·newton − 1) − (newton² − N).
+        (newton - 1, (2 * newton - 1) - wide_sub_lo(newton_sq, n))
+    } else {
+        (newton, wide_sub_lo(n, newton_sq))
+    };
+    // rem = N − root² ∈ [0, 2·root]; round up exactly when rem > root.
+    if rem > root { root + 1 } else { root }
+}
+
+// =============================================================================
 // Generic implementations using macros
 // =============================================================================
 
@@ -147,6 +271,8 @@ macro_rules! impl_cordic_generic {
     (
         $fixed_type:ident,
         $bits_type:ty,
+        $wide_type:ty,     // Unsigned type holding bits << (frac + 2) for sqrt
+        $sqrt_impl:ident,  // sqrt_round_widened or sqrt_round_i128
         $total_bits:expr,
         $max_frac:ty,      // Maximum fractional bits for the type
         $pi_frac:ty,       // Max frac bits where PI fits (total - 2)
@@ -339,6 +465,11 @@ macro_rules! impl_cordic_generic {
             }
 
             #[inline]
+            fn sqrt_round(self) -> Self {
+                $sqrt_impl!(self, $bits_type, $wide_type)
+            }
+
+            #[inline]
             fn from_num<N: fixed::traits::ToFixed>(n: N) -> Self {
                 Self::from_num(n)
             }
@@ -377,28 +508,69 @@ use fixed::types::extra::{
 // - For PI (~3.14), need 2 integer bits, so Fract ≤ 6 (I2F6)
 // - For FRAC_PI_2, FRAC_PI_4, LN_2, need 1 integer bit, so Fract ≤ 7 (I1F7)
 // Being conservative: require Fract ≤ 5 so we have headroom
-impl_cordic_generic!(FixedI8, i8, 8, U8, U5, U6, U7);
+impl_cordic_generic!(FixedI8, i8, u16, sqrt_round_widened, 8, U8, U5, U6, U7);
 
 // FixedI16<Fract>: 16 total bits
 // - For PI, need Fract ≤ 14 (I2F14)
 // - For FRAC_PI_2, FRAC_PI_4, LN_2, need Fract ≤ 15 (I1F15)
 // - Conservative: Fract ≤ 13
-impl_cordic_generic!(FixedI16, i16, 16, U16, U13, U14, U15);
+impl_cordic_generic!(
+    FixedI16,
+    i16,
+    u32,
+    sqrt_round_widened,
+    16,
+    U16,
+    U13,
+    U14,
+    U15
+);
 
 // FixedI32<Fract>: 32 total bits
 // - For PI, need Fract ≤ 30
 // - For FRAC_PI_2, FRAC_PI_4, LN_2, need Fract ≤ 31
 // - Conservative: Fract ≤ 29
-impl_cordic_generic!(FixedI32, i32, 32, U32, U29, U30, U31);
+impl_cordic_generic!(
+    FixedI32,
+    i32,
+    u64,
+    sqrt_round_widened,
+    32,
+    U32,
+    U29,
+    U30,
+    U31
+);
 
 // FixedI64<Fract>: 64 total bits
 // - For PI, need Fract ≤ 62
 // - For FRAC_PI_2, FRAC_PI_4, LN_2, need Fract ≤ 63
 // - Conservative: Fract ≤ 61
-impl_cordic_generic!(FixedI64, i64, 64, U64, U61, U62, U63);
+impl_cordic_generic!(
+    FixedI64,
+    i64,
+    u128,
+    sqrt_round_widened,
+    64,
+    U64,
+    U61,
+    U62,
+    U63
+);
 
 // FixedI128<Fract>: 128 total bits
 // - For PI, need Fract ≤ 126
 // - For FRAC_PI_2, FRAC_PI_4, LN_2, need Fract ≤ 127
 // - Conservative: Fract ≤ 125
-impl_cordic_generic!(FixedI128, i128, 128, U128, U125, U126, U127);
+// No wider machine integer exists, so sqrt takes the Newton path.
+impl_cordic_generic!(
+    FixedI128,
+    i128,
+    u128,
+    sqrt_round_i128,
+    128,
+    U128,
+    U125,
+    U126,
+    U127
+);

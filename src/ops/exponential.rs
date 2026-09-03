@@ -116,9 +116,19 @@ pub fn exp<T: CordicNumber>(x: T) -> T {
     }
 
     // Factored Taylor: exp(r) = 1 + r*(1 + r/2*(1 + r/3*(1 + ... r/n))).
-    // The omitted term (ln2)^(n+1)/(n+1)! is 1.3e-6 at degree 7 and 1.4e-12
-    // at degree 12: below half an ulp up to 18 and 38 fractional bits.
+    // The omitted term (ln2)^(n+1)/(n+1)! is 1.3e-6 at degree 7, 1.4e-12 at
+    // degree 12 and 2.7e-22 at degree 19: below half an ulp up to 18, 38
+    // and 70 fractional bits respectively.
     let mut p = one;
+    if T::frac_bits() >= 40 {
+        p = one.saturating_add(r.div_int(19).saturating_mul(p));
+        p = one.saturating_add(r.div_int(18).saturating_mul(p));
+        p = one.saturating_add(r.div_int(17).saturating_mul(p));
+        p = one.saturating_add(r.div_int(16).saturating_mul(p));
+        p = one.saturating_add(r.div_int(15).saturating_mul(p));
+        p = one.saturating_add(r.div_int(14).saturating_mul(p));
+        p = one.saturating_add(r.div_int(13).saturating_mul(p));
+    }
     if T::frac_bits() >= 24 {
         p = one.saturating_add(r.div_int(12).saturating_mul(p));
         p = one.saturating_add(r.div_int(11).saturating_mul(p));
