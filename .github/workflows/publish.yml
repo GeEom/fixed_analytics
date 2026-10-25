@@ -20,6 +20,8 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  # Overrides rust-toolchain.toml, which pins the toolchain for check.sh.
+  RUSTUP_TOOLCHAIN: stable
 
 concurrency:
   group: publish
