@@ -5,10 +5,7 @@ use core::fmt;
 /// Errors that can occur during CORDIC computations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Error {
-    /// Input value is outside the valid domain for the function.
-    ///
-    /// For example, `asin(2.0)` would produce this error since
-    /// arcsine is only defined for inputs in [-1, 1].
+    /// The input is outside the function's domain, as for `asin(2.0)`.
     DomainError {
         /// Name of the function that encountered the error.
         function: &'static str,
@@ -18,7 +15,7 @@ pub enum Error {
 }
 
 impl Error {
-    /// Create a domain error for the given function.
+    /// A domain error for the given function.
     #[must_use]
     pub const fn domain(function: &'static str, expected: &'static str) -> Self {
         Self::DomainError { function, expected }

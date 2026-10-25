@@ -63,9 +63,9 @@ The following total functions saturate, clamping to the representable range near
 | Function | I16F16 Threshold | I32F32 Threshold | Result |
 |----------|------------------|------------------|--------|
 | `exp` | x ≥ 10.4 | x ≥ 21.5 | `T::MAX` |
-| `exp` | x ≤ -11.1 | x ≤ -22.2 | Zero |
+| `exp` | x ≤ -11.8 | x ≤ -22.9 | Zero |
 | `pow2` | x ≥ 15.0 | x ≥ 31.0 | `T::MAX` |
-| `pow2` | x ≤ -16.1 | x ≤ -32.1 | Zero |
+| `pow2` | x ≤ -17.0 | x ≤ -33.0 | Zero |
 | `sinh` | \|x\| ≥ 11.1 | \|x\| ≥ 22.2 | `T::MAX` or `T::MIN` |
 | `cosh` | \|x\| ≥ 11.1 | \|x\| ≥ 22.2 | `T::MAX` |
 | `tan` | \|x - pole\| < 4e-5 | \|x - pole\| < 5e-10 | `T::MAX` or `T::MIN` |

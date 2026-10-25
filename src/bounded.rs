@@ -1,53 +1,24 @@
-//! Bounded value types that encode mathematical invariants at the type level.
+//! Value types whose range is known from how they were built.
 //!
-//! These types provide compile-time guarantees about value ranges, eliminating
-//! the need for runtime checks in internal computations where the domain is
-//! already validated.
-//!
-//! # Types
-//!
-//! - [`NonNegative<T>`]: Values >= 0 (for sqrt inputs)
-//! - [`UnitInterval<T>`]: Values in [-1, 1] (for asin/acos inputs)
-//! - [`OpenUnitInterval<T>`]: Values in (-1, 1) (for atanh inputs)
-//!
-//! # Design Philosophy
-//!
-//! Rather than using `unsafe` or `expect`, these types encode the mathematical
-//! relationships between operations. For example:
-//!
-//! - `1 + x^2` is always >= 1, so `NonNegative::one_plus_square(x)` is infallible
-//! - If `|x| <= 1`, then `1 - x^2` is in [0, 1], so `NonNegative::one_minus_square(unit_x)` is infallible
-//! - `x / sqrt(1 + x^2)` is always in (-1, 1), so `OpenUnitInterval::x_div_sqrt_one_plus_x_sq(x)` is infallible
+//! Each holds a value checked by `new`, or the result of an identity that
+//! cannot leave the range, such as [`NonNegative::one_plus_square`] for
+//! `1 + x²`. Internal code then needs no domain checks, `unsafe` or `expect`.
 
 use crate::traits::CordicNumber;
 
-/// A value guaranteed to be non-negative (>= 0).
-///
-/// This type enables infallible sqrt operations by encoding the non-negativity
-/// constraint at the type level.
-///
-/// # Construction
-///
-/// - [`NonNegative::new`]: Checked construction, returns `Option`
-/// - [`NonNegative::one_plus_square`]: From `1 + x^2`, always valid
-/// - [`NonNegative::one_minus_square`]: From `1 - x^2` where `|x| <= 1`, always valid
-/// - [`NonNegative::square_minus_one`]: From `x^2 - 1` where `|x| >= 1`, always valid
+/// A value `≥ 0`, the input to an infallible square root.
 #[derive(Clone, Copy, Debug)]
 pub struct NonNegative<T>(T);
 
 impl<T: CordicNumber> NonNegative<T> {
-    /// Creates a new `NonNegative` value if the input is >= 0.
-    ///
-    /// Returns `None` if the value is negative.
+    /// Returns `Some` if `value ≥ 0`.
     #[inline]
     #[must_use]
     pub fn new(value: T) -> Option<Self> {
         (value >= T::zero()).then_some(Self(value))
     }
 
-    /// Constructs from `1 + x^2`, which is always >= 1.
-    ///
-    /// This is mathematically infallible: for any real `x`, `1 + x^2 >= 1`.
+    /// Builds `1 + x²`, which is at least 1.
     #[inline]
     #[must_use]
     pub fn one_plus_square(x: T) -> Self {
@@ -55,10 +26,7 @@ impl<T: CordicNumber> NonNegative<T> {
         Self(T::one().saturating_add(x_sq))
     }
 
-    /// Constructs from `1 - x^2` where `|x| <= 1`.
-    ///
-    /// This is mathematically infallible: if `|x| <= 1`, then `x^2 <= 1`,
-    /// so `1 - x^2 >= 0`.
+    /// Builds `1 − x²`, which is non-negative for `|x| ≤ 1`.
     #[inline]
     #[must_use]
     pub fn one_minus_square(x: UnitInterval<T>) -> Self {
@@ -66,10 +34,7 @@ impl<T: CordicNumber> NonNegative<T> {
         Self(T::one().saturating_sub(x_sq))
     }
 
-    /// Constructs from `x^2 - 1` where `|x| >= 1`.
-    ///
-    /// This is mathematically infallible: if `|x| >= 1`, then `x^2 >= 1`,
-    /// so `x^2 - 1 >= 0`.
+    /// Builds `x² − 1`, which is non-negative for `x ≥ 1`.
     #[inline]
     #[must_use]
     pub fn square_minus_one(x: AtLeastOne<T>) -> Self {
@@ -77,7 +42,7 @@ impl<T: CordicNumber> NonNegative<T> {
         Self(x_sq.saturating_sub(T::one()))
     }
 
-    /// Unwraps the inner value.
+    /// Returns the inner value.
     #[inline]
     #[must_use]
     pub const fn get(self) -> T {
@@ -85,17 +50,12 @@ impl<T: CordicNumber> NonNegative<T> {
     }
 }
 
-/// A value guaranteed to be in the closed interval [-1, 1].
-///
-/// This type is used for inputs to functions like asin and acos that
-/// require their argument to be in this range.
+/// A value in the closed interval `[-1, 1]`, as asin and acos take.
 #[derive(Clone, Copy, Debug)]
 pub struct UnitInterval<T>(T);
 
 impl<T: CordicNumber> UnitInterval<T> {
-    /// Creates a new `UnitInterval` value if the input is in [-1, 1].
-    ///
-    /// Returns `None` if the value is outside the interval.
+    /// Returns `Some` if `value` is in `[-1, 1]`.
     #[inline]
     #[must_use]
     pub fn new(value: T) -> Option<Self> {
@@ -103,14 +63,14 @@ impl<T: CordicNumber> UnitInterval<T> {
         (value >= -one && value <= one).then_some(Self(value))
     }
 
-    /// Constructs `1 / x` where `x >= 1`, which is always in (0, 1].
+    /// Builds `1 / x`, which is in `(0, 1]` for `x ≥ 1`.
     #[inline]
     #[must_use]
     pub fn from_reciprocal(x: AtLeastOne<T>) -> Self {
         Self(T::one().div(x.0))
     }
 
-    /// Unwraps the inner value.
+    /// Returns the inner value.
     #[inline]
     #[must_use]
     pub const fn get(self) -> T {
@@ -118,16 +78,12 @@ impl<T: CordicNumber> UnitInterval<T> {
     }
 }
 
-/// A value guaranteed to be in the open interval (-1, 1).
-///
-/// This type is used for inputs to atanh, which requires strict inequality.
+/// A value in the open interval `(-1, 1)`, as atanh takes.
 #[derive(Clone, Copy, Debug)]
 pub struct OpenUnitInterval<T>(T);
 
 impl<T: CordicNumber> OpenUnitInterval<T> {
-    /// Creates a new `OpenUnitInterval` value if the input is in (-1, 1).
-    ///
-    /// Returns `None` if the value is outside the interval or on the boundary.
+    /// Returns `Some` if `value` is in `(-1, 1)`.
     #[inline]
     #[must_use]
     pub fn new(value: T) -> Option<Self> {
@@ -135,34 +91,23 @@ impl<T: CordicNumber> OpenUnitInterval<T> {
         (value > -one && value < one).then_some(Self(value))
     }
 
-    /// Constructs from `x / sqrt(1 + x^2)`, which is always in (-1, 1).
-    ///
-    /// This is mathematically infallible: for any real `x`,
-    /// `|x / sqrt(1 + x^2)| < 1` because `sqrt(1 + x^2) > |x|`.
-    ///
-    /// Note: Requires the sqrt to be computed first.
+    /// Builds `x / √(1 + x²)` from the computed root; it is below 1 in magnitude as
+    /// `√(1 + x²) > |x|`.
     #[inline]
     #[must_use]
     pub fn from_div_by_sqrt_one_plus_square(x: T, sqrt_one_plus_x_sq: T) -> Self {
         Self(x.div(sqrt_one_plus_x_sq))
     }
 
-    /// Constructs from `sqrt(x^2 - 1) / x` where `|x| >= 1`.
-    ///
-    /// This is mathematically infallible: for `|x| >= 1`,
-    /// `|sqrt(x^2 - 1) / x| < 1` because `sqrt(x^2 - 1) < |x|` for `|x| > 1`.
-    ///
-    /// Note: Requires the sqrt to be computed first.
+    /// Builds `√(x² − 1) / x` from the computed root; it is below 1 in magnitude as
+    /// `√(x² − 1) < x`.
     #[inline]
     #[must_use]
     pub fn from_sqrt_square_minus_one_div(sqrt_x_sq_minus_one: T, x: AtLeastOne<T>) -> Self {
         Self(sqrt_x_sq_minus_one.div(x.0))
     }
 
-    /// Constructs from `(x - 1) / (x + 1)` where `x` is in [0.5, 2].
-    ///
-    /// This is mathematically infallible: for `x` in [0.5, 2],
-    /// `(x - 1) / (x + 1)` is in `(-1/3, 1/3)` which is a subset of `(-1, 1)`.
+    /// Builds `(x − 1) / (x + 1)`, which lies in `[-1/3, 1/3]` for `x` in `[0.5, 2]`.
     #[inline]
     #[must_use]
     pub(crate) fn from_normalized_ln_arg(x: NormalizedLnArg<T>) -> Self {
@@ -171,7 +116,7 @@ impl<T: CordicNumber> OpenUnitInterval<T> {
         Self(x_minus_1.div(x_plus_1))
     }
 
-    /// Unwraps the inner value.
+    /// Returns the inner value.
     #[inline]
     #[must_use]
     pub const fn get(self) -> T {
@@ -179,23 +124,19 @@ impl<T: CordicNumber> OpenUnitInterval<T> {
     }
 }
 
-/// A value guaranteed to be >= 1 (or <= -1 for the absolute value).
-///
-/// This type is used for inputs to acosh which requires x >= 1.
+/// A value `≥ 1`, as acosh takes.
 #[derive(Clone, Copy, Debug)]
 pub struct AtLeastOne<T>(T);
 
 impl<T: CordicNumber> AtLeastOne<T> {
-    /// Creates a new `AtLeastOne` value if the input is >= 1.
-    ///
-    /// Returns `None` if the value is less than 1.
+    /// Returns `Some` if `value ≥ 1`.
     #[inline]
     #[must_use]
     pub fn new(value: T) -> Option<Self> {
         (value >= T::one()).then_some(Self(value))
     }
 
-    /// Unwraps the inner value.
+    /// Returns the inner value.
     #[inline]
     #[must_use]
     pub const fn get(self) -> T {
@@ -203,18 +144,12 @@ impl<T: CordicNumber> AtLeastOne<T> {
     }
 }
 
-/// A value guaranteed to be in [0.5, 2], used for ln argument normalization.
-///
-/// After normalizing the input for ln computation, the value is always
-/// in this range, which guarantees that `(x-1)/(x+1)` is in `(-1/3, 1/3)`.
+/// The ln argument after normalization, in `[0.5, 2]`.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct NormalizedLnArg<T>(T);
 
 impl<T: CordicNumber> NormalizedLnArg<T> {
-    /// Creates a new `NormalizedLnArg` from the normalization loop result.
-    ///
-    /// The ln function's normalization loop guarantees the result is in [0.5, 2].
-    /// This constructor trusts that invariant.
+    /// Wraps the normalized value unchecked; `ln_positive` guarantees the range.
     #[inline]
     #[must_use]
     pub(crate) const fn from_normalized(value: T) -> Self {
@@ -223,7 +158,6 @@ impl<T: CordicNumber> NormalizedLnArg<T> {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, reason = "test code uses unwrap for conciseness")]
 mod tests {
     use super::*;
     use fixed::types::I16F16;
@@ -243,18 +177,20 @@ mod tests {
     }
 
     #[test]
-    fn non_negative_one_minus_square() {
-        let unit = UnitInterval::new(I16F16::from_num(0.5)).unwrap();
+    fn non_negative_one_minus_square() -> Result<(), &'static str> {
+        let unit = UnitInterval::new(I16F16::from_num(0.5)).ok_or("out of range")?;
         let nn = NonNegative::one_minus_square(unit);
         let val: f32 = nn.get().to_num();
         assert!((val - 0.75).abs() < 0.01);
+        Ok(())
     }
 
     #[test]
-    fn non_negative_square_minus_one() {
-        let at_least = AtLeastOne::new(I16F16::from_num(2)).unwrap();
+    fn non_negative_square_minus_one() -> Result<(), &'static str> {
+        let at_least = AtLeastOne::new(I16F16::from_num(2)).ok_or("out of range")?;
         let nn = NonNegative::square_minus_one(at_least);
         assert_eq!(nn.get(), I16F16::from_num(3));
+        Ok(())
     }
 
     #[test]
@@ -267,18 +203,20 @@ mod tests {
     }
 
     #[test]
-    fn unit_interval_from_reciprocal() {
-        let at_least = AtLeastOne::new(I16F16::from_num(4)).unwrap();
+    fn unit_interval_from_reciprocal() -> Result<(), &'static str> {
+        let at_least = AtLeastOne::new(I16F16::from_num(4)).ok_or("out of range")?;
         assert_eq!(
             UnitInterval::from_reciprocal(at_least).get(),
             I16F16::from_num(0.25)
         );
+        Ok(())
     }
 
     #[test]
-    fn unit_interval_get() {
-        let unit = UnitInterval::new(I16F16::from_num(0.5)).unwrap();
+    fn unit_interval_get() -> Result<(), &'static str> {
+        let unit = UnitInterval::new(I16F16::from_num(0.5)).ok_or("out of range")?;
         assert_eq!(unit.get(), I16F16::from_num(0.5));
+        Ok(())
     }
 
     #[test]
@@ -290,9 +228,10 @@ mod tests {
     }
 
     #[test]
-    fn open_unit_interval_get() {
-        let open = OpenUnitInterval::new(I16F16::from_num(0.5)).unwrap();
+    fn open_unit_interval_get() -> Result<(), &'static str> {
+        let open = OpenUnitInterval::new(I16F16::from_num(0.5)).ok_or("out of range")?;
         assert_eq!(open.get(), I16F16::from_num(0.5));
+        Ok(())
     }
 
     #[test]
@@ -305,21 +244,14 @@ mod tests {
     }
 
     #[test]
-    fn open_unit_interval_from_sqrt_div() {
-        let at_least = AtLeastOne::new(I16F16::from_num(2)).unwrap();
-        #[allow(
-            clippy::approx_constant,
-            reason = "testing with known approximation of sqrt(3)"
-        )]
+    fn open_unit_interval_from_sqrt_div() -> Result<(), &'static str> {
+        let at_least = AtLeastOne::new(I16F16::from_num(2)).ok_or("out of range")?;
         let sqrt_x_sq_minus_one = I16F16::from_num(1.732);
         let open = OpenUnitInterval::from_sqrt_square_minus_one_div(sqrt_x_sq_minus_one, at_least);
         let val: f32 = open.get().to_num();
-        #[allow(
-            clippy::approx_constant,
-            reason = "testing with known approximation of sqrt(3)/2"
-        )]
         let expected = 0.866_f32;
         assert!((val - expected).abs() < 0.01);
+        Ok(())
     }
 
     #[test]
@@ -330,9 +262,10 @@ mod tests {
     }
 
     #[test]
-    fn at_least_one_get() {
-        let at_least = AtLeastOne::new(I16F16::from_num(2)).unwrap();
+    fn at_least_one_get() -> Result<(), &'static str> {
+        let at_least = AtLeastOne::new(I16F16::from_num(2)).ok_or("out of range")?;
         assert_eq!(at_least.get(), I16F16::from_num(2));
+        Ok(())
     }
 
     #[test]
