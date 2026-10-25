@@ -1,6 +1,6 @@
 [package]
 name = "fixed_analytics"
-version = "3.1.0"
+version = "3.1.1"
 edition = "2024"
 rust-version = "1.95"
 authors = ["David Gathercole"]
@@ -11,6 +11,14 @@ readme = "README.md"
 license = "MIT"
 keywords = ["fixed-point", "trigonometry", "math", "no_std", "deterministic"]
 categories = ["mathematics", "no-std", "algorithms", "embedded"]
+# Derivation notes for maintainers, which the code comments cite (docs.rs
+# shows only the pages lib.rs and the modules include), and the local gate
+# and CI configuration, which would pin anyone building the packaged crate to
+# this repo's toolchain.
+exclude = [
+    "docs/exp.md", "docs/sin_cos.md", "docs/sinh_cosh.md", "docs/sqrt.md",
+    "rust-toolchain.toml", "clippy.toml", "codecov.yml", ".github/",
+]
 
 [package.metadata.docs.rs]
 features = ["std"]
@@ -95,7 +103,14 @@ dbg_macro = "deny"
 panic = "deny"
 todo = "deny"
 exit = "deny"
+allow_attributes = "deny"
+unreachable = "deny"
+let_underscore_must_use = "deny"
+let_underscore_untyped = "deny"
+unused_result_ok = "deny"
 
 # Allow specific pedantic lints that are too noisy
 module_name_repetitions = "allow"
 similar_names = "allow"
+redundant_pub_crate = "allow"
+multiple_crate_versions = "allow"

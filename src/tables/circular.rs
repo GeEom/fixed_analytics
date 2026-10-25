@@ -1,33 +1,30 @@
-//! Arctangent table for circular CORDIC. Values: `atan(2^-i)` as I1F63.
-//!
-//! Gain factor K = ∏ sqrt(1 + 2^(-2i)) ≈ 1.6468. We store 1/K ≈ 0.6073.
-//! For i ≥ 21, atan(x) ≈ x to I1F63 precision.
+//! Arctangent table for circular CORDIC.
 
-/// `atan(2^-i)` as I1F63. Index 0 = atan(1) = π/4.
+/// `atan(2^-i)` as I1F63 at index i, starting at atan(1) = π/4. From 2^-21
+/// on, each entry equals its argument to I1F63 precision.
 #[rustfmt::skip]
 pub const ATAN_TABLE: [i64; 64] = [
-    0x6487_ED51_10B4_611A,  // atan(2^0) = π/4
-    0x3B58_CE0A_C376_9ED1,  // atan(2^-1)
-    0x1F5B_75F9_2C80_DD63,  // atan(2^-2)
-    0x0FEA_DD4D_5617_B6E3,  // atan(2^-3)
-    0x07FD_56ED_CB3F_7A72,  // atan(2^-4)
-    0x03FF_AAB7_752E_C495,  // atan(2^-5)
-    0x01FF_F555_BBB7_29AB,  // atan(2^-6)
-    0x00FF_FEAA_ADDD_D4B9,  // atan(2^-7)
-    0x007F_FFD5_556E_EEDD,  // atan(2^-8)
-    0x003F_FFFA_AAAB_7777,  // atan(2^-9)
-    0x001F_FFFF_5555_5BBC,  // atan(2^-10)
-    0x000F_FFFF_EAAA_AADE,  // atan(2^-11)
-    0x0007_FFFF_FD55_5557,  // atan(2^-12)
-    0x0003_FFFF_FFAA_AAAB,  // atan(2^-13)
-    0x0001_FFFF_FFF5_5555,  // atan(2^-14)
-    0x0000_FFFF_FFFE_AAAB,  // atan(2^-15)
-    0x0000_7FFF_FFFF_D555,  // atan(2^-16)
-    0x0000_3FFF_FFFF_FAAB,  // atan(2^-17)
-    0x0000_1FFF_FFFF_FF55,  // atan(2^-18)
-    0x0000_0FFF_FFFF_FFEB,  // atan(2^-19)
-    0x0000_07FF_FFFF_FFFD,  // atan(2^-20)
-    // For i >= 21: atan(2^-i) ≈ 2^-i to I1F63 precision
+    0x6487_ED51_10B4_611A,
+    0x3B58_CE0A_C376_9ED1,
+    0x1F5B_75F9_2C80_DD63,
+    0x0FEA_DD4D_5617_B6E3,
+    0x07FD_56ED_CB3F_7A72,
+    0x03FF_AAB7_752E_C495,
+    0x01FF_F555_BBB7_29AB,
+    0x00FF_FEAA_ADDD_D4B9,
+    0x007F_FFD5_556E_EEDD,
+    0x003F_FFFA_AAAB_7777,
+    0x001F_FFFF_5555_5BBC,
+    0x000F_FFFF_EAAA_AADE,
+    0x0007_FFFF_FD55_5557,
+    0x0003_FFFF_FFAA_AAAB,
+    0x0001_FFFF_FFF5_5555,
+    0x0000_FFFF_FFFE_AAAB,
+    0x0000_7FFF_FFFF_D555,
+    0x0000_3FFF_FFFF_FAAB,
+    0x0000_1FFF_FFFF_FF55,
+    0x0000_0FFF_FFFF_FFEB,
+    0x0000_07FF_FFFF_FFFD,
     0x0000_0400_0000_0000,
     0x0000_0200_0000_0000,
     0x0000_0100_0000_0000,

@@ -1,7 +1,5 @@
 //! Benchmarks for CORDIC functions, on `I16F16` and on `I64F64`.
 
-#![allow(missing_docs, reason = "benchmark code does not need documentation")]
-
 use std::hint::black_box;
 
 use criterion::{Criterion, criterion_group, criterion_main};

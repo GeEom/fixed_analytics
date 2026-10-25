@@ -5,24 +5,11 @@ use fixed::traits::{Fixed, FixedSigned};
 use fixed::types::extra::{IsLessOrEqual, LeEqU128, True, Unsigned};
 use fixed::{FixedI8, FixedI16, FixedI32, FixedI64, FixedI128};
 
-/// A number type that can be used with CORDIC-based algorithms.
+/// The operations and constants the algorithms need from a fixed-point type.
 ///
-/// This trait abstracts over fixed-point number types, providing the
-/// operations and constants necessary for CORDIC computations.
-///
-/// # Implementors
-///
-/// This trait is implemented generically for all signed fixed-point types
-/// from the `fixed` crate that have sufficient fractional bits to represent
-/// the required constants (π, e, etc.):
-///
-/// - [`FixedI8<Fract>`](fixed::FixedI8) where Fract ≤ 5 (for π to fit)
-/// - [`FixedI16<Fract>`](fixed::FixedI16) where Fract ≤ 13
-/// - [`FixedI32<Fract>`](fixed::FixedI32) where Fract ≤ 29
-/// - [`FixedI64<Fract>`](fixed::FixedI64) where Fract ≤ 61
-/// - [`FixedI128<Fract>`](fixed::FixedI128) where Fract ≤ 125
-///
-/// Common type aliases like `I16F16`, `I32F32`, `I8F24`, `I24F8` all work.
+/// Every signed `fixed` type with three or more integer bits implements it,
+/// from [`FixedI8`] to [`FixedI128`] with up
+/// to 5, 13, 29, 61 or 125 fractional bits; `I16F16` and `I24F8` qualify.
 pub trait CordicNumber:
     Copy
     + PartialEq
@@ -68,12 +55,11 @@ pub trait CordicNumber:
     /// Absolute value.
     #[must_use]
     fn abs(self) -> Self;
-    /// Fractional bits. Determines CORDIC iteration count.
+    /// Fractional bits, which set the CORDIC iteration count.
     fn frac_bits() -> u32;
     /// Total bits.
     fn total_bits() -> u32;
-    /// Converts from a raw I1F63 representation (1 sign bit, 63 fractional bits).
-    /// For constants in (-1, 1).
+    /// Converts a constant in (-1, 1) from raw I1F63 bits, truncating.
     fn from_i1f63(bits: i64) -> Self;
     /// Returns true if negative.
     fn is_negative(self) -> bool;
@@ -90,9 +76,8 @@ pub trait CordicNumber:
     /// Saturating subtraction.
     #[must_use]
     fn saturating_sub(self, rhs: Self) -> Self;
-    /// Wrapping multiplication, for use only where overflow is provably
-    /// impossible: then it matches [`saturating_mul`](Self::saturating_mul)
-    /// bit for bit without the overflow check.
+    /// Wrapping multiplication, only for where overflow is impossible and it
+    /// matches [`saturating_mul`](Self::saturating_mul) without the check.
     #[must_use]
     fn wrapping_mul(self, rhs: Self) -> Self;
     /// Wrapping addition. Same contract as [`wrapping_mul`](Self::wrapping_mul).
@@ -104,20 +89,18 @@ pub trait CordicNumber:
     /// Saturating multiplication by an integer. Exact unless it saturates.
     #[must_use]
     fn mul_int(self, rhs: i32) -> Self;
-    /// Division by a positive integer, truncated toward zero. Matches
-    /// [`div`](Self::div) bit for bit for non-negative `self` but divides the
-    /// raw representation directly, which is several times cheaper on
-    /// 128-bit types. A zero divisor saturates like [`div`](Self::div).
+    /// Division by a positive integer, truncated toward zero. For non-negative
+    /// `self` it matches [`div`](Self::div) bit for bit, several times cheaper
+    /// on 128-bit types; a zero divisor saturates the same way.
     #[must_use]
     fn div_int(self, divisor: u32) -> Self;
     /// Division.
     #[must_use]
     fn div(self, rhs: Self) -> Self;
-    /// Integer part of the base-2 logarithm, `⌊log₂(self)⌋`, or `None` if
-    /// `self ≤ 0`.
+    /// `⌊log₂(self)⌋`, or `None` if `self ≤ 0`.
     fn checked_int_log2(self) -> Option<i32>;
-    /// Square root, rounded to the nearest representable value. `self` must
-    /// be non-negative; the `fixed` types return the root of the magnitude.
+    /// Square root, rounded to nearest, of a non-negative `self`; the `fixed`
+    /// types return the root of the magnitude.
     #[must_use]
     fn sqrt_round(self) -> Self;
     /// Convert from numeric type.
@@ -126,52 +109,35 @@ pub trait CordicNumber:
     fn max_value() -> Self;
     /// Minimum value.
     fn min_value() -> Self;
-    /// Round to nearest integer (half away from zero), saturating at the
-    /// type's bounds.
+    /// Round to the nearest integer, half away from zero, saturating.
     #[must_use]
     fn round(self) -> Self;
-    /// Convert to i32, rounding toward −∞ and saturating if the value does
-    /// not fit.
+    /// Convert to i32, rounding toward −∞ and saturating.
     #[must_use]
     fn to_i32(self) -> i32;
 }
 
-// =============================================================================
-// Square root helpers
-// =============================================================================
+// The square root derivations are in docs/sqrt.md.
 
-/// Round-to-nearest square root when `X << (FRAC_NBITS + 2)` fits in
-/// `$wide`: the raw result is `⌊√N + ½⌋ = (⌊2√N⌋ + 1) >> 1` with
-/// `N = X·2^f`, and `⌊2√N⌋ = isqrt(4N)`.
+/// Rounded square root when `X << (FRAC_NBITS + 2)` fits in `$wide`.
 macro_rules! sqrt_round_widened {
     ($self:expr, $bits:ty, $wide:ty) => {{
         let n4 = <$wide>::from($self.to_bits().unsigned_abs()) << (Self::FRAC_NBITS + 2);
-        #[allow(
-            clippy::cast_possible_truncation,
-            clippy::cast_possible_wrap,
-            reason = "the root has at most (total_bits + frac_bits) / 2 + 1 bits"
-        )]
-        Self::from_bits(((n4.isqrt() + 1) >> 1) as $bits)
+        Self::from_bits(<$bits>::try_from((n4.isqrt() + 1) >> 1).unwrap_or(<$bits>::MAX))
     }};
 }
 
-/// Round-to-nearest square root for 128-bit raw representations, where
-/// `X·2^f` does not fit in a machine integer. See [`sqrt_round_u128`].
+/// Rounded square root for 128-bit types, through [`sqrt_round_u128`].
 macro_rules! sqrt_round_i128 {
     ($self:expr, $bits:ty, $wide:ty) => {{
         let root = sqrt_round_u128($self.to_bits().unsigned_abs(), Self::FRAC_NBITS, |a, b| {
-            // ⌊a·2^f / b⌋ for b ≥ √N is below 2^127, so this cannot
-            // overflow; the fallback only keeps the function total.
-            #[allow(clippy::cast_possible_wrap, reason = "operands below 2^127")]
-            let quotient =
-                Fixed::checked_div(Self::from_bits(a as i128), Self::from_bits(b as i128));
-            #[allow(clippy::cast_sign_loss, reason = "quotient of positive operands")]
-            {
-                quotient.map_or(i128::MAX, Self::to_bits) as u128
-            }
+            let quotient = Fixed::checked_div(
+                Self::from_bits(a.cast_signed()),
+                Self::from_bits(b.cast_signed()),
+            );
+            quotient.map_or(i128::MAX, Self::to_bits).cast_unsigned()
         });
-        #[allow(clippy::cast_possible_wrap, reason = "root below 2^127")]
-        Self::from_bits(root as $bits)
+        Self::from_bits(root.cast_signed())
     }};
 }
 
@@ -208,17 +174,8 @@ const fn wide_sub_lo(a: U256, b: U256) -> u128 {
     a.1.wrapping_sub(b.1)
 }
 
-/// Round-to-nearest square root of `x / 2^frac` (`x < 2^127`), in raw units:
-/// `⌊√N + ½⌋` with `N = x·2^frac`, up to 254 bits.
-///
-/// `x` is shifted left by the largest `s ≤ leading_zeros(x)` with
-/// `s ≡ frac (mod 2)`, giving `q = isqrt(x·2^s)` with 64 significant bits.
-/// If `s ≥ frac`, `q >> ((s − frac)/2)` is exactly `⌊√N⌋`. Otherwise
-/// `seed = (q + 1) << m` lies above `√N` by less than `2^(m+1)`, one Newton
-/// step from above lands on `⌊√N⌋` or `⌊√N⌋ + 1` (its error is below
-/// `2^(m − 64)`, `m ≤ 63`), and a 256-bit remainder settles floor and
-/// rounding. `div_scaled(a, b)` must return `⌊a·2^frac / b⌋`; it is only
-/// called with `b ≥ √N`.
+/// `⌊√N + ½⌋` with `N = x·2^frac` for `x < 2^127`, by one Newton step and a
+/// 256-bit remainder. `div_scaled(a, b)` must return `⌊a·2^frac / b⌋`.
 fn sqrt_round_u128(x: u128, frac: u32, div_scaled: impl FnOnce(u128, u128) -> u128) -> u128 {
     if x == 0 {
         return 0;
@@ -230,54 +187,42 @@ fn sqrt_round_u128(x: u128, frac: u32, div_scaled: impl FnOnce(u128, u128) -> u1
     if shift >= frac {
         let excess = (shift - frac) / 2;
         if excess >= 1 {
-            // ⌊2√N⌋ = root_hi >> (excess − 1); round half up.
             return ((root_hi >> (excess - 1)) + 1) >> 1;
         }
-        // root_hi = ⌊√N⌋, and N fits in 128 bits since shift = frac ≤ lz.
+        // N fits in 128 bits since shift = frac ≤ lz.
         let root_sq = root_hi * root_hi;
         let rem = (x << frac) - root_sq;
         return if rem > root_hi { root_hi + 1 } else { root_hi };
     }
 
     let missing = (frac - shift) / 2;
-    #[allow(clippy::cast_sign_loss, reason = "i128::MAX is positive")]
-    let seed = ((root_hi + 1) << missing).min(i128::MAX as u128);
+    let seed = ((root_hi + 1) << missing).min(i128::MAX.cast_unsigned());
     let newton = u128::midpoint(seed, div_scaled(x, seed));
 
     let n = wide_shl(x, frac);
     let newton_sq = wide_mul(newton, newton);
     let (root, rem) = if wide_gt(newton_sq, n) {
-        // newton = ⌊√N⌋ + 1: N − (newton − 1)² = (2·newton − 1) − (newton² − N).
+        // N − (newton − 1)² = (2·newton − 1) − (newton² − N).
         (newton - 1, (2 * newton - 1) - wide_sub_lo(newton_sq, n))
     } else {
         (newton, wide_sub_lo(n, newton_sq))
     };
-    // rem = N − root² ∈ [0, 2·root]; round up exactly when rem > root.
     if rem > root { root + 1 } else { root }
 }
 
-// =============================================================================
-// Generic implementations using macros
-// =============================================================================
-
-/// Macro to implement `CordicNumber` for `FixedI*` types generically.
-///
-/// The bounds ensure:
-/// - `Fract` fits within the type (e.g., ≤ 8 for `FixedI8`)
-/// - `Fract` allows π to be represented (needs ~2 integer bits)
-/// - `Fract` allows π/2 to be represented (needs ~1 integer bit)
-/// - `Fract` allows π/4 and ln(2) to be represented (needs ~1 integer bit)
+/// Implements `CordicNumber` for a `FixedI*` family, bounding `Fract` so the
+/// type holds its constants: π needs two integer bits, π/2, π/4 and ln 2 one.
 macro_rules! impl_cordic_generic {
     (
         $fixed_type:ident,
         $bits_type:ty,
-        $wide_type:ty,     // Unsigned type holding bits << (frac + 2) for sqrt
-        $sqrt_impl:ident,  // sqrt_round_widened or sqrt_round_i128
+        $wide_type:ty,
+        $sqrt_impl:ident,
         $total_bits:expr,
-        $max_frac:ty,      // Maximum fractional bits for the type
-        $pi_frac:ty,       // Max frac bits where PI fits (total - 2)
-        $frac_pi_2:ty,     // Max frac bits where FRAC_PI_2 fits (total - 1)
-        $frac_pi_4:ty      // Max frac bits where FRAC_PI_4 and LN_2 fit
+        $max_frac:ty,
+        $pi_frac:ty,
+        $frac_pi_2:ty,
+        $frac_pi_4:ty
     ) => {
         impl<Fract> CordicNumber for $fixed_type<Fract>
         where
@@ -339,35 +284,15 @@ macro_rules! impl_cordic_generic {
             }
 
             #[inline]
-            // Casts are safe: frac_bits ≤ 128, shift amounts bounded by type size
-            #[allow(
-                clippy::cast_possible_wrap,
-                clippy::cast_lossless,
-                reason = "frac_bits bounded by type size"
-            )]
             fn from_i1f63(bits: i64) -> Self {
-                // Convert from I1F63 representation to our type.
-                // I1F63 has 63 fractional bits.
-                // FRAC_NBITS is at most 128, which fits in i32.
-                let our_frac = Self::FRAC_NBITS as i32;
-                let shift = 63 - our_frac;
-
+                let shift = 63 - Self::FRAC_NBITS.cast_signed();
+                // The trait bounds leave integer bits to spare, so a value in
+                // (-1, 1) always fits and the fallback is dead.
                 if shift >= 0 {
-                    // We have fewer frac bits than I1F63, shift right
-                    #[allow(
-                        clippy::cast_possible_truncation,
-                        reason = "intentional truncation to target type"
-                    )]
-                    Self::from_bits((bits >> shift) as $bits_type)
+                    Self::from_bits(<$bits_type>::try_from(bits >> shift).unwrap_or(0))
                 } else {
-                    // We have more frac bits than I1F63, shift left
-                    // Must cast first to avoid losing sign bit
-                    #[allow(
-                        clippy::cast_possible_truncation,
-                        reason = "intentional truncation to target type"
-                    )]
-                    let wide = bits as $bits_type;
-                    Self::from_bits(wide << (-shift))
+                    // Only 128-bit types get here; widen before the left shift.
+                    Self::from_bits(<$bits_type>::try_from(bits).unwrap_or(0) << (-shift))
                 }
             }
 
@@ -410,8 +335,7 @@ macro_rules! impl_cordic_generic {
             fn mul_int(self, rhs: i32) -> Self {
                 match <$bits_type>::try_from(rhs) {
                     Ok(k) => Fixed::saturating_mul_int(self, k),
-                    // |rhs| exceeds the raw type's range (8- and 16-bit types
-                    // only), so the exact product saturates unless self is 0.
+                    // |rhs| is past the raw range, so only zero escapes saturation.
                     Err(_) => {
                         if self == Self::ZERO {
                             Self::ZERO
@@ -429,7 +353,6 @@ macro_rules! impl_cordic_generic {
                 match <$bits_type>::try_from(divisor) {
                     Ok(k) => match Fixed::checked_div_int(self, k) {
                         Some(v) => v,
-                        // Division by zero: saturate based on sign.
                         None => {
                             if self.is_negative() {
                                 Self::MIN
@@ -438,8 +361,7 @@ macro_rules! impl_cordic_generic {
                             }
                         }
                     },
-                    // The divisor exceeds the raw type's range, so it exceeds
-                    // |self| in raw units and the truncated quotient is zero.
+                    // A divisor past the raw range exceeds |self|: the quotient is 0.
                     Err(_) => Self::ZERO,
                 }
             }
@@ -448,7 +370,6 @@ macro_rules! impl_cordic_generic {
             fn div(self, rhs: Self) -> Self {
                 match Fixed::checked_div(self, rhs) {
                     Some(v) => v,
-                    // Division by zero or overflow: saturate based on sign agreement.
                     None => {
                         if self.is_negative() != rhs.is_negative() {
                             Self::MIN
@@ -497,23 +418,14 @@ macro_rules! impl_cordic_generic {
     };
 }
 
-// Import the specific U* types we need for bounds
 use fixed::types::extra::{
     U5, U6, U7, U8, U13, U14, U15, U16, U29, U30, U31, U32, U61, U62, U63, U64, U125, U126, U127,
     U128,
 };
 
-// FixedI8<Fract>: 8 total bits
-// - Max Fract: U8 (8 fractional bits = I0F8)
-// - For PI (~3.14), need 2 integer bits, so Fract ≤ 6 (I2F6)
-// - For FRAC_PI_2, FRAC_PI_4, LN_2, need 1 integer bit, so Fract ≤ 7 (I1F7)
-// Being conservative: require Fract ≤ 5 so we have headroom
+// Each type's π bound is one bit stricter than π needs, for headroom.
 impl_cordic_generic!(FixedI8, i8, u16, sqrt_round_widened, 8, U8, U5, U6, U7);
 
-// FixedI16<Fract>: 16 total bits
-// - For PI, need Fract ≤ 14 (I2F14)
-// - For FRAC_PI_2, FRAC_PI_4, LN_2, need Fract ≤ 15 (I1F15)
-// - Conservative: Fract ≤ 13
 impl_cordic_generic!(
     FixedI16,
     i16,
@@ -526,10 +438,6 @@ impl_cordic_generic!(
     U15
 );
 
-// FixedI32<Fract>: 32 total bits
-// - For PI, need Fract ≤ 30
-// - For FRAC_PI_2, FRAC_PI_4, LN_2, need Fract ≤ 31
-// - Conservative: Fract ≤ 29
 impl_cordic_generic!(
     FixedI32,
     i32,
@@ -542,10 +450,6 @@ impl_cordic_generic!(
     U31
 );
 
-// FixedI64<Fract>: 64 total bits
-// - For PI, need Fract ≤ 62
-// - For FRAC_PI_2, FRAC_PI_4, LN_2, need Fract ≤ 63
-// - Conservative: Fract ≤ 61
 impl_cordic_generic!(
     FixedI64,
     i64,
@@ -558,11 +462,6 @@ impl_cordic_generic!(
     U63
 );
 
-// FixedI128<Fract>: 128 total bits
-// - For PI, need Fract ≤ 126
-// - For FRAC_PI_2, FRAC_PI_4, LN_2, need Fract ≤ 127
-// - Conservative: Fract ≤ 125
-// No wider machine integer exists, so sqrt takes the Newton path.
 impl_cordic_generic!(
     FixedI128,
     i128,

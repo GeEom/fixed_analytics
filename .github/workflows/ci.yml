@@ -11,11 +11,15 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -Dwarnings
+# Each job sets RUSTUP_TOOLCHAIN to the toolchain it tests, since it overrides
+# rust-toolchain.toml, which pins the toolchain for check.sh.
 
 jobs:
   test:
     name: Test
     runs-on: ${{ matrix.os }}
+    env:
+      RUSTUP_TOOLCHAIN: ${{ matrix.rust }}
     strategy:
       fail-fast: false
       matrix:
@@ -38,14 +42,19 @@ jobs:
   no-std:
     name: no_std
     runs-on: ubuntu-latest
+    env:
+      RUSTUP_TOOLCHAIN: stable
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo check --no-default-features
+      - run: cargo test --no-default-features
 
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    env:
+      RUSTUP_TOOLCHAIN: stable
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -61,6 +70,8 @@ jobs:
   msrv:
     name: MSRV
     runs-on: ubuntu-latest
+    env:
+      RUSTUP_TOOLCHAIN: '1.95'
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.95
@@ -70,6 +81,8 @@ jobs:
   coverage:
     name: Coverage
     runs-on: ubuntu-latest
+    env:
+      RUSTUP_TOOLCHAIN: stable
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -85,6 +98,8 @@ jobs:
   security:
     name: Security
     runs-on: ubuntu-latest
+    env:
+      RUSTUP_TOOLCHAIN: stable
     steps:
       - uses: actions/checkout@v4
       - uses: rustsec/audit-check@v1.4.1
@@ -94,6 +109,8 @@ jobs:
   no-panic:
     name: Verify No Panics
     runs-on: ubuntu-latest
+    env:
+      RUSTUP_TOOLCHAIN: stable
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -117,6 +134,8 @@ jobs:
   bench-check:
     name: Benchmarks Compile
     runs-on: ubuntu-latest
+    env:
+      RUSTUP_TOOLCHAIN: stable
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -126,6 +145,8 @@ jobs:
   accuracy:
     name: Accuracy Gate
     runs-on: ubuntu-latest
+    env:
+      RUSTUP_TOOLCHAIN: stable
     steps:
       - uses: actions/checkout@v4
 

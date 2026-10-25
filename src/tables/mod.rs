@@ -1,14 +1,5 @@
-//! Precomputed lookup tables for CORDIC algorithms and polynomial evaluation.
-//!
-//! Tables are stored as `i64` values representing signed I1F63 fixed-point
-//! numbers (1 sign bit, 63 fractional bits), which are then converted to
-//! the target type at runtime.
-//!
-//! # Table Contents
-//!
-//! - [`ATAN_TABLE`]: `atan(2^-i)` values for circular CORDIC mode
-//! - [`ATANH_TABLE`]: `atanh(2^-i)` values for hyperbolic CORDIC mode
-//! - [`chebyshev`]: Minimax polynomial coefficients for sin/cos evaluation
+//! Lookup tables for CORDIC and polynomial evaluation, as `i64` holding signed
+//! I1F63 values (1 sign bit, 63 fractional bits) that convert to the target type.
 
 pub mod chebyshev;
 pub mod circular;
