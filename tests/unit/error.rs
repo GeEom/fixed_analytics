@@ -1,5 +1,3 @@
-//! Tests for error types
-
 #[cfg(test)]
 mod tests {
     use fixed_analytics::Error;

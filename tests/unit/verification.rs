@@ -1,22 +1,6 @@
-//! Mathematical correctness verification tests.
-//!
-//! These tests verify the CORDIC implementations against known mathematical
-//! properties: reference values, identities, inverse roundtrips, monotonicity,
-//! and output bounds.
-
-// Test-specific lints - these are acceptable in test code
-#![allow(
-    clippy::unwrap_used,
-    clippy::cast_possible_truncation,
-    clippy::suboptimal_flops,
-    clippy::cast_lossless,
-    clippy::manual_range_contains,
-    reason = "test code uses these patterns for conciseness and clarity"
-)]
-
 #[cfg(test)]
 mod reference_comparison {
-    //! Compare against f64 reference implementations across sampled inputs.
+    use crate::unit::support::TestResult;
 
     use fixed::types::I16F16;
     use fixed_analytics::{
@@ -24,25 +8,21 @@ mod reference_comparison {
         sqrt, tan, tanh,
     };
 
-    /// Deterministic pseudo-random bit generator for reproducible sampling.
     fn sample_bits(seed: u64, index: u64) -> i32 {
-        // Simple LCG-style mixing
         let mut x = seed.wrapping_add(index.wrapping_mul(0x9E37_79B9_7F4A_7C15));
         x = x.wrapping_mul(0x5851_F42D_4C95_7F2D);
         x = x ^ (x >> 32);
-        x as i32
+        u32::try_from(x & 0xFFFF_FFFF).map_or(0, u32::cast_signed)
     }
 
     const SAMPLES: u64 = 2000;
     const SEED: u64 = 0xDEAD_BEEF_CAFE_BABE;
 
-    // Error tolerance: I16F16 has 16 fractional bits, so ~4-5 decimal digits
-    // Allow 2^-12 ≈ 0.000244 absolute error for well-conditioned functions
     const TRIG_TOL: f64 = 0.001;
     const SQRT_TOL: f64 = 0.0005;
-    const EXP_TOL: f64 = 0.01; // exp amplifies errors
+    const EXP_TOL: f64 = 0.01;
     const LOG_TOL: f64 = 0.01;
-    const HYPER_TOL: f64 = 0.02; // hyperbolic has lower precision due to iteration repeats
+    const HYPER_TOL: f64 = 0.02;
 
     #[test]
     fn sin_cos_vs_f64() {
@@ -54,7 +34,6 @@ mod reference_comparison {
             let x = I16F16::from_bits(bits);
             let x_f64: f64 = x.to_num();
 
-            // Skip extreme values where f64 comparison becomes meaningless
             if x_f64.abs() > 100.0 {
                 continue;
             }
@@ -80,9 +59,6 @@ mod reference_comparison {
                 c.to_num::<f64>()
             );
         }
-
-        // Uncomment to see actual max errors during development:
-        // println!("Max sin error: {max_sin_err}, max cos error: {max_cos_err}");
     }
 
     #[test]
@@ -92,12 +68,10 @@ mod reference_comparison {
             let x = I16F16::from_bits(bits);
             let x_f64: f64 = x.to_num();
 
-            // Skip near poles and extreme values
             let frac_pi_2 = core::f64::consts::FRAC_PI_2;
             if x_f64.abs() > 50.0 {
                 continue;
             }
-            // Skip near ±π/2 where tan explodes
             let reduced = x_f64 % core::f64::consts::PI;
             if (reduced.abs() - frac_pi_2).abs() < 0.1 {
                 continue;
@@ -106,7 +80,6 @@ mod reference_comparison {
             let result = tan(x);
             let expected = x_f64.tan();
 
-            // Use relative error for large values
             let err = if expected.abs() > 1.0 {
                 (result.to_num::<f64>() - expected).abs() / expected.abs()
             } else {
@@ -114,7 +87,7 @@ mod reference_comparison {
             };
 
             assert!(
-                err < TRIG_TOL * 2.0, // tan accumulates more error
+                err < TRIG_TOL * 2.0,
                 "tan({x_f64}): got {}, expected {expected}",
                 result.to_num::<f64>()
             );
@@ -154,7 +127,6 @@ mod reference_comparison {
             let y_f64: f64 = y.to_num();
             let x_f64: f64 = x.to_num();
 
-            // Skip extreme values
             if y_f64.abs() > 1000.0 || x_f64.abs() > 1000.0 {
                 continue;
             }
@@ -173,11 +145,8 @@ mod reference_comparison {
 
     #[test]
     fn asin_acos_vs_f64() {
-        // Test over domain [-1, 1]
         for i in 0..500 {
-            // Map to [-1, 1]
-            let t = (i as f64) / 499.0 * 2.0 - 1.0;
-            // Avoid exact ±1 where precision is worst
+            let t = f64::mul_add(f64::from(i) / 499.0, 2.0, -1.0);
             let t = t * 0.999;
             let x = I16F16::from_num(t);
             let x_f64: f64 = x.to_num();
@@ -205,19 +174,17 @@ mod reference_comparison {
     }
 
     #[test]
-    fn sqrt_vs_f64() {
+    fn sqrt_vs_f64() -> TestResult {
         for i in 0..SAMPLES {
             let bits = sample_bits(SEED, i);
-            // Only test non-negative values
             let bits = bits & 0x7FFF_FFFF;
             let x = I16F16::from_bits(bits);
             let x_f64: f64 = x.to_num();
 
-            let result = sqrt(x).unwrap();
+            let result = sqrt(x)?;
             let expected = x_f64.sqrt();
             let err = (result.to_num::<f64>() - expected).abs();
 
-            // Use relative error for larger values
             let tol = if expected > 1.0 {
                 SQRT_TOL * expected
             } else {
@@ -230,6 +197,7 @@ mod reference_comparison {
                 result.to_num::<f64>()
             );
         }
+        Ok(())
     }
 
     #[test]
@@ -239,8 +207,7 @@ mod reference_comparison {
             let x = I16F16::from_bits(bits);
             let x_f64: f64 = x.to_num();
 
-            // Skip values where exp would overflow I16F16 (max ~32768)
-            // ln(32768) ≈ 10.4
+            // exp overflows I16F16 above ln(32768) ≈ 10.4.
             if x_f64 > 10.0 || x_f64 < -20.0 {
                 continue;
             }
@@ -248,7 +215,6 @@ mod reference_comparison {
             let result = exp(x);
             let expected = x_f64.exp();
 
-            // Use relative error since exp spans many orders of magnitude
             let err = if expected > 0.01 {
                 (result.to_num::<f64>() - expected).abs() / expected
             } else {
@@ -267,13 +233,12 @@ mod reference_comparison {
     fn ln_vs_f64() {
         for i in 0..SAMPLES {
             let bits = sample_bits(SEED, i);
-            // Only positive values
             let bits = (bits & 0x7FFF_FFFF).max(1);
             let x = I16F16::from_bits(bits);
             let x_f64: f64 = x.to_num();
 
             if x_f64 < 0.001 {
-                continue; // ln near 0 is extreme
+                continue;
             }
 
             if let Ok(result) = ln(x) {
@@ -330,7 +295,6 @@ mod reference_comparison {
             let x = I16F16::from_bits(bits);
             let x_f64: f64 = x.to_num();
 
-            // Skip large values where overflow occurs
             if x_f64.abs() > 8.0 {
                 continue;
             }
@@ -339,7 +303,6 @@ mod reference_comparison {
             let expected_sinh = x_f64.sinh();
             let expected_cosh = x_f64.cosh();
 
-            // Use relative error for large results
             let sinh_err = if expected_sinh.abs() > 1.0 {
                 (sh.to_num::<f64>() - expected_sinh).abs() / expected_sinh.abs()
             } else {
@@ -390,7 +353,6 @@ mod reference_comparison {
             let x = I16F16::from_bits(bits);
             let x_f64: f64 = x.to_num();
 
-            // asinh involves sqrt which loses precision for large values
             if x_f64.abs() > 20.0 {
                 continue;
             }
@@ -409,10 +371,8 @@ mod reference_comparison {
 
     #[test]
     fn acosh_vs_f64() {
-        // Test over domain [1, moderate] - precision degrades for large values
         for i in 0..500 {
-            // Map to [1, 20]
-            let t = 1.0 + (i as f64) / 499.0 * 19.0;
+            let t = f64::mul_add(f64::from(i) / 499.0, 19.0, 1.0);
             let x = I16F16::from_num(t);
             let x_f64: f64 = x.to_num();
 
@@ -430,10 +390,8 @@ mod reference_comparison {
 
     #[test]
     fn atanh_vs_f64() {
-        // Test over domain (-1, 1)
         for i in 0..500 {
-            // Map to (-0.99, 0.99)
-            let t = (i as f64) / 499.0 * 1.98 - 0.99;
+            let t = f64::mul_add(f64::from(i) / 499.0, 1.98, -0.99);
             let x = I16F16::from_num(t);
             let x_f64: f64 = x.to_num();
 
@@ -452,8 +410,6 @@ mod reference_comparison {
 
 #[cfg(test)]
 mod identities {
-    //! Verify fundamental mathematical identities.
-
     use fixed::types::I16F16;
     use fixed_analytics::{exp, ln, sin_cos, sinh_cosh};
 
@@ -461,7 +417,7 @@ mod identities {
         let mut x = seed.wrapping_add(index.wrapping_mul(0x9E37_79B9_7F4A_7C15));
         x = x.wrapping_mul(0x5851_F42D_4C95_7F2D);
         x = x ^ (x >> 32);
-        x as i32
+        u32::try_from(x & 0xFFFF_FFFF).map_or(0, u32::cast_signed)
     }
 
     const SAMPLES: u64 = 1000;
@@ -469,7 +425,6 @@ mod identities {
 
     #[test]
     fn pythagorean_identity() {
-        // sin²(x) + cos²(x) = 1
         for i in 0..SAMPLES {
             let bits = sample_bits(SEED, i);
             let x = I16F16::from_bits(bits);
@@ -482,7 +437,7 @@ mod identities {
             let (s, c) = sin_cos(x);
             let s_f64: f64 = s.to_num();
             let c_f64: f64 = c.to_num();
-            let sum_sq = s_f64 * s_f64 + c_f64 * c_f64;
+            let sum_sq = c_f64.mul_add(c_f64, s_f64 * s_f64);
 
             assert!(
                 (sum_sq - 1.0).abs() < 0.01,
@@ -493,13 +448,11 @@ mod identities {
 
     #[test]
     fn hyperbolic_identity() {
-        // cosh²(x) - sinh²(x) = 1
         for i in 0..SAMPLES {
             let bits = sample_bits(SEED, i);
             let x = I16F16::from_bits(bits);
             let x_f64: f64 = x.to_num();
 
-            // Skip large values where overflow occurs
             if x_f64.abs() > 8.0 {
                 continue;
             }
@@ -507,7 +460,7 @@ mod identities {
             let (sh, ch) = sinh_cosh(x);
             let sh_f64: f64 = sh.to_num();
             let ch_f64: f64 = ch.to_num();
-            let diff = ch_f64 * ch_f64 - sh_f64 * sh_f64;
+            let diff = sh_f64.mul_add(-sh_f64, ch_f64 * ch_f64);
 
             assert!(
                 (diff - 1.0).abs() < 0.02,
@@ -518,13 +471,11 @@ mod identities {
 
     #[test]
     fn angle_addition() {
-        // sin(a + b) = sin(a)cos(b) + cos(a)sin(b)
         for i in 0..200 {
             for j in 0..200 {
                 let a_bits = sample_bits(SEED, i);
                 let b_bits = sample_bits(SEED ^ 0xFFFF, j);
 
-                // Use smaller values to stay in good precision range
                 let a = I16F16::from_bits(a_bits >> 8);
                 let b = I16F16::from_bits(b_bits >> 8);
 
@@ -532,9 +483,11 @@ mod identities {
                 let (sin_b, cos_b) = sin_cos(b);
                 let (sin_ab, _) = sin_cos(a + b);
 
-                // sin(a+b) should equal sin(a)cos(b) + cos(a)sin(b)
-                let expected = sin_a.to_num::<f64>() * cos_b.to_num::<f64>()
-                    + cos_a.to_num::<f64>() * sin_b.to_num::<f64>();
+                let expected = f64::mul_add(
+                    cos_a.to_num::<f64>(),
+                    sin_b.to_num::<f64>(),
+                    sin_a.to_num::<f64>() * cos_b.to_num::<f64>(),
+                );
                 let actual: f64 = sin_ab.to_num();
 
                 assert!(
@@ -549,15 +502,11 @@ mod identities {
 
     #[test]
     fn double_angle() {
-        // sin(2x) = 2*sin(x)*cos(x)
-        // cos(2x) = cos²(x) - sin²(x)
         for i in 0..SAMPLES {
             let bits = sample_bits(SEED, i);
-            // Keep x small to avoid angle reduction errors compounding
-            let x = I16F16::from_bits(bits >> 8); // Much smaller range
+            let x = I16F16::from_bits(bits >> 8);
             let x_f64: f64 = x.to_num();
 
-            // Skip large angles where errors compound
             if x_f64.abs() > 50.0 {
                 continue;
             }
@@ -568,7 +517,9 @@ mod identities {
             let (sin_2x, cos_2x) = sin_cos(two_x);
 
             let expected_sin_2x = 2.0 * sin_x.to_num::<f64>() * cos_x.to_num::<f64>();
-            let expected_cos_2x = cos_x.to_num::<f64>().powi(2) - sin_x.to_num::<f64>().powi(2);
+            let expected_cos_2x = sin_x
+                .to_num::<f64>()
+                .mul_add(-sin_x.to_num::<f64>(), cos_x.to_num::<f64>().powi(2));
 
             let sin_err = (sin_2x.to_num::<f64>() - expected_sin_2x).abs();
             let cos_err = (cos_2x.to_num::<f64>() - expected_cos_2x).abs();
@@ -590,21 +541,17 @@ mod identities {
 
     #[test]
     fn exp_addition() {
-        // exp(a + b) = exp(a) * exp(b)
         for i in 0..200 {
             for j in 0..200 {
                 let a_bits = sample_bits(SEED, i);
                 let b_bits = sample_bits(SEED ^ 0xFFFF, j);
 
-                // Keep values small to avoid overflow
-                // Map to roughly [-2, 2]
                 let a = I16F16::from_bits(a_bits >> 14);
                 let b = I16F16::from_bits(b_bits >> 14);
 
                 let a_f64: f64 = a.to_num();
                 let b_f64: f64 = b.to_num();
 
-                // Skip if sum would overflow
                 if (a_f64 + b_f64).abs() > 8.0 {
                     continue;
                 }
@@ -628,13 +575,11 @@ mod identities {
 
     #[test]
     fn ln_multiplication() {
-        // ln(a * b) = ln(a) + ln(b)
         for i in 0..200 {
             for j in 0..200 {
                 let a_bits = sample_bits(SEED, i);
                 let b_bits = sample_bits(SEED ^ 0xFFFF, j);
 
-                // Keep values in range [0.5, 128] for reasonable precision
                 let a_bits = (a_bits & 0x007F_FFFF).max(0x0000_8000);
                 let b_bits = (b_bits & 0x007F_FFFF).max(0x0000_8000);
                 let a = I16F16::from_bits(a_bits);
@@ -643,7 +588,6 @@ mod identities {
                 let a_f64: f64 = a.to_num();
                 let b_f64: f64 = b.to_num();
 
-                // Skip if product would overflow or underflow significantly
                 let product = a_f64 * b_f64;
                 if product > 10000.0 || product < 0.1 {
                     continue;
@@ -667,8 +611,6 @@ mod identities {
 
 #[cfg(test)]
 mod roundtrips {
-    //! Verify that inverse functions are actually inverses.
-
     use fixed::types::I16F16;
     use fixed_analytics::{
         acos, acosh, asin, asinh, atan, atanh, cos, cosh, exp, ln, sin, sinh, tan, tanh,
@@ -678,9 +620,8 @@ mod roundtrips {
 
     #[test]
     fn sin_asin_roundtrip() {
-        // For x in [-1, 1]: sin(asin(x)) ≈ x
         for i in 0..200 {
-            let t = (i as f64) / 199.0 * 1.98 - 0.99; // (-0.99, 0.99)
+            let t = f64::mul_add(f64::from(i) / 199.0, 1.98, -0.99);
             let x = I16F16::from_num(t);
 
             if let Ok(asin_x) = asin(x) {
@@ -693,10 +634,9 @@ mod roundtrips {
 
     #[test]
     fn asin_sin_roundtrip() {
-        // For x in [-π/2, π/2]: asin(sin(x)) ≈ x
         let half_pi = core::f64::consts::FRAC_PI_2 * 0.95;
         for i in 0..200 {
-            let t = (i as f64) / 199.0 * 2.0 * half_pi - half_pi;
+            let t = f64::mul_add(f64::from(i) / 199.0 * 2.0, half_pi, -half_pi);
             let x = I16F16::from_num(t);
             let sin_x = sin(x);
 
@@ -709,9 +649,8 @@ mod roundtrips {
 
     #[test]
     fn cos_acos_roundtrip() {
-        // For x in [-1, 1]: cos(acos(x)) ≈ x
         for i in 0..200 {
-            let t = (i as f64) / 199.0 * 1.98 - 0.99;
+            let t = f64::mul_add(f64::from(i) / 199.0, 1.98, -0.99);
             let x = I16F16::from_num(t);
 
             if let Ok(acos_x) = acos(x) {
@@ -724,10 +663,9 @@ mod roundtrips {
 
     #[test]
     fn tan_atan_roundtrip() {
-        // atan(tan(x)) ≈ x for x in (-π/2, π/2)
         let half_pi = core::f64::consts::FRAC_PI_2 * 0.9;
         for i in 0..200 {
-            let t = (i as f64) / 199.0 * 2.0 * half_pi - half_pi;
+            let t = f64::mul_add(f64::from(i) / 199.0 * 2.0, half_pi, -half_pi);
             let x = I16F16::from_num(t);
             let tan_x = tan(x);
             let roundtrip = atan(tan_x);
@@ -739,9 +677,8 @@ mod roundtrips {
 
     #[test]
     fn exp_ln_roundtrip() {
-        // For x > 0: exp(ln(x)) ≈ x
         for i in 1..200 {
-            let t = (i as f64) / 20.0; // (0.05, 10)
+            let t = f64::from(i) / 20.0;
             let x = I16F16::from_num(t);
 
             if let Ok(ln_x) = ln(x) {
@@ -758,9 +695,8 @@ mod roundtrips {
 
     #[test]
     fn ln_exp_roundtrip() {
-        // ln(exp(x)) ≈ x for small x
         for i in 0..200 {
-            let t = (i as f64) / 20.0 - 5.0; // (-5, 5)
+            let t = f64::from(i) / 20.0 - 5.0;
             let x = I16F16::from_num(t);
             let exp_x = exp(x);
 
@@ -773,9 +709,8 @@ mod roundtrips {
 
     #[test]
     fn sinh_asinh_roundtrip() {
-        // Hyperbolic functions have lower precision, use smaller range
         for i in 0..200 {
-            let t = (i as f64) / 50.0 - 2.0; // (-2, 2)
+            let t = f64::from(i) / 50.0 - 2.0;
             let x = I16F16::from_num(t);
             let sinh_x = sinh(x);
             let roundtrip = asinh(sinh_x);
@@ -791,10 +726,9 @@ mod roundtrips {
 
     #[test]
     fn cosh_acosh_roundtrip() {
-        // For x >= 0: acosh(cosh(x)) ≈ x (cosh is not injective, so test non-negative)
-        // Use smaller range for better precision
+        // cosh is not injective, so only x ≥ 0.
         for i in 0..200 {
-            let t = (i as f64) / 50.0; // (0, 4)
+            let t = f64::from(i) / 50.0;
             let x = I16F16::from_num(t);
             let cosh_x = cosh(x);
 
@@ -811,9 +745,8 @@ mod roundtrips {
 
     #[test]
     fn tanh_atanh_roundtrip() {
-        // For x in (-1, 1): tanh(atanh(x)) ≈ x
         for i in 0..200 {
-            let t = (i as f64) / 199.0 * 1.9 - 0.95; // (-0.95, 0.95)
+            let t = f64::mul_add(f64::from(i) / 199.0, 1.9, -0.95);
             let x = I16F16::from_num(t);
 
             if let Ok(atanh_x) = atanh(x) {
@@ -830,19 +763,18 @@ mod roundtrips {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, reason = "test code uses unwrap for conciseness")]
 mod monotonicity {
-    //! Verify that monotonic functions are actually monotonic.
+    use crate::unit::support::TestResult;
 
     use fixed::types::I16F16;
     use fixed_analytics::{asin, atan, exp, ln, sin, sqrt, tanh};
 
     #[test]
-    fn sqrt_is_increasing() {
+    fn sqrt_is_increasing() -> TestResult {
         let mut prev = I16F16::ZERO;
         for i in 0..1000 {
             let x = I16F16::from_bits(i * 1000);
-            let y = sqrt(x).unwrap();
+            let y = sqrt(x)?;
             assert!(
                 y >= prev,
                 "sqrt({}) = {} < sqrt({}) = {}",
@@ -853,14 +785,14 @@ mod monotonicity {
             );
             prev = y;
         }
+        Ok(())
     }
 
     #[test]
     fn exp_is_increasing() {
         let mut prev = I16F16::ZERO;
         for i in 0..500 {
-            // Range from -5 to 5
-            let t = (i as f64) / 50.0 - 5.0;
+            let t = f64::from(i) / 50.0 - 5.0;
             let x = I16F16::from_num(t);
             let y = exp(x);
             assert!(
@@ -894,11 +826,10 @@ mod monotonicity {
 
     #[test]
     fn sin_increasing_on_neg_half_pi_to_half_pi() {
-        // sin is increasing on [-π/2, π/2]
         let half_pi = core::f64::consts::FRAC_PI_2;
         let mut prev = I16F16::MIN;
         for i in 0..200 {
-            let t = (i as f64) / 199.0 * 2.0 * half_pi - half_pi;
+            let t = f64::mul_add(f64::from(i) / 199.0 * 2.0, half_pi, -half_pi);
             let x = I16F16::from_num(t);
             let y = sin(x);
             assert!(
@@ -915,8 +846,7 @@ mod monotonicity {
     fn atan_is_increasing() {
         let mut prev = I16F16::MIN;
         for i in 0..500 {
-            // Range from -100 to 100
-            let t = (i as f64) / 2.5 - 100.0;
+            let t = f64::from(i) / 2.5 - 100.0;
             let x = I16F16::from_num(t);
             let y = atan(x);
             assert!(
@@ -933,7 +863,7 @@ mod monotonicity {
     fn asin_is_increasing() {
         let mut prev = I16F16::MIN;
         for i in 0..200 {
-            let t = (i as f64) / 199.0 * 1.98 - 0.99; // (-0.99, 0.99)
+            let t = f64::mul_add(f64::from(i) / 199.0, 1.98, -0.99);
             let x = I16F16::from_num(t);
             if let Ok(y) = asin(x) {
                 assert!(
@@ -951,8 +881,7 @@ mod monotonicity {
     fn tanh_is_increasing() {
         let mut prev = I16F16::MIN;
         for i in 0..500 {
-            // Use smaller range to avoid saturation at ±1
-            let t = (i as f64) / 50.0 - 5.0; // (-5, 5)
+            let t = f64::from(i) / 50.0 - 5.0;
             let x = I16F16::from_num(t);
             let y = tanh(x);
             assert!(
@@ -968,8 +897,6 @@ mod monotonicity {
 
 #[cfg(test)]
 mod bounds {
-    //! Verify output bounds for functions with known ranges.
-
     use fixed::types::I16F16;
     use fixed_analytics::{atan, atan2, cos, exp, sin, sqrt, tanh};
 
@@ -977,7 +904,7 @@ mod bounds {
         let mut x = seed.wrapping_add(index.wrapping_mul(0x9E37_79B9_7F4A_7C15));
         x = x.wrapping_mul(0x5851_F42D_4C95_7F2D);
         x = x ^ (x >> 32);
-        x as i32
+        u32::try_from(x & 0xFFFF_FFFF).map_or(0, u32::cast_signed)
     }
 
     const SAMPLES: u64 = 2000;
@@ -985,7 +912,6 @@ mod bounds {
 
     #[test]
     fn sin_in_bounds() {
-        // sin(x) ∈ [-1, 1]
         for i in 0..SAMPLES {
             let bits = sample_bits(SEED, i);
             let x = I16F16::from_bits(bits);
@@ -993,7 +919,7 @@ mod bounds {
             let y_f64: f64 = y.to_num();
 
             assert!(
-                y_f64 >= -1.01 && y_f64 <= 1.01,
+                (-1.01..=1.01).contains(&y_f64),
                 "sin({}) = {} out of bounds",
                 x.to_num::<f64>(),
                 y_f64
@@ -1003,7 +929,6 @@ mod bounds {
 
     #[test]
     fn cos_in_bounds() {
-        // cos(x) ∈ [-1, 1]
         for i in 0..SAMPLES {
             let bits = sample_bits(SEED, i);
             let x = I16F16::from_bits(bits);
@@ -1011,7 +936,7 @@ mod bounds {
             let y_f64: f64 = y.to_num();
 
             assert!(
-                y_f64 >= -1.01 && y_f64 <= 1.01,
+                (-1.01..=1.01).contains(&y_f64),
                 "cos({}) = {} out of bounds",
                 x.to_num::<f64>(),
                 y_f64
@@ -1021,7 +946,6 @@ mod bounds {
 
     #[test]
     fn tanh_in_bounds() {
-        // tanh(x) ∈ (-1, 1)
         for i in 0..SAMPLES {
             let bits = sample_bits(SEED, i);
             let x = I16F16::from_bits(bits);
@@ -1043,7 +967,6 @@ mod bounds {
             let bits = sample_bits(SEED, i);
             let x = I16F16::from_bits(bits);
 
-            // sqrt returns Err for negative inputs, Ok for non-negative
             match sqrt(x) {
                 Ok(y) => {
                     assert!(
@@ -1071,7 +994,6 @@ mod bounds {
             let x = I16F16::from_bits(bits);
             let x_f64: f64 = x.to_num();
 
-            // Skip extreme values
             if x_f64 > 10.0 || x_f64 < -20.0 {
                 continue;
             }
@@ -1088,7 +1010,6 @@ mod bounds {
 
     #[test]
     fn atan_in_bounds() {
-        // atan(x) ∈ (-π/2, π/2)
         let half_pi = core::f64::consts::FRAC_PI_2;
         for i in 0..SAMPLES {
             let bits = sample_bits(SEED, i);
@@ -1107,8 +1028,6 @@ mod bounds {
 
     #[test]
     fn atan2_in_bounds() {
-        // atan2(y, x) ∈ [-π, π]
-        // Allow slightly wider tolerance for extreme input values
         let pi = core::f64::consts::PI;
         for i in 0..SAMPLES {
             let y_bits = sample_bits(SEED, i);
@@ -1116,7 +1035,6 @@ mod bounds {
             let y = I16F16::from_bits(y_bits);
             let x = I16F16::from_bits(x_bits);
 
-            // Skip extreme values near I16F16::MAX that cause precision issues
             if y.to_num::<f64>().abs() > 30000.0 || x.to_num::<f64>().abs() > 30000.0 {
                 continue;
             }

@@ -1,5 +1,3 @@
-//! Unit tests mirroring the src directory structure
-
 mod error;
 mod kernel;
 mod ops;

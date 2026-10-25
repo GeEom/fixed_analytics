@@ -1,26 +1,14 @@
-//! Tests for Chebyshev polynomial coefficient tables
-
 #[cfg(test)]
-#[allow(
-    clippy::cast_precision_loss,
-    reason = "test code uses f64 casts for verification"
-)]
 mod tests {
     use fixed_analytics::tables::chebyshev::{COS_Q_HI, COS_Q_LO, SIN_P_HI, SIN_P_LO};
 
-    const SCALE: f64 = (1_u64 << 63) as f64;
-
     fn i1f63_to_f64(bits: i64) -> f64 {
-        (bits as f64) / SCALE
+        fixed::types::I1F63::from_bits(bits).to_num()
     }
 
-    // The constant term (last element, c₀) of each polynomial should match
-    // the Taylor series leading coefficient to high precision. This guards
-    // against coefficient ordering mistakes and regeneration drift.
-
+    // c₀ must match the Taylor coefficient, which catches ordering mistakes and drift.
     #[test]
     fn sin_constant_term_is_neg_one_sixth() {
-        // (sin(x)-x)/x³ → -1/6 at x=0
         let expected = -1.0 / 6.0;
         let lo = i1f63_to_f64(*SIN_P_LO.last().unwrap_or(&0));
         let hi = i1f63_to_f64(*SIN_P_HI.last().unwrap_or(&0));
@@ -36,7 +24,6 @@ mod tests {
 
     #[test]
     fn cos_constant_term_is_neg_one_half() {
-        // (cos(x)-1)/x² → -1/2 at x=0
         let expected = -0.5;
         let lo = i1f63_to_f64(*COS_Q_LO.last().unwrap_or(&0));
         let hi = i1f63_to_f64(*COS_Q_HI.last().unwrap_or(&0));
@@ -74,20 +61,13 @@ mod tests {
     }
 }
 
-/// `horner` wraps on the strength of every intermediate staying below 1 in
-/// magnitude: check the bound and the bit-identity with saturating Horner.
+/// `horner` wraps safely only while every intermediate stays below 1.
 #[cfg(test)]
-#[allow(
-    clippy::cast_precision_loss,
-    clippy::unwrap_used,
-    reason = "test code uses f64 for verification"
-)]
 mod wrapping_invariant {
-    use fixed::types::{I16F16, I32F32, I64F64};
+    use fixed::types::{I1F63, I16F16, I32F32, I64F64};
     use fixed_analytics::CordicNumber;
     use fixed_analytics::tables::chebyshev::{COS_Q_HI, COS_Q_LO, SIN_P_HI, SIN_P_LO, horner};
 
-    const SCALE: f64 = (1_u64 << 63) as f64;
     const U_MAX: f64 = core::f64::consts::FRAC_PI_4 * core::f64::consts::FRAC_PI_4;
 
     fn max_intermediate(coeffs: &[i64]) -> f64 {
@@ -95,10 +75,10 @@ mod wrapping_invariant {
         for i in 0..=1000 {
             let u = U_MAX * f64::from(i) / 1000.0;
             let mut iter = coeffs.iter();
-            let mut acc = *iter.next().unwrap_or(&0) as f64 / SCALE;
+            let mut acc: f64 = iter.next().map_or(0.0, |&c| I1F63::from_bits(c).to_num());
             worst = worst.max(acc.abs());
             for &c in iter {
-                acc = u.mul_add(acc, c as f64 / SCALE);
+                acc = u.mul_add(acc, I1F63::from_bits(c).to_num());
                 worst = worst.max(acc.abs());
                 worst = worst.max((u * acc).abs());
             }
@@ -116,7 +96,7 @@ mod wrapping_invariant {
 
     fn saturating_horner<T: CordicNumber, const N: usize>(coeffs: &[i64; N], x: T) -> T {
         let mut iter = coeffs.iter();
-        let mut result = T::from_i1f63(*iter.next().unwrap());
+        let mut result = iter.next().map_or_else(T::zero, |&c| T::from_i1f63(c));
         for &c in iter {
             result = T::from_i1f63(c).saturating_add(x.saturating_mul(result));
         }
