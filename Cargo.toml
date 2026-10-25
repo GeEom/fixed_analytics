@@ -11,6 +11,9 @@ readme = "README.md"
 license = "MIT"
 keywords = ["fixed-point", "trigonometry", "math", "no_std", "deterministic"]
 categories = ["mathematics", "no-std", "algorithms", "embedded"]
+# Derivation notes for maintainers, which the code comments cite; docs.rs
+# shows only the pages lib.rs and the modules include.
+exclude = ["docs/exp.md", "docs/sin_cos.md", "docs/sinh_cosh.md", "docs/sqrt.md"]
 
 [package.metadata.docs.rs]
 features = ["std"]
