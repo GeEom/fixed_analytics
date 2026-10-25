@@ -1,4 +1,4 @@
-pub type TestResult = Result<(), Box<dyn std::error::Error>>;
+pub type TestResult = Result<(), fixed_analytics::Error>;
 
 pub struct Lcg(pub u64);
 
