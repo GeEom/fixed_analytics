@@ -30,14 +30,14 @@ Requires Rust 1.95 or later.
 
 ```toml
 [dependencies]
-fixed_analytics = "4.4.0"
+fixed_analytics = "4.5.0"
 ```
 
 For `no_std` environments:
 
 ```toml
 [dependencies]
-fixed_analytics = { version = "4.4.0", default-features = false }
+fixed_analytics = { version = "4.5.0", default-features = false }
 ```
 
 ## Available Functions
@@ -189,4 +189,27 @@ The largest error seen, in ulps of the type, against MPFR on exact inputs. The s
 | div_by_tau | 0.50 | 0.50 | 0.50 |
 | wrap_radians | 0.50 | 0.50 | 0.50 |
 | wrap_principal | 0.50 | 0.50 | 0.50 |
+| c_mul_re | 0.50 | 0.50 | 0.50 |
+| c_mul_im | 0.50 | 0.50 | 0.50 |
+| c_div_re | 0.50 | 0.50 | 0.50 |
+| c_div_im | 0.50 | 0.50 | 0.50 |
+| c_exp_re | 0.50 | 0.50 | 0.50 |
+| c_exp_im | 0.50 | 0.50 | 0.50 |
+| c_exprel_re | 0.50 | 0.50 | 0.50 |
+| c_exprel_im | 0.50 | 0.50 | 0.50 |
+| c_exprel2_re | 0.50 | 0.50 | 0.50 |
+| c_exprel2_im | 0.50 | 0.50 | 0.50 |
+| faddeeva_re | 0.50 | 0.50 | 0.50 |
+| faddeeva_im | 0.50 | 0.50 | 0.50 |
+| c_erf_re | 0.50 | 0.50 | 0.50 |
+| c_erf_im | 0.50 | 0.50 | 0.50 |
+| e1_re | 0.50 | 0.50 | 0.50 |
+| e1_im | 0.50 | 0.50 | 0.50 |
+| gamma_upper_re | 0.50 | 0.50 | 0.50 |
+| gamma_upper_im | 0.50 | 0.50 | 0.50 |
+| erf | 0.50 | 0.50 | 0.50 |
+| erfc | 0.50 | 0.50 | 0.50 |
+| fresnel_c | 0.50 | 0.50 | 0.50 |
+| fresnel_s | 0.50 | 0.50 | 0.50 |
+| gamma | 0.50 | 0.50 | 0.50 |
 <!-- WORST_END -->

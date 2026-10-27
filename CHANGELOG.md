@@ -10,6 +10,18 @@ function in backticks.
 Releases before 3.1.1 are described on the
 [releases page](https://github.com/GeEom/fixed_analytics/releases).
 
+## 4.5.0
+
+No output changes.
+
+New: `Complex`, a complex number over any of the types, whose arithmetic
+rounds each part once and whose division cannot overflow for a non-zero
+divisor, with `exp`, `exprel` and `exprel2`. The Faddeeva function
+`faddeeva`, the complex `erf`, the exponential integral `e1` and the upper
+incomplete gamma function `gamma_upper`, for `a` in `(0, 128]`, work on any
+complex argument, on the principal branch. `erf`, `erfc`, `fresnel` and
+`gamma` take a real one.
+
 ## 4.4.0
 
 No output changes.
