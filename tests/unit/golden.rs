@@ -23,6 +23,7 @@ mod tests {
         atan_ratio, atanh_ratio, exp_moments, expm1, exprel, exprel2, log1p, log1p_ratio,
         log1p_residual, log1p_residual_ratio, stumpff, tan_ratio, tanh_ratio,
     };
+    use fixed_analytics::{atan2_turns, div_by_tau, sin_cos_turns, wrap_principal, wrap_radians};
     use std::collections::BTreeMap;
     use std::fmt::Write;
 
@@ -98,6 +99,11 @@ mod tests {
         "carlson_rj_roots",
         "carlson_rc",
         "carlson_rd",
+        "sin_cos_turns",
+        "atan2_turns",
+        "div_by_tau",
+        "wrap_radians",
+        "wrap_principal",
     ];
 
     trait Raw: CordicNumber {
@@ -222,6 +228,11 @@ mod tests {
             "carlson_rj_roots" => res(carlson_rj_roots(x, y, T::one(), T::two())),
             "carlson_rc" => res(carlson_rc(x.abs(), y.abs())),
             "carlson_rd" => res(carlson_rd(x.abs(), y.abs(), T::one())),
+            "sin_cos_turns" => pair(sin_cos_turns(x)),
+            "atan2_turns" => one(atan2_turns(x, y)),
+            "div_by_tau" => one(div_by_tau(x)),
+            "wrap_radians" => one(wrap_radians(x)),
+            "wrap_principal" => one(wrap_principal(x)),
             _ => elliptic(name, x, y),
         }
     }

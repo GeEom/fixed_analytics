@@ -81,6 +81,12 @@ pub enum Fun {
     CarlsonRd,
     EllipPi,
     EllipPiComplete,
+    SinTurns,
+    CosTurns,
+    Atan2Turns,
+    DivByTau,
+    WrapRadians,
+    WrapPrincipal,
 }
 
 use Fun::*;
@@ -91,6 +97,7 @@ pub const ALL: &[Fun] = &[
     Hypot, Norm3, Normalize3, ScaleBy, SqrtProduct, AsinFromGap, Rsqrt,
     Expm1, Exprel, Exprel2, MomentE1, MomentE2, MomentE3, Log1p, Log1pRatio, Log1pResidual, Log1pResidualRatio, StumpffC0, StumpffC1, StumpffC2, StumpffC3, TanRatio, AtanRatio, AtanhRatio, TanhRatio,
     EllipK, EllipKm, EllipE, JacobiSn, JacobiCn, JacobiDn, JacobiAm, JacobiInverse, CarlsonRf, CarlsonRfRoots, CarlsonRj, CarlsonRc, CarlsonRd, EllipPi, EllipPiComplete,
+    SinTurns, CosTurns, Atan2Turns, DivByTau, WrapRadians, WrapPrincipal,
 ];
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -318,6 +325,12 @@ impl Fun {
             CarlsonRd => "carlson_rd",
             EllipPi => "ellip_pi",
             EllipPiComplete => "ellip_pi_complete",
+            SinTurns => "sin_turns",
+            CosTurns => "cos_turns",
+            Atan2Turns => "atan2_turns",
+            DivByTau => "div_by_tau",
+            WrapRadians => "wrap_radians",
+            WrapPrincipal => "wrap_principal",
         }
     }
 
@@ -325,7 +338,7 @@ impl Fun {
         match self {
             Atan2 | Pow | DivOrSaturate | Hypot | ScaleBy | SqrtProduct => 2,
             MulAdd | MulDiv | Norm3 | Normalize3 | CarlsonRf | CarlsonRfRoots | CarlsonRd => 3,
-            JacobiSn | JacobiCn | JacobiDn | JacobiAm | CarlsonRc | EllipPiComplete => 2,
+            JacobiSn | JacobiCn | JacobiDn | JacobiAm | CarlsonRc | EllipPiComplete | Atan2Turns => 2,
             JacobiInverse | CarlsonRj => 4,
             EllipPi => 5,
             Dot3 => 6,
@@ -405,6 +418,12 @@ impl Fun {
             CarlsonRd => fa::carlson_rd(x, a[1], a[2]).ok(),
             EllipPi => fa::ellip_pi(x, a[1], a[2], a[3], fa::Modulus::from_complement(a[4])?).ok(),
             EllipPiComplete => fa::ellip_pi_complete(x, fa::Modulus::from_complement(a[1])?).ok(),
+            SinTurns => Some(fa::sin_cos_turns(x).0),
+            CosTurns => Some(fa::sin_cos_turns(x).1),
+            Atan2Turns => Some(fa::atan2_turns(x, a[1])),
+            DivByTau => Some(fa::div_by_tau(x)),
+            WrapRadians => Some(fa::wrap_radians(x)),
+            WrapPrincipal => Some(fa::wrap_principal(x)),
         }
     }
 
@@ -528,8 +547,32 @@ impl Fun {
             EllipK | EllipKm | EllipE | JacobiSn | JacobiCn | JacobiDn | JacobiAm | JacobiInverse
             | CarlsonRf | CarlsonRfRoots | CarlsonRj | CarlsonRc | CarlsonRd | EllipPi
             | EllipPiComplete => elliptic(self, a),
+            SinTurns | CosTurns | DivByTau | WrapRadians | WrapPrincipal => {
+                let p = PREC * 3;
+                let tau = Float::with_val(p, Constant::Pi) * 2u32;
+                let t = Float::with_val(p, &x);
+                match self {
+                    SinTurns => (t * tau).sin(),
+                    CosTurns => (t * tau).cos(),
+                    DivByTau => t / tau,
+                    _ => {
+                        let r = Float::with_val(p, &t - (t.clone() / &tau).floor() * &tau);
+                        let half = Float::with_val(p, &tau / 2u32);
+                        if self == WrapPrincipal && r > half { r - tau } else { r }
+                    }
+                }
+            }
+            Atan2Turns => {
+                let p = PREC * 3;
+                Float::with_val(p, x.atan2(&a[1])) / (Float::with_val(p, Constant::Pi) * 2u32)
+            }
             _ => special(self, &Float::with_val(PREC * 3, &x)),
         }
+    }
+
+    /// The period an error is taken modulo, for the wraps.
+    pub fn period(self) -> Option<Float> {
+        matches!(self, WrapRadians | WrapPrincipal).then(|| Float::with_val(PREC, Constant::Pi) * 2u32)
     }
 
     /// Too costly to sweep exhaustively; sampled on every type instead.
@@ -550,8 +593,9 @@ impl Fun {
 
     pub fn parity(self) -> Parity {
         match self {
-            Sin | Tan | Asin | Atan | Sinh | Tanh | Coth | Asinh | Atanh | Acoth => Parity::Odd,
-            Cos | Cosh | TanRatio | AtanRatio | AtanhRatio | TanhRatio => Parity::Even,
+            Sin | Tan | Asin | Atan | Sinh | Tanh | Coth | Asinh | Atanh | Acoth | SinTurns
+            | DivByTau => Parity::Odd,
+            Cos | Cosh | TanRatio | AtanRatio | AtanhRatio | TanhRatio | CosTurns => Parity::Even,
             _ => Parity::Neither,
         }
     }
@@ -576,6 +620,8 @@ impl Fun {
             Acoth => vec![(ninf, f(-1.0), false), (one, inf, false)],
             Ln | Log2 | Log10 => vec![(zero, inf, true)],
             Rsqrt => vec![(zero, inf, false)],
+            SinTurns => vec![(f(-0.25), f(0.25), true)],
+            DivByTau => vec![(ninf, inf, true)],
             Expm1 | Exprel | Exprel2 | Log1p => vec![(ninf, inf, true)],
             MomentE1 | MomentE2 | MomentE3 | Log1pRatio => vec![(ninf, inf, false)],
             StumpffC0 | StumpffC1 | StumpffC2 | StumpffC3 => vec![(ninf, zero.clone() + f(1e-300), false)],
@@ -834,7 +880,16 @@ pub fn run<T: Sut>(fun: Fun) -> FunStats {
         } else {
             r
         };
-        let err = Float::with_val(PREC, c.to_float() - &expected).abs() << T::frac_n();
+        let mut diff = Float::with_val(PREC, c.to_float() - &expected);
+        if let Some(period) = fun.period() {
+            let half = Float::with_val(PREC, &period / 2u32);
+            if diff > half {
+                diff -= &period;
+            } else if diff < -half.clone() {
+                diff += &period;
+            }
+        }
+        let err = diff.abs() << T::frac_n();
         let ulps = err.to_f64();
         let scale = expected.abs().to_f64().max(1.0);
         if ulps > s.max_ulps {
