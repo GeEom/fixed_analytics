@@ -30,14 +30,14 @@ Requires Rust 1.95 or later.
 
 ```toml
 [dependencies]
-fixed_analytics = "4.1.0"
+fixed_analytics = "4.2.0"
 ```
 
 For `no_std` environments:
 
 ```toml
 [dependencies]
-fixed_analytics = { version = "4.1.0", default-features = false }
+fixed_analytics = { version = "4.2.0", default-features = false }
 ```
 
 ## Available Functions
@@ -146,4 +146,22 @@ The largest error seen, in ulps of the type, against MPFR on exact inputs. The s
 | sqrt_product | 0.50 | 0.50 | 0.50 |
 | asin_from_gap | 0.50 | 0.50 | 0.50 |
 | rsqrt | 0.50 | 0.50 | 0.50 |
+| expm1 | 0.50 | 0.50 | 0.50 |
+| exprel | 0.50 | 0.50 | 0.50 |
+| exprel2 | 0.50 | 0.50 | 0.50 |
+| exp_moments_e1 | 0.50 | 0.50 | 0.50 |
+| exp_moments_e2 | 0.50 | 0.50 | 0.50 |
+| exp_moments_e3 | 0.50 | 0.50 | 0.50 |
+| log1p | 0.50 | 0.50 | 0.50 |
+| log1p_ratio | 0.50 | 0.50 | 0.50 |
+| log1p_residual | 0.50 | 0.50 | 0.50 |
+| log1p_residual_ratio | 0.50 | 0.50 | 0.50 |
+| stumpff_c0 | 0.50 | 0.50 | 0.50 |
+| stumpff_c1 | 0.50 | 0.50 | 0.50 |
+| stumpff_c2 | 0.50 | 0.50 | 0.50 |
+| stumpff_c3 | 0.50 | 0.50 | 0.50 |
+| tan_ratio | 0.50 | 0.50 | 0.50 |
+| atan_ratio | 0.50 | 0.50 | 0.50 |
+| atanh_ratio | 0.50 | 0.50 | 0.50 |
+| tanh_ratio | 0.50 | 0.50 | 0.50 |
 <!-- WORST_END -->

@@ -10,6 +10,17 @@ function in backticks.
 Releases before 3.1.1 are described on the
 [releases page](https://github.com/GeEom/fixed_analytics/releases).
 
+## 4.2.0
+
+No output changes.
+
+New, each to full relative precision near 0: `expm1`; `exprel` and
+`exprel2`, `(e^x − 1)/x` and `(e^x − 1 − x)/x²`; `exp_moments`, the
+integrals `∫₀¹ s^(k−1)·e^(−xs) ds` for k up to 3 with `e^(−x)`; `log1p`,
+`log1p_ratio`, `log1p_residual` and `log1p_residual_ratio`; `stumpff`, the
+Stumpff functions `c₀` to `c₃` of either sign; and `tan_ratio`, `atan_ratio`,
+`atanh_ratio` and `tanh_ratio`.
+
 ## 4.1.0
 
 No output changes.
