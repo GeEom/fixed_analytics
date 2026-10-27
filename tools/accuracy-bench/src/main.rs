@@ -87,6 +87,9 @@ fn main() {
                 }
             }
         }
+        if !worst::check_bounds(&worst_stats) {
+            all_passed = false;
+        }
         if fs::read_to_string(worst::WORST_PATH).ok().as_deref() != Some(worst_text.as_str()) {
             eprintln!("{} is out of date; run `cargo run --release` here", worst::WORST_PATH);
             all_passed = false;
@@ -126,6 +129,7 @@ fn main() {
         fs::write(worst::WORST_PATH, &worst_text).expect("Failed to write worst.txt");
 
         report.print_table();
+        worst::check_bounds(&worst_stats);
     }
 }
 

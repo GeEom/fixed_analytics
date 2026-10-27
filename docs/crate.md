@@ -28,21 +28,27 @@ assert!((log.to_num::<f32>() - 1.0).abs() < 0.01);
 | Trigonometric | [`sin`], [`cos`], [`tan`], [`sin_cos`], [`atan`], [`atan2`] | [`asin`], [`acos`] |
 | Hyperbolic | [`sinh`], [`cosh`], [`tanh`], [`sinh_cosh`], [`asinh`] | [`acosh`], [`atanh`], [`acoth`], [`coth`] |
 | Exponential | [`exp`], [`pow2`] | [`ln`], [`log2`], [`log10`], [`pow`] |
-| Algebraic | — | [`sqrt`] |
+| Algebraic | [`sqrt_or_zero`] | [`sqrt`] |
+| Arithmetic | [`mul_add`], [`mul_div`], [`div_or_saturate`], [`dot`] | — |
 
-Functions use polynomial evaluation, CORDIC, and Newton-Raphson techniques.
-Complete absence of panic is verified at the linker level via the
+Each function works in binary floating point at twice its type's width or
+more, from its arguments converted exactly, and rounds once. Complete absence
+of panic is verified at the linker level via the
 [`no-panic`](https://github.com/dtolnay/no-panic) crate.
 
 # Accuracy
 
-| Type | Typical Accuracy |
-|------|------------------|
-| `I16F16` | ~4 decimal digits |
-| `I32F32` | ~8 decimal digits |
+Every function is within [`ERROR_ULPS`], one ulp, of the exact result on
+every type, from `I8F0` to `I3F125`, and the arithmetic functions within half
+an ulp; results out of range saturate to the nearer end. Odd and even
+functions are exactly odd and even, except that an odd one saturating at
+`MAX` meets `MIN` on the other side, and functions that are monotone stay
+monotone.
 
-All functions are benchmarked against MPFR reference implementations.
-Accuracy regressions are not permitted across releases.
+The accuracy tool checks all of this against MPFR on 104 layouts: every
+value of the 8- and 16-bit ones, and seeded samples of the wider ones.
+Accuracy regressions are not permitted across releases, and a release that
+changes any output bit says so in the changelog.
 
 # Features
 

@@ -5,13 +5,25 @@ use fixed::traits::{Fixed, FixedSigned};
 use fixed::types::extra::{IsLessOrEqual, LeEqU128, True, Unsigned};
 use fixed::{FixedI8, FixedI16, FixedI32, FixedI64, FixedI128};
 
+pub(crate) mod sealed {
+    /// The working arithmetic of a type, and its raw bits; this crate's types
+    /// alone implement it.
+    pub trait Sealed {
+        type Work: crate::real::Work;
+        fn raw_i128(self) -> i128;
+        fn from_raw_i128(raw: i128) -> Self;
+    }
+}
+
 /// The operations and constants the algorithms need from a fixed-point type.
 ///
 /// Every signed `fixed` type with three or more integer bits implements it,
 /// from [`FixedI8`] to [`FixedI128`] with up
-/// to 5, 13, 29, 61 or 125 fractional bits; `I16F16` and `I24F8` qualify.
+/// to 5, 13, 29, 61 or 125 fractional bits; `I16F16` and `I24F8` qualify. It
+/// is sealed: no other type can implement it.
 pub trait CordicNumber:
-    Copy
+    sealed::Sealed
+    + Copy
     + PartialEq
     + PartialOrd
     + Add<Output = Self>
@@ -218,12 +230,40 @@ macro_rules! impl_cordic_generic {
         $bits_type:ty,
         $wide_type:ty,
         $sqrt_impl:ident,
+        $work:ty,
         $total_bits:expr,
         $max_frac:ty,
         $pi_frac:ty,
         $frac_pi_2:ty,
         $frac_pi_4:ty
     ) => {
+        impl<Fract> sealed::Sealed for $fixed_type<Fract>
+        where
+            Fract: Unsigned
+                + IsLessOrEqual<$max_frac, Output = True>
+                + IsLessOrEqual<$pi_frac, Output = True>
+                + IsLessOrEqual<$frac_pi_2, Output = True>
+                + IsLessOrEqual<$frac_pi_4, Output = True>
+                + LeEqU128,
+        {
+            type Work = $work;
+
+            #[inline]
+            fn raw_i128(self) -> i128 {
+                i128::from(self.to_bits())
+            }
+
+            #[inline]
+            fn from_raw_i128(raw: i128) -> Self {
+                let saturated = if raw < 0 {
+                    <$bits_type>::MIN
+                } else {
+                    <$bits_type>::MAX
+                };
+                Self::from_bits(<$bits_type>::try_from(raw).unwrap_or(saturated))
+            }
+        }
+
         impl<Fract> CordicNumber for $fixed_type<Fract>
         where
             Fract: Unsigned
@@ -418,19 +458,32 @@ macro_rules! impl_cordic_generic {
     };
 }
 
+use crate::real::Real;
 use fixed::types::extra::{
     U5, U6, U7, U8, U13, U14, U15, U16, U29, U30, U31, U32, U61, U62, U63, U64, U125, U126, U127,
     U128,
 };
 
 // Each type's π bound is one bit stricter than π needs, for headroom.
-impl_cordic_generic!(FixedI8, i8, u16, sqrt_round_widened, 8, U8, U5, U6, U7);
+impl_cordic_generic!(
+    FixedI8,
+    i8,
+    u16,
+    sqrt_round_widened,
+    Real<1>,
+    8,
+    U8,
+    U5,
+    U6,
+    U7
+);
 
 impl_cordic_generic!(
     FixedI16,
     i16,
     u32,
     sqrt_round_widened,
+    Real<1>,
     16,
     U16,
     U13,
@@ -443,6 +496,7 @@ impl_cordic_generic!(
     i32,
     u64,
     sqrt_round_widened,
+    Real<1>,
     32,
     U32,
     U29,
@@ -455,6 +509,7 @@ impl_cordic_generic!(
     i64,
     u128,
     sqrt_round_widened,
+    Real<2>,
     64,
     U64,
     U61,
@@ -467,6 +522,7 @@ impl_cordic_generic!(
     i128,
     u128,
     sqrt_round_i128,
+    Real<3>,
     128,
     U128,
     U125,

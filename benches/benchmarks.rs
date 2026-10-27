@@ -5,8 +5,9 @@ use std::hint::black_box;
 use criterion::{Criterion, criterion_group, criterion_main};
 use fixed::types::{I16F16, I64F64};
 use fixed_analytics::{
-    CordicNumber, acos, acosh, acoth, asin, asinh, atan, atan2, atanh, cos, cosh, coth, exp, ln,
-    log2, log10, pow, pow2, sin, sin_cos, sinh, sinh_cosh, sqrt, tan, tanh,
+    CordicNumber, acos, acosh, acoth, asin, asinh, atan, atan2, atanh, cos, cosh, coth,
+    div_or_saturate, dot, exp, ln, log2, log10, mul_add, mul_div, pow, pow2, sin, sin_cos, sinh,
+    sinh_cosh, sqrt, tan, tanh,
 };
 
 fn bench_type<T: CordicNumber>(c: &mut Criterion, name: &str) {
@@ -66,6 +67,22 @@ fn bench_type<T: CordicNumber>(c: &mut Criterion, name: &str) {
         g.bench_function("sqrt", |b| b.iter(|| sqrt(black_box(pos_x))));
         g.bench_function("sqrt_large", |b| b.iter(|| sqrt(black_box(big))));
         g.bench_function("sqrt_small", |b| b.iter(|| sqrt(black_box(small))));
+        g.finish();
+    }
+    {
+        let mut g = c.benchmark_group(format!("{name}/arith"));
+        g.bench_function("mul_add", |b| {
+            b.iter(|| mul_add(black_box(big), black_box(x), black_box(small)));
+        });
+        g.bench_function("mul_div", |b| {
+            b.iter(|| mul_div(black_box(big), black_box(big), black_box(pos_x)));
+        });
+        g.bench_function("div_or_saturate", |b| {
+            b.iter(|| div_or_saturate(black_box(x), black_box(large_x)));
+        });
+        g.bench_function("dot3", |b| {
+            b.iter(|| dot(black_box(&[x, big, small]), black_box(&[pos_x, x, big])));
+        });
         g.finish();
     }
 }

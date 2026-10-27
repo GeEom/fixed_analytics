@@ -107,15 +107,6 @@ impl<T: CordicNumber> OpenUnitInterval<T> {
         Self(sqrt_x_sq_minus_one.div(x.0))
     }
 
-    /// Builds `(x − 1) / (x + 1)`, which lies in `[-1/3, 1/3]` for `x` in `[0.5, 2]`.
-    #[inline]
-    #[must_use]
-    pub(crate) fn from_normalized_ln_arg(x: NormalizedLnArg<T>) -> Self {
-        let x_minus_1 = x.0 - T::one();
-        let x_plus_1 = x.0 + T::one();
-        Self(x_minus_1.div(x_plus_1))
-    }
-
     /// Returns the inner value.
     #[inline]
     #[must_use]
@@ -141,19 +132,6 @@ impl<T: CordicNumber> AtLeastOne<T> {
     #[must_use]
     pub const fn get(self) -> T {
         self.0
-    }
-}
-
-/// The ln argument after normalization, in `[0.5, 2]`.
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct NormalizedLnArg<T>(T);
-
-impl<T: CordicNumber> NormalizedLnArg<T> {
-    /// Wraps the normalized value unchecked; `ln_positive` guarantees the range.
-    #[inline]
-    #[must_use]
-    pub(crate) const fn from_normalized(value: T) -> Self {
-        Self(value)
     }
 }
 
@@ -266,13 +244,5 @@ mod tests {
         let at_least = AtLeastOne::new(I16F16::from_num(2)).ok_or("out of range")?;
         assert_eq!(at_least.get(), I16F16::from_num(2));
         Ok(())
-    }
-
-    #[test]
-    fn open_unit_interval_from_normalized_ln_arg() {
-        let norm = NormalizedLnArg::from_normalized(I16F16::from_num(1.5));
-        let open = OpenUnitInterval::from_normalized_ln_arg(norm);
-        let val: f32 = open.get().to_num();
-        assert!((val - 0.2).abs() < 0.01);
     }
 }

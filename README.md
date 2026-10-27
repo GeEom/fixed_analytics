@@ -52,9 +52,10 @@ fixed_analytics = { version = "3.1.1", default-features = false }
 | Trigonometric | `sin`, `cos`, `tan`, `sin_cos`, `atan`, `atan2` | `asin`, `acos` |
 | Hyperbolic | `sinh`, `cosh`, `tanh`, `sinh_cosh`, `asinh` | `acosh`, `atanh`, `acoth`, `coth` |
 | Exponential | `exp`, `pow2` | `ln`, `log2`, `log10`, `pow` |
-| Algebraic | — | `sqrt` |
+| Algebraic | `sqrt_or_zero` | `sqrt` |
+| Arithmetic | `mul_add`, `mul_div`, `div_or_saturate`, `dot` | — |
 
-Functions are calculated via polynomial evaluation, CORDIC, and Newton-Raphson techniques. Complete absence of panic is verified at the linker level via the [`no-panic`](https://github.com/dtolnay/no-panic) crate.
+Each function works in binary floating point at twice its type's width or more, from its arguments converted exactly, and rounds once to the type. Every one is within one ulp of the exact result on every type, `ERROR_ULPS`, and the arithmetic functions within half an ulp. Odd and even functions are exactly so and monotone functions stay monotone. Complete absence of panic is verified at the linker level via the [`no-panic`](https://github.com/dtolnay/no-panic) crate.
 
 ### Saturation Behavior
 
@@ -68,7 +69,7 @@ The following total functions saturate, clamping to the representable range near
 | `pow2` | x ≤ -17.0 | x ≤ -33.0 | Zero |
 | `sinh` | \|x\| ≥ 11.1 | \|x\| ≥ 22.2 | `T::MAX` or `T::MIN` |
 | `cosh` | \|x\| ≥ 11.1 | \|x\| ≥ 22.2 | `T::MAX` |
-| `tan` | \|x - pole\| < 4e-5 | \|x - pole\| < 5e-10 | `T::MAX` or `T::MIN` |
+| `tan` | \|x - pole\| < 3.1e-5 | \|x - pole\| < 4.7e-10 | `T::MAX` or `T::MIN` |
 
 Where for `tan`, "pole" refers to ±π/2, ±3π/2, ±5π/2, ...
 

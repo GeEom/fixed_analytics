@@ -16,7 +16,7 @@ categories = ["mathematics", "no-std", "algorithms", "embedded"]
 # and CI configuration, which would pin anyone building the packaged crate to
 # this repo's toolchain.
 exclude = [
-    "docs/exp.md", "docs/sin_cos.md", "docs/sinh_cosh.md", "docs/sqrt.md",
+    "docs/engine.md", "docs/sqrt.md",
     "rust-toolchain.toml", "clippy.toml", "codecov.yml", ".github/",
 ]
 
