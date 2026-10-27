@@ -10,6 +10,17 @@ function in backticks.
 Releases before 3.1.1 are described on the
 [releases page](https://github.com/GeEom/fixed_analytics/releases).
 
+## 4.1.0
+
+No output changes.
+
+New: `enclose`, the interval of one ulp each way that holds a result's exact
+value, and outward-rounded ranges over an interval, `sin_cos_range`,
+`exp_range`, `atan_range` and `tanh_range`; `hypot`, `norm` and `normalize`,
+which form their squares without underflow; `scale_exponent` and `scale_by`
+for exact power-of-two scaling; `sqrt_product`, `rsqrt`, and `asin_from_gap`,
+which takes the gap to 1 in place of a value that would round.
+
 ## 4.0.0
 
 Every function now evaluates in binary floating point at twice its type's
