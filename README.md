@@ -30,14 +30,14 @@ Requires Rust 1.95 or later.
 
 ```toml
 [dependencies]
-fixed_analytics = "4.3.0"
+fixed_analytics = "4.4.0"
 ```
 
 For `no_std` environments:
 
 ```toml
 [dependencies]
-fixed_analytics = { version = "4.3.0", default-features = false }
+fixed_analytics = { version = "4.4.0", default-features = false }
 ```
 
 ## Available Functions
@@ -181,4 +181,10 @@ The largest error seen, in ulps of the type, against MPFR on exact inputs. The s
 | carlson_rd | 0.50 | 0.50 | 0.50 |
 | ellip_pi | 0.50 | 0.50 | 0.50 |
 | ellip_pi_complete | 0.50 | 0.50 | 0.50 |
+| sin_turns | 0.50 | 0.50 | 0.50 |
+| cos_turns | 0.50 | 0.50 | 0.50 |
+| atan2_turns | 0.50 | 0.50 | 0.50 |
+| div_by_tau | 0.50 | 0.50 | 0.50 |
+| wrap_radians | 0.50 | 0.50 | 0.50 |
+| wrap_principal | 0.50 | 0.50 | 0.50 |
 <!-- WORST_END -->

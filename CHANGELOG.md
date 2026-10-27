@@ -10,6 +10,15 @@ function in backticks.
 Releases before 3.1.1 are described on the
 [releases page](https://github.com/GeEom/fixed_analytics/releases).
 
+## 4.4.0
+
+No output changes.
+
+New: angles in turns. `sin_cos_turns` takes a fraction of a turn, whose
+reduction is its own bits with no rounded π, and `atan2_turns` returns one.
+`div_by_tau` is `x/τ` rounded once, and `wrap_radians` and `wrap_principal`
+reduce to `[0, 2π)` and `(−π, π]` by exact multiples of 2π.
+
 ## 4.3.0
 
 No output changes.
