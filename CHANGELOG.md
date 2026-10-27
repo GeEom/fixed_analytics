@@ -10,6 +10,18 @@ function in backticks.
 Releases before 3.1.1 are described on the
 [releases page](https://github.com/GeEom/fixed_analytics/releases).
 
+## 4.3.0
+
+No output changes.
+
+New: elliptic integrals and functions. `Modulus` holds `m` or its
+complement `k'` exact. `ellip_k`, `ellip_e` and `ellip_pi_complete` are the
+complete integrals, `ellip_pi` the incomplete third kind from `(sn, cn, dn)`,
+`jacobi_sn_cn_dn` and `jacobi_am` the Jacobi functions of any argument, and
+`jacobi_inverse` their inverse. `carlson_rf`, `carlson_rj`, `carlson_rc` and
+`carlson_rd` are Carlson's integrals, with `carlson_rf_roots` and
+`carlson_rj_roots` taking square roots for arguments too small to hold.
+
 ## 4.2.0
 
 No output changes.

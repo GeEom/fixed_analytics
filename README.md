@@ -30,14 +30,14 @@ Requires Rust 1.95 or later.
 
 ```toml
 [dependencies]
-fixed_analytics = "4.2.0"
+fixed_analytics = "4.3.0"
 ```
 
 For `no_std` environments:
 
 ```toml
 [dependencies]
-fixed_analytics = { version = "4.2.0", default-features = false }
+fixed_analytics = { version = "4.3.0", default-features = false }
 ```
 
 ## Available Functions
@@ -165,4 +165,19 @@ The largest error seen, in ulps of the type, against MPFR on exact inputs. The s
 | atan_ratio | 0.50 | 0.50 | 0.50 |
 | atanh_ratio | 0.50 | 0.50 | 0.50 |
 | tanh_ratio | 0.50 | 0.50 | 0.50 |
+| ellip_k | 0.50 | 0.50 | 0.50 |
+| ellip_k_from_m | 0.50 | 0.50 | 0.50 |
+| ellip_e | 0.50 | 0.50 | 0.50 |
+| jacobi_sn | 0.50 | 0.50 | 0.50 |
+| jacobi_cn | 0.50 | 0.50 | 0.50 |
+| jacobi_dn | 0.50 | 0.50 | 0.50 |
+| jacobi_am | 0.50 | 0.50 | 0.50 |
+| jacobi_inverse | 0.50 | 0.50 | 0.50 |
+| carlson_rf | 0.50 | 0.50 | 0.50 |
+| carlson_rf_roots | 0.50 | 0.50 | 0.50 |
+| carlson_rj | 0.50 | 0.50 | 0.50 |
+| carlson_rc | 0.50 | 0.50 | 0.50 |
+| carlson_rd | 0.50 | 0.50 | 0.50 |
+| ellip_pi | 0.50 | 0.50 | 0.50 |
+| ellip_pi_complete | 0.50 | 0.50 | 0.50 |
 <!-- WORST_END -->
