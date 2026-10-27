@@ -171,6 +171,117 @@ pub fn sin_cos_octant<V: Work>(oct: u32, frac: V) -> (V, V) {
     }
 }
 
+/// A value past every type's range, which any of them saturates from.
+pub fn beyond<V: Work>() -> V {
+    V::one().ldexp(256)
+}
+
+/// `φₖ(z) = (e^z − Σ_{n<k} zⁿ/n!)/z^k` for `k` in 1 to 3, which is `1/k!` at
+/// 0: by its series near 0, so it keeps relative precision there.
+pub fn phi<V: Work>(k: u32, z: V) -> V {
+    if z.abs() <= V::one().ldexp(-1) {
+        return V::horner(z, &FACT, k, 1, by_width::<V>([18, 30, 39]), false);
+    }
+    if z > V::from_int(HUGE) {
+        return beyond();
+    }
+    let mut num = if z < V::from_int(-HUGE) {
+        -V::one()
+    } else {
+        expm1(z)
+    };
+    if k >= 2 {
+        num = num - z;
+    }
+    if k >= 3 {
+        num = num - z.square().ldexp(-1);
+    }
+    let mut den = z;
+    for _ in 1..k {
+        den = den * z;
+    }
+    num / den
+}
+
+/// `ln(1 + v) − v` for `v > −1`. Near 0 it is `2s³·Σ s^{2k}/(2k + 3) −
+/// v²/(2 + v)` with `s = v/(2 + v)`, two terms of order `v²` that do not
+/// cancel.
+pub fn log1p_minus<V: Work>(v: V) -> V {
+    if v.abs() <= V::one().ldexp(-2) {
+        let den = v + V::from_int(2);
+        let s = v / den;
+        let sum = V::horner(s.square(), &ODD, 1, 1, by_width::<V>([13, 24, 36]), false);
+        return (s * s.square() * sum).ldexp(1) - v.square() / den;
+    }
+    log1p(v) - v
+}
+
+/// `(ln(1 + u) − u)/u²`, which is −½ at 0.
+pub fn log1p_minus_ratio<V: Work>(u: V) -> V {
+    if u.abs() <= V::one().ldexp(-2) {
+        let den = u + V::from_int(2);
+        let s = u / den;
+        let sum = V::horner(s.square(), &ODD, 1, 1, by_width::<V>([13, 24, 36]), false);
+        return (u * sum).ldexp(1) / (den * den.square()) - V::one() / den;
+    }
+    log1p_minus(u) / u.square()
+}
+
+/// `ln(1 + z)/z`, which is 1 at 0.
+pub fn log1p_ratio<V: Work>(z: V) -> V {
+    if z.abs() <= V::one().ldexp(-2) {
+        let den = z + V::from_int(2);
+        let s = z / den;
+        let sum = V::horner(s.square(), &ODD, 0, 1, by_width::<V>([13, 24, 36]), false);
+        return sum.ldexp(1) / den;
+    }
+    log1p(z) / z
+}
+
+/// The Stumpff functions `cₖ(z) = Σ (−z)ⁿ/(2n + k)!` for k from 0 to 3, of
+/// either sign of `z`: the series near 0, and past it the closed forms in
+/// `√|z|`, with `c₂` from the half angle so that it does not cancel.
+pub fn stumpff<V: Work>(z: V) -> [V; 4] {
+    if z.abs() <= V::one().ldexp(-2) {
+        let n = by_width::<V>([10, 17, 21]);
+        return [0, 1, 2, 3].map(|k| V::horner(-z, &FACT, k, 2, n, false));
+    }
+    let one = V::one();
+    let w = z.abs().sqrt();
+    if z.is_neg() {
+        if w > V::from_int(HUGE) {
+            return [beyond(); 4];
+        }
+        let (sh, ch) = sinh_cosh(w);
+        let (half, _) = sinh_cosh(w.ldexp(-1));
+        let c1 = sh / w;
+        [
+            ch,
+            c1,
+            (half.square() / w.square()).ldexp(1),
+            (c1 - one) / -z,
+        ]
+    } else {
+        let (s, c) = sin_cos(w);
+        let (half, _) = sin_cos(w.ldexp(-1));
+        let c1 = s / w;
+        [c, c1, (half.square() / z).ldexp(1), (one - c1) / z]
+    }
+}
+
+/// Sine and cosine of a working value, reduced exactly past π/4.
+pub fn sin_cos<V: Work>(w: V) -> (V, V) {
+    let a = w.abs();
+    let quarter = pi::<V>().ldexp(-2);
+    let (oct, frac) = if a <= quarter {
+        (0, a / quarter)
+    } else {
+        a.octant_of()
+    };
+    let (s, c) = sin_cos_octant(oct, frac);
+    (if w.is_neg() { -s } else { s }, c)
+}
+
 /// `frac(x/2π)`, the angle as a fraction of a turn in `[0, 1)`, from the
 /// same exact reduction as `sin` and `cos`.
 pub fn turn_fraction<T: CordicNumber>(x: T) -> W<T> {

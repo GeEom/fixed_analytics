@@ -16,6 +16,10 @@ use fixed_analytics::{
     norm, normalize, pow, pow2, rsqrt, scale_by, scale_exponent, sin, sin_cos, sin_cos_range, sinh,
     sinh_cosh, sqrt, sqrt_or_zero, sqrt_product, tan, tanh, tanh_range,
 };
+use fixed_analytics::{
+    atan_ratio, atanh_ratio, exp_moments, expm1, exprel, exprel2, log1p, log1p_ratio,
+    log1p_residual, log1p_residual_ratio, stumpff, tan_ratio, tanh_ratio,
+};
 
 /// Hands `v` to `black_box`, so the optimizer must compute it in full.
 fn keep<V>(v: V) {
@@ -67,6 +71,19 @@ fn exercise<T: CordicNumber>(x: T, y: T, two: T) {
     keep(exp_range(x, two));
     keep(atan_range(x, two));
     keep(tanh_range(x, two));
+    keep(expm1(x));
+    keep(exprel(x));
+    keep(exprel2(x));
+    keep(exp_moments(x));
+    keep(log1p(x));
+    keep(log1p_ratio(x));
+    keep(log1p_residual(x));
+    keep(log1p_residual_ratio(x));
+    keep(stumpff(x));
+    keep(tan_ratio(x));
+    keep(atan_ratio(x));
+    keep(atanh_ratio(x));
+    keep(tanh_ratio(x));
 
     if let Some(nn) = NonNegative::new(x) {
         keep(sqrt_nonneg(nn));

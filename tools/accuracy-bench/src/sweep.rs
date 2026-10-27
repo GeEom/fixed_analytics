@@ -48,6 +48,24 @@ pub enum Fun {
     SqrtProduct,
     AsinFromGap,
     Rsqrt,
+    Expm1,
+    Exprel,
+    Exprel2,
+    MomentE1,
+    MomentE2,
+    MomentE3,
+    Log1p,
+    Log1pRatio,
+    Log1pResidual,
+    Log1pResidualRatio,
+    StumpffC0,
+    StumpffC1,
+    StumpffC2,
+    StumpffC3,
+    TanRatio,
+    AtanRatio,
+    AtanhRatio,
+    TanhRatio,
 }
 
 use Fun::*;
@@ -56,6 +74,7 @@ pub const ALL: &[Fun] = &[
     Sin, Cos, Tan, Asin, Acos, Atan, Atan2, Sinh, Cosh, Tanh, Coth, Asinh, Acosh, Atanh, Acoth,
     Exp, Pow2, Ln, Log2, Log10, Pow, Sqrt, SqrtOrZero, MulAdd, MulDiv, DivOrSaturate, Dot3,
     Hypot, Norm3, Normalize3, ScaleBy, SqrtProduct, AsinFromGap, Rsqrt,
+    Expm1, Exprel, Exprel2, MomentE1, MomentE2, MomentE3, Log1p, Log1pRatio, Log1pResidual, Log1pResidualRatio, StumpffC0, StumpffC1, StumpffC2, StumpffC3, TanRatio, AtanRatio, AtanhRatio, TanhRatio,
 ];
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -72,6 +91,66 @@ const PAIRS_16: usize = 1 << 18;
 
 pub const fn sample_count() -> usize {
     SAMPLES
+}
+
+/// References for the functions whose closed forms cancel near 0, worked at
+/// three times the precision, which covers the cancellation for any input of
+/// a 128-bit type.
+fn special(fun: Fun, x: &Float) -> Float {
+    let p = PREC * 3;
+    let one = Float::with_val(p, 1);
+    let zero = x.is_zero();
+    let at_zero = |v: f64| Float::with_val(p, v);
+    match fun {
+        Expm1 => x.clone().exp_m1(),
+        Exprel if zero => at_zero(1.0),
+        Exprel => x.clone().exp_m1() / x,
+        Exprel2 if zero => at_zero(0.5),
+        Exprel2 => (x.clone().exp_m1() - x) / x.clone().square(),
+        MomentE1 | MomentE2 | MomentE3 if zero => {
+            one / match fun { MomentE1 => 1u32, MomentE2 => 2, _ => 3 }
+        }
+        MomentE1 => -(-x.clone()).exp_m1() / x,
+        MomentE2 => (one.clone() - (-x.clone()).exp() * (one + x)) / x.clone().square(),
+        MomentE3 => {
+            let poly = Float::with_val(p, x * x) + Float::with_val(p, x * 2u32) + 2u32;
+            (Float::with_val(p, 2) - (-x.clone()).exp() * poly) / Float::with_val(p, x * x) / x
+        }
+        Log1p => x.clone().ln_1p(),
+        Log1pRatio if zero => at_zero(1.0),
+        Log1pRatio => x.clone().ln_1p() / x,
+        Log1pResidual => x.clone().ln_1p() - x,
+        Log1pResidualRatio if zero => at_zero(-0.5),
+        Log1pResidualRatio => (x.clone().ln_1p() - x) / x.clone().square(),
+        StumpffC0 | StumpffC1 | StumpffC2 | StumpffC3 => {
+            let k = match fun { StumpffC0 => 0, StumpffC1 => 1, StumpffC2 => 2, _ => 3 };
+            if zero {
+                return one / [1u32, 1, 2, 6][k];
+            }
+            let w = x.clone().abs().sqrt();
+            let (c, s) = if x.is_sign_positive() {
+                (w.clone().cos(), w.clone().sin())
+            } else {
+                (w.clone().cosh(), w.clone().sinh())
+            };
+            let c1 = s / &w;
+            match k {
+                0 => c,
+                1 => c1,
+                2 => (one - c) / x,
+                _ => (one - c1) / x,
+            }
+        }
+        TanRatio if zero => at_zero(1.0),
+        TanRatio => x.clone().tan() / x,
+        AtanRatio if zero => at_zero(1.0),
+        AtanRatio => x.clone().atan() / x,
+        AtanhRatio if zero => at_zero(1.0),
+        AtanhRatio => x.clone().atanh() / x,
+        TanhRatio if zero => at_zero(1.0),
+        TanhRatio => x.clone().tanh() / x,
+        _ => at_zero(f64::NAN),
+    }
 }
 
 /// `num / den`, with 0 for 0/0 and an infinity of the numerator's sign for a
@@ -131,6 +210,24 @@ impl Fun {
             SqrtProduct => "sqrt_product",
             AsinFromGap => "asin_from_gap",
             Rsqrt => "rsqrt",
+            Expm1 => "expm1",
+            Exprel => "exprel",
+            Exprel2 => "exprel2",
+            MomentE1 => "exp_moments_e1",
+            MomentE2 => "exp_moments_e2",
+            MomentE3 => "exp_moments_e3",
+            Log1p => "log1p",
+            Log1pRatio => "log1p_ratio",
+            Log1pResidual => "log1p_residual",
+            Log1pResidualRatio => "log1p_residual_ratio",
+            StumpffC0 => "stumpff_c0",
+            StumpffC1 => "stumpff_c1",
+            StumpffC2 => "stumpff_c2",
+            StumpffC3 => "stumpff_c3",
+            TanRatio => "tan_ratio",
+            AtanRatio => "atan_ratio",
+            AtanhRatio => "atanh_ratio",
+            TanhRatio => "tanh_ratio",
         }
     }
 
@@ -181,6 +278,24 @@ impl Fun {
             SqrtProduct => fa::sqrt_product(x, a[1]).ok(),
             AsinFromGap => fa::asin_from_gap(x).ok(),
             Rsqrt => fa::rsqrt(x).ok(),
+            Expm1 => Some(fa::expm1(x)),
+            Exprel => Some(fa::exprel(x)),
+            Exprel2 => Some(fa::exprel2(x)),
+            MomentE1 => Some(fa::exp_moments(x)[0]),
+            MomentE2 => Some(fa::exp_moments(x)[1]),
+            MomentE3 => Some(fa::exp_moments(x)[2]),
+            Log1p => fa::log1p(x).ok(),
+            Log1pRatio => fa::log1p_ratio(x).ok(),
+            Log1pResidual => fa::log1p_residual(x).ok(),
+            Log1pResidualRatio => fa::log1p_residual_ratio(x).ok(),
+            StumpffC0 => Some(fa::stumpff(x)[0]),
+            StumpffC1 => Some(fa::stumpff(x)[1]),
+            StumpffC2 => Some(fa::stumpff(x)[2]),
+            StumpffC3 => Some(fa::stumpff(x)[3]),
+            TanRatio => Some(fa::tan_ratio(x).0),
+            AtanRatio => Some(fa::atan_ratio(x)),
+            AtanhRatio => fa::atanh_ratio(x).ok(),
+            TanhRatio => Some(fa::tanh_ratio(x)),
         }
     }
 
@@ -196,6 +311,8 @@ impl Fun {
             Atanh => x > -one && x < one,
             Acoth => x < -one || x > one,
             Ln | Log2 | Log10 | Rsqrt => x > zero,
+            Log1p | Log1pRatio | Log1pResidual | Log1pResidualRatio => x > -one,
+            AtanhRatio => x > -one && x < one,
             Sqrt => x >= zero,
             AsinFromGap => x >= zero && x <= one + one,
             SqrtProduct => !((x < zero && a[1] > zero) || (x > zero && a[1] < zero)),
@@ -283,6 +400,7 @@ impl Fun {
             SqrtProduct => Float::with_val(PREC * 3, &x * &a[1]).abs().sqrt(),
             AsinFromGap => (one - x).asin(),
             Rsqrt => one / x.sqrt(),
+            _ => special(self, &Float::with_val(PREC * 3, &x)),
         }
     }
 
@@ -295,7 +413,7 @@ impl Fun {
     pub fn parity(self) -> Parity {
         match self {
             Sin | Tan | Asin | Atan | Sinh | Tanh | Coth | Asinh | Atanh | Acoth => Parity::Odd,
-            Cos | Cosh => Parity::Even,
+            Cos | Cosh | TanRatio | AtanRatio | AtanhRatio | TanhRatio => Parity::Even,
             _ => Parity::Neither,
         }
     }
@@ -320,6 +438,10 @@ impl Fun {
             Acoth => vec![(ninf, f(-1.0), false), (one, inf, false)],
             Ln | Log2 | Log10 => vec![(zero, inf, true)],
             Rsqrt => vec![(zero, inf, false)],
+            Expm1 | Exprel | Exprel2 | Log1p => vec![(ninf, inf, true)],
+            MomentE1 | MomentE2 | MomentE3 | Log1pRatio => vec![(ninf, inf, false)],
+            StumpffC0 | StumpffC1 | StumpffC2 | StumpffC3 => vec![(ninf, zero.clone() + f(1e-300), false)],
+            Log1pResidual => vec![(f(-1.0), zero.clone(), true), (zero, inf, false)],
             AsinFromGap => vec![(zero.clone() - f(1e-300), f(2.0) + f(1e-300), false)],
             Sqrt => vec![(zero - f(1e-300), inf, true)],
             _ => vec![],
