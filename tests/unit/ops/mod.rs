@@ -1,6 +1,7 @@
 mod algebraic;
 mod arith;
 mod circular;
+mod elliptic;
 mod exponential;
 mod hyperbolic;
 mod interval;

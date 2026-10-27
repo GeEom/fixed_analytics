@@ -1,5 +1,5 @@
-//! Pins every function's output bits in tests/golden.txt; CHANGELOG.md
-//! explains how a change is re-pinned and recorded.
+//! Holds every function to the output bits pinned in tests/golden.txt.
+//! CHANGELOG.md says how to pin a change and record it.
 
 #[cfg(test)]
 mod tests {
@@ -13,6 +13,11 @@ mod tests {
         mul_add, mul_div, norm, normalize, pow, pow2, rsqrt, scale_by, scale_exponent, sin,
         sin_cos, sin_cos_range, sinh, sinh_cosh, sqrt, sqrt_or_zero, sqrt_product, tan, tanh,
         tanh_range,
+    };
+    use fixed_analytics::{
+        Modulus, carlson_rc, carlson_rd, carlson_rf, carlson_rf_roots, carlson_rj,
+        carlson_rj_roots, ellip_e, ellip_k, ellip_pi, ellip_pi_complete, jacobi_am, jacobi_inverse,
+        jacobi_sn_cn_dn,
     };
     use fixed_analytics::{
         atan_ratio, atanh_ratio, exp_moments, expm1, exprel, exprel2, log1p, log1p_ratio,
@@ -80,6 +85,19 @@ mod tests {
         "atan_ratio",
         "atanh_ratio",
         "tanh_ratio",
+        "ellip_k",
+        "ellip_e",
+        "ellip_pi_complete",
+        "ellip_pi",
+        "jacobi_sn_cn_dn",
+        "jacobi_am",
+        "jacobi_inverse",
+        "carlson_rf",
+        "carlson_rf_roots",
+        "carlson_rj",
+        "carlson_rj_roots",
+        "carlson_rc",
+        "carlson_rd",
     ];
 
     trait Raw: CordicNumber {
@@ -198,12 +216,52 @@ mod tests {
             "atan_ratio" => one(atan_ratio(x)),
             "atanh_ratio" => res(atanh_ratio(x)),
             "tanh_ratio" => one(tanh_ratio(x)),
+            "carlson_rf" => res(carlson_rf(x.abs(), y.abs(), T::one())),
+            "carlson_rf_roots" => res(carlson_rf_roots(x, y, T::one())),
+            "carlson_rj" => res(carlson_rj(x.abs(), y.abs(), T::one(), T::two())),
+            "carlson_rj_roots" => res(carlson_rj_roots(x, y, T::one(), T::two())),
+            "carlson_rc" => res(carlson_rc(x.abs(), y.abs())),
+            "carlson_rd" => res(carlson_rd(x.abs(), y.abs(), T::one())),
+            _ => elliptic(name, x, y),
+        }
+    }
+
+    /// The elliptic functions. Their modulus comes from `|y|`, folded into
+    /// `[0, 1]`.
+    fn elliptic<T: CordicNumber>(name: &str, x: T, y: T) -> [Option<T>; 2] {
+        let one = |v: T| [Some(v), None];
+        let res = |v: fixed_analytics::Result<T>| [v.ok(), None];
+        let fold = if y.abs() > T::one() {
+            T::one().div(y.abs())
+        } else {
+            y.abs()
+        };
+        let Some(m) = Modulus::from_complement(fold) else {
+            return [None, None];
+        };
+        match name {
+            "ellip_k" => res(ellip_k(m)),
+            "ellip_e" => one(ellip_e(m)),
+            "ellip_pi_complete" => res(ellip_pi_complete(x, m)),
+            "ellip_pi" => {
+                let (sn, cn, dn) = jacobi_sn_cn_dn(x, m);
+                res(ellip_pi(-T::one(), sn, cn, dn, m))
+            }
+            "jacobi_sn_cn_dn" => {
+                let (sn, cn, dn) = jacobi_sn_cn_dn(x, m);
+                [Some(sn.saturating_add(dn)), Some(cn)]
+            }
+            "jacobi_am" => one(jacobi_am(x, m)),
+            "jacobi_inverse" => {
+                let (sn, cn, dn) = jacobi_sn_cn_dn(x, m);
+                res(jacobi_inverse(sn, cn, dn, m))
+            }
             _ => [None, None],
         }
     }
 
-    /// Fixed values, then raw bits whose length is uniform, so tiny and huge
-    /// values come up as often as ordinary ones.
+    /// A few fixed values, then raw bits of every length in equal measure.
+    /// Tiny and huge values turn up as often as ordinary ones.
     fn inputs<T: Raw>(seed: u64) -> Vec<T> {
         let mut v: Vec<T> = [0.0, 1.0, -1.0, 0.5, -0.5, 2.0, -2.0, 3.0, -3.0]
             .iter()
@@ -243,8 +301,17 @@ mod tests {
         });
         let xs = inputs::<T>(seed);
         let ys = inputs::<T>(seed ^ 0x5555);
+        // Debug code runs the elliptic functions slowly. Fewer inputs do.
+        let count = if name.starts_with("ellip")
+            || name.starts_with("jacobi")
+            || name.starts_with("carlson")
+        {
+            64
+        } else {
+            INPUTS
+        };
         let mut hash = 0xCBF2_9CE4_8422_2325;
-        for (&x, &y) in xs.iter().zip(&ys) {
+        for (&x, &y) in xs.iter().zip(&ys).take(count) {
             for out in eval(name, x, y) {
                 match out {
                     Some(v) => fnv(&mut hash, &v.raw().to_le_bytes()),
@@ -272,7 +339,8 @@ mod tests {
         map
     }
 
-    /// Each row: function, type, hash and the version that last changed it.
+    /// Rows keyed by function and type, holding the hash and the version
+    /// that last moved it.
     type Pinned = BTreeMap<(String, String), (u64, String)>;
 
     fn pinned() -> Result<Pinned, String> {

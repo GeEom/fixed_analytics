@@ -66,6 +66,21 @@ pub enum Fun {
     AtanRatio,
     AtanhRatio,
     TanhRatio,
+    EllipK,
+    EllipKm,
+    EllipE,
+    JacobiSn,
+    JacobiCn,
+    JacobiDn,
+    JacobiAm,
+    JacobiInverse,
+    CarlsonRf,
+    CarlsonRfRoots,
+    CarlsonRj,
+    CarlsonRc,
+    CarlsonRd,
+    EllipPi,
+    EllipPiComplete,
 }
 
 use Fun::*;
@@ -75,6 +90,7 @@ pub const ALL: &[Fun] = &[
     Exp, Pow2, Ln, Log2, Log10, Pow, Sqrt, SqrtOrZero, MulAdd, MulDiv, DivOrSaturate, Dot3,
     Hypot, Norm3, Normalize3, ScaleBy, SqrtProduct, AsinFromGap, Rsqrt,
     Expm1, Exprel, Exprel2, MomentE1, MomentE2, MomentE3, Log1p, Log1pRatio, Log1pResidual, Log1pResidualRatio, StumpffC0, StumpffC1, StumpffC2, StumpffC3, TanRatio, AtanRatio, AtanhRatio, TanhRatio,
+    EllipK, EllipKm, EllipE, JacobiSn, JacobiCn, JacobiDn, JacobiAm, JacobiInverse, CarlsonRf, CarlsonRfRoots, CarlsonRj, CarlsonRc, CarlsonRd, EllipPi, EllipPiComplete,
 ];
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -88,9 +104,68 @@ pub enum Parity {
 const SAMPLES: usize = 40_000;
 /// Pairs drawn per function of two arguments on 16-bit types.
 const PAIRS_16: usize = 1 << 18;
+/// Samples per type for the costly functions.
+const HEAVY_SAMPLES: usize = 3_000;
 
 pub const fn sample_count() -> usize {
     SAMPLES
+}
+
+fn fun_roots(fun: Fun) -> bool {
+    fun == CarlsonRfRoots
+}
+
+fn elliptic(fun: Fun, a: &[Float]) -> Float {
+    use crate::elliptic_ref as er;
+    let one = Float::with_val(er::P, 1);
+    let up = |v: &Float| Float::with_val(er::P, v);
+    match fun {
+        EllipK => er::k(&a[0]),
+        EllipKm => er::k(&(one - &a[0]).sqrt()),
+        EllipE => er::e(&a[0]),
+        JacobiSn | JacobiCn | JacobiDn | JacobiAm => {
+            let (sn, cn, dn, am) = er::jacobi(&up(&a[0]), &up(&a[1]));
+            match fun { JacobiSn => sn, JacobiCn => cn, JacobiDn => dn, _ => am }
+        }
+        JacobiInverse => er::inverse(&a[0], &a[1], &a[2], &a[3]),
+        CarlsonRf => er::rf(&a[0], &a[1], &a[2]),
+        CarlsonRfRoots => er::rf(&up(&a[0]).square(), &up(&a[1]).square(), &up(&a[2]).square()),
+        CarlsonRj => er::rj(&a[0], &a[1], &a[2], &a[3]),
+        CarlsonRc => er::rc(&up(&a[0]), &up(&a[1])),
+        CarlsonRd => er::rd(&a[0], &a[1], &a[2]),
+        EllipPi => er::pi(&up(&a[0]), &a[1], &a[2], &a[3], &a[4]),
+        _ => er::pi_complete(&up(&a[0]), &a[1]),
+    }
+}
+
+/// Points for the elliptic functions: moduli crowded toward both ends,
+/// non-negative Carlson arguments, and `(sn, cn, dn)` rounded from an angle.
+fn elliptic_points<T: Sut>(fun: Fun, rng: &mut Rng) -> Vec<Vec<T>> {
+    let any = candidates::<T>(fun, rng, 4 * HEAVY_SAMPLES);
+    let one = <T as CordicNumber>::one();
+    let unit: Vec<T> = any.iter().map(|&v| { let a = CordicNumber::abs(v); if a > one { T::from_rb(a.rb() % one.rb().max(1)) } else { a } }).collect();
+    let pos: Vec<T> = any.iter().map(|&v| CordicNumber::abs(v)).collect();
+    let pick = |rng: &mut Rng, v: &[T]| v[rng.below(v.len())];
+    (0..HEAVY_SAMPLES)
+        .map(|_| match fun {
+            EllipK | EllipKm | EllipE => vec![pick(rng, &unit)],
+            JacobiSn | JacobiCn | JacobiDn | JacobiAm => vec![pick(rng, &any), pick(rng, &unit)],
+            CarlsonRf | CarlsonRd => (0..3).map(|_| pick(rng, &pos)).collect(),
+            CarlsonRfRoots => (0..3).map(|_| pick(rng, &any)).collect(),
+            CarlsonRj => (0..4).map(|_| pick(rng, &pos)).collect(),
+            CarlsonRc => vec![pick(rng, &pos), pick(rng, &pos)],
+            EllipPiComplete => vec![pick(rng, &any), pick(rng, &unit)],
+            _ => {
+                let kc = pick(rng, &unit);
+                let phi = Float::with_val(PREC, rng.next() as f64 / u64::MAX as f64 * 6.2 - 3.1);
+                let m = Float::with_val(PREC, 1) - kc.to_float().square();
+                let s = phi.clone().sin();
+                let d = (Float::with_val(PREC, 1) - m * s.clone().square()).sqrt();
+                let parts = vec![T::from_float(&s), T::from_float(&phi.cos()), T::from_float(&d), kc];
+                if fun == JacobiInverse { parts } else { [vec![pick(rng, &any)], parts].concat() }
+            }
+        })
+        .collect()
 }
 
 /// References for the functions whose closed forms cancel near 0, worked at
@@ -228,13 +303,31 @@ impl Fun {
             AtanRatio => "atan_ratio",
             AtanhRatio => "atanh_ratio",
             TanhRatio => "tanh_ratio",
+            EllipK => "ellip_k",
+            EllipKm => "ellip_k_from_m",
+            EllipE => "ellip_e",
+            JacobiSn => "jacobi_sn",
+            JacobiCn => "jacobi_cn",
+            JacobiDn => "jacobi_dn",
+            JacobiAm => "jacobi_am",
+            JacobiInverse => "jacobi_inverse",
+            CarlsonRf => "carlson_rf",
+            CarlsonRfRoots => "carlson_rf_roots",
+            CarlsonRj => "carlson_rj",
+            CarlsonRc => "carlson_rc",
+            CarlsonRd => "carlson_rd",
+            EllipPi => "ellip_pi",
+            EllipPiComplete => "ellip_pi_complete",
         }
     }
 
     pub fn arity(self) -> usize {
         match self {
             Atan2 | Pow | DivOrSaturate | Hypot | ScaleBy | SqrtProduct => 2,
-            MulAdd | MulDiv | Norm3 | Normalize3 => 3,
+            MulAdd | MulDiv | Norm3 | Normalize3 | CarlsonRf | CarlsonRfRoots | CarlsonRd => 3,
+            JacobiSn | JacobiCn | JacobiDn | JacobiAm | CarlsonRc | EllipPiComplete => 2,
+            JacobiInverse | CarlsonRj => 4,
+            EllipPi => 5,
             Dot3 => 6,
             _ => 1,
         }
@@ -296,6 +389,22 @@ impl Fun {
             AtanRatio => Some(fa::atan_ratio(x)),
             AtanhRatio => fa::atanh_ratio(x).ok(),
             TanhRatio => Some(fa::tanh_ratio(x)),
+            EllipK => fa::ellip_k(fa::Modulus::from_complement(x)?).ok(),
+            EllipKm => fa::ellip_k(fa::Modulus::from_parameter(x)?).ok(),
+            EllipE => Some(fa::ellip_e(fa::Modulus::from_complement(x)?)),
+            JacobiSn | JacobiCn | JacobiDn => {
+                let (sn, cn, dn) = fa::jacobi_sn_cn_dn(x, fa::Modulus::from_complement(a[1])?);
+                Some(match self { JacobiSn => sn, JacobiCn => cn, _ => dn })
+            }
+            JacobiAm => Some(fa::jacobi_am(x, fa::Modulus::from_complement(a[1])?)),
+            JacobiInverse => fa::jacobi_inverse(x, a[1], a[2], fa::Modulus::from_complement(a[3])?).ok(),
+            CarlsonRf => fa::carlson_rf(x, a[1], a[2]).ok(),
+            CarlsonRfRoots => fa::carlson_rf_roots(x, a[1], a[2]).ok(),
+            CarlsonRj => fa::carlson_rj(x, a[1], a[2], a[3]).ok(),
+            CarlsonRc => fa::carlson_rc(x, a[1]).ok(),
+            CarlsonRd => fa::carlson_rd(x, a[1], a[2]).ok(),
+            EllipPi => fa::ellip_pi(x, a[1], a[2], a[3], fa::Modulus::from_complement(a[4])?).ok(),
+            EllipPiComplete => fa::ellip_pi_complete(x, fa::Modulus::from_complement(a[1])?).ok(),
         }
     }
 
@@ -313,6 +422,22 @@ impl Fun {
             Ln | Log2 | Log10 | Rsqrt => x > zero,
             Log1p | Log1pRatio | Log1pResidual | Log1pResidualRatio => x > -one,
             AtanhRatio => x > -one && x < one,
+            EllipK => x > zero && x <= one,
+            EllipKm => x >= zero && x < one,
+            EllipE => x >= zero && x <= one,
+            JacobiSn | JacobiCn | JacobiDn | JacobiAm => a[1] >= zero && a[1] <= one,
+            JacobiInverse => a[3] >= zero && a[3] <= one && (a[1] != zero || a[2] != zero),
+            CarlsonRf | CarlsonRfRoots => a.iter().filter(|&&v| v == zero).count() <= 1 && (fun_roots(self) || a.iter().all(|&v| v >= zero)),
+            CarlsonRj => a[..3].iter().filter(|&&v| v == zero).count() <= 1 && a.iter().all(|&v| v >= zero) && a[3] > zero,
+            CarlsonRc => x >= zero && a[1] > zero,
+            CarlsonRd => x >= zero && a[1] >= zero && a[2] > zero && (x != zero || a[1] != zero),
+            EllipPi => {
+                let sn = a[1].to_float();
+                let pole = Float::with_val(PREC, 1) - Float::with_val(PREC, a[0].to_float() * sn.square());
+                let reachable = a[2] >= zero || a[0] < one;
+                a[4] >= zero && a[4] <= one && pole.is_sign_positive() && !pole.is_zero() && reachable && (a[2] != zero || a[3] != zero)
+            }
+            EllipPiComplete => x < one && a[1] > zero && a[1] <= one,
             Sqrt => x >= zero,
             AsinFromGap => x >= zero && x <= one + one,
             SqrtProduct => !((x < zero && a[1] > zero) || (x > zero && a[1] < zero)),
@@ -400,8 +525,21 @@ impl Fun {
             SqrtProduct => Float::with_val(PREC * 3, &x * &a[1]).abs().sqrt(),
             AsinFromGap => (one - x).asin(),
             Rsqrt => one / x.sqrt(),
+            EllipK | EllipKm | EllipE | JacobiSn | JacobiCn | JacobiDn | JacobiAm | JacobiInverse
+            | CarlsonRf | CarlsonRfRoots | CarlsonRj | CarlsonRc | CarlsonRd | EllipPi
+            | EllipPiComplete => elliptic(self, a),
             _ => special(self, &Float::with_val(PREC * 3, &x)),
         }
+    }
+
+    /// Too costly to sweep exhaustively; sampled on every type instead.
+    pub fn heavy(self) -> bool {
+        matches!(
+            self,
+            EllipK | EllipKm | EllipE | JacobiSn | JacobiCn | JacobiDn | JacobiAm | JacobiInverse
+                | CarlsonRf | CarlsonRfRoots | CarlsonRj | CarlsonRc | CarlsonRd | EllipPi
+                | EllipPiComplete
+        )
     }
 
     /// Whether the result is exact before its one rounding, so its error is at
@@ -588,6 +726,9 @@ fn all<T: Sut>() -> Vec<T> {
 }
 
 fn points<T: Sut>(fun: Fun, rng: &mut Rng) -> Vec<Vec<T>> {
+    if fun.heavy() {
+        return elliptic_points(fun, rng);
+    }
     if fun.arity() == 1 {
         let xs = if T::bits() <= 16 {
             all::<T>()

@@ -30,6 +30,7 @@ assert!((log.to_num::<f32>() - 1.0).abs() < 0.01);
 | Exponential | [`exp`], [`pow2`], [`expm1`], [`exprel`], [`exprel2`], [`exp_moments`] | [`ln`], [`log2`], [`log10`], [`pow`], [`log1p`], [`log1p_ratio`], [`log1p_residual`], [`log1p_residual_ratio`] |
 | Ratios | [`stumpff`], [`tan_ratio`], [`atan_ratio`], [`tanh_ratio`] | [`atanh_ratio`] |
 | Algebraic | [`sqrt_or_zero`], [`hypot`], [`norm`], [`scale_exponent`], [`scale_by`] | [`sqrt`], [`sqrt_product`], [`rsqrt`], [`normalize`] |
+| Elliptic | [`ellip_e`], [`jacobi_sn_cn_dn`], [`jacobi_am`] | [`ellip_k`], [`ellip_pi`], [`ellip_pi_complete`], [`jacobi_inverse`], [`carlson_rf`], [`carlson_rf_roots`], [`carlson_rj`], [`carlson_rj_roots`], [`carlson_rc`], [`carlson_rd`] |
 | Arithmetic | [`mul_add`], [`mul_div`], [`div_or_saturate`], [`dot`] | — |
 | Enclosures | [`enclose`], [`sin_cos_range`], [`exp_range`], [`atan_range`], [`tanh_range`] | — |
 
@@ -52,6 +53,9 @@ value of the 8- and 16-bit ones, and seeded samples of the wider ones.
 Accuracy regressions are not permitted across releases, and a release that
 changes any output bit says so in the changelog. The enclosure functions
 turn the bound into intervals certain to hold the exact value.
+
+The elliptic functions take a [`Modulus`], built from the parameter `m` or
+from its complement `k' = √(1 − m)`, each kept exact as given.
 
 # Features
 
