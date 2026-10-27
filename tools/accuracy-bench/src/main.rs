@@ -2,8 +2,9 @@
 //!
 //! Run with: cargo run --release
 //! Compare: cargo run --release -- --baseline path/to/baseline.json
+//!          [--worst-baseline path/to/worst.txt]
 
-use accuracy_bench::{build_registry, readme, report::Report, sampling::SampleStrategy};
+use accuracy_bench::{build_registry, readme, report::Report, sampling::SampleStrategy, worst};
 use rayon::prelude::*;
 use std::{env, fs, path::Path, process};
 
@@ -14,6 +15,11 @@ fn main() {
     let baseline_path = args
         .iter()
         .position(|a| a == "--baseline")
+        .and_then(|i| args.get(i + 1))
+        .map(String::as_str);
+    let worst_baseline_path = args
+        .iter()
+        .position(|a| a == "--worst-baseline")
         .and_then(|i| args.get(i + 1))
         .map(String::as_str);
 
@@ -38,11 +44,18 @@ fn main() {
 
     let report = Report::new(results);
 
+    eprintln!("Sweeping worst cases...");
+    let worst_stats = worst::sweep();
+    let worst_text = worst::to_text(&worst_stats);
+
     // Save JSON report
     fs::create_dir_all("reports").ok();
     let json_path = format!("reports/accuracy-{}.json", report.timestamp);
     fs::write(&json_path, report.to_json()).expect("Failed to write report");
     eprintln!("Report saved: {json_path}");
+    let worst_report = format!("reports/worst-{}.txt", report.timestamp);
+    fs::write(&worst_report, &worst_text).expect("Failed to write worst-case report");
+    eprintln!("Worst cases saved: {worst_report}");
 
     // Determine README path (handle running from different directories)
     let readme_path = find_readme_path();
@@ -65,10 +78,34 @@ fn main() {
             eprintln!("\nWarning: Could not find README.md to verify");
         }
 
+        if let Some(ref path) = readme_path {
+            match worst::verify_readme(path, &worst_stats) {
+                Ok(()) => eprintln!("README worst case: OK"),
+                Err(e) => {
+                    eprintln!("README worst case: FAILED\n{e}");
+                    all_passed = false;
+                }
+            }
+        }
+        if fs::read_to_string(worst::WORST_PATH).ok().as_deref() != Some(worst_text.as_str()) {
+            eprintln!("{} is out of date; run `cargo run --release` here", worst::WORST_PATH);
+            all_passed = false;
+        }
+
         // Compare to baseline
         let baseline_passed = compare_and_report(&report, baseline_path);
         if !baseline_passed {
             all_passed = false;
+        }
+        if let Some(path) = worst_baseline_path {
+            match fs::read_to_string(path) {
+                Ok(text) => {
+                    if !worst::compare(&worst_stats, &text) {
+                        all_passed = false;
+                    }
+                }
+                Err(e) => eprintln!("No worst-case baseline at {path} ({e}); skipping"),
+            }
         }
 
         process::exit(if all_passed { 0 } else { 1 });
@@ -80,7 +117,13 @@ fn main() {
                 Ok(false) => eprintln!("README.md already up-to-date"),
                 Err(e) => eprintln!("Warning: Could not update README: {e}"),
             }
+            match worst::update_readme(path, &worst_stats) {
+                Ok(true) => eprintln!("README.md updated with worst-case data"),
+                Ok(false) => {}
+                Err(e) => eprintln!("Warning: Could not update README worst case: {e}"),
+            }
         }
+        fs::write(worst::WORST_PATH, &worst_text).expect("Failed to write worst.txt");
 
         report.print_table();
     }

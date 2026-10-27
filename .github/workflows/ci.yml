@@ -166,13 +166,15 @@ jobs:
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             git fetch origin ${{ github.base_ref }}
             git show origin/${{ github.base_ref }}:tools/accuracy-bench/baseline.json > /tmp/baseline-from-main.json
+            git show origin/${{ github.base_ref }}:tools/accuracy-bench/worst.txt > /tmp/worst-from-main.txt || true
           else
             git show HEAD~1:tools/accuracy-bench/baseline.json > /tmp/baseline-from-main.json || cp tools/accuracy-bench/baseline.json /tmp/baseline-from-main.json
+            git show HEAD~1:tools/accuracy-bench/worst.txt > /tmp/worst-from-main.txt || true
           fi
 
       - name: Run accuracy benchmark
         working-directory: tools/accuracy-bench
-        run: cargo run --release -- --baseline /tmp/baseline-from-main.json
+        run: cargo run --release -- --baseline /tmp/baseline-from-main.json --worst-baseline /tmp/worst-from-main.txt
 
       - name: Upload report
         if: always()

@@ -6,6 +6,9 @@ pub mod readme;
 pub mod reference;
 pub mod report;
 pub mod sampling;
+pub mod sut;
+pub mod sweep;
+pub mod worst;
 
 use fixed::traits::Fixed;
 use metrics::ErrorStats;

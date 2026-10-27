@@ -101,3 +101,34 @@ Relative error statistics measured against MPFR reference implementations. Accur
 | pow | 6.90e-4 | 6.83e-5 | 3.13e-3 | 1.09e-8 | 1.23e-9 | 4.86e-8 |
 | sqrt | 8.88e-8 | 5.80e-8 | 2.42e-7 | 1.37e-12 | 8.85e-13 | 3.62e-12 |
 <!-- ACCURACY_END -->
+
+<!-- WORST_START -->
+### Worst-case error
+
+The largest error seen, in ulps of the type, against MPFR on exact inputs. The sweep covers 104 layouts from 8 to 128 bits, every value of each 8- and 16-bit one and 40000 seeded samples of each wider one; tools/accuracy-bench/worst.txt holds every layout.
+
+| Function | I16F16 | I32F32 | I64F64 |
+|----------|------|------|------|
+| sin | 4.34e3 | 3.57e8 | 2.19e17 |
+| cos | 4.34e3 | 3.57e8 | 2.19e17 |
+| tan | 4.29e9 | 1.84e19 | 3.40e38 |
+| asin | 5.04 | 9.27e4 | 5.63e14 |
+| acos | 5.59 | 9.27e4 | 5.63e14 |
+| atan | 3.32 | 5.97 | 12.43 |
+| atan2 | 2.21e4 | 2.73e9 | 3.47e18 |
+| sinh | 1.51e6 | 1.99e11 | 1.85e21 |
+| cosh | 1.49e6 | 2.02e11 | 1.85e21 |
+| tanh | 2.60 | 2.90 | 2.76 |
+| coth | 1.07e4 | 6.98e8 | 2.98e18 |
+| asinh | 12.47 | 39.02 | 77.85 |
+| acosh | 11.97 | 88.20 | 1.21e4 |
+| atanh | 9.54e3 | 6.18e8 | 2.65e18 |
+| acoth | 9.54e3 | 6.18e8 | 2.65e18 |
+| exp | 4.60e4 | 5.24e10 | 4.49e20 |
+| pow2 | 6.70e4 | 6.38e9 | 2.49e19 |
+| ln | 11.88 | 39.27 | 77.97 |
+| log2 | 16.53 | 22.70 | 46.94 |
+| log10 | 5.77 | 15.62 | 28.09 |
+| pow | 8.61e8 | 8.66e14 | 1.26e21 |
+| sqrt | 0.50 | 0.50 | 0.50 |
+<!-- WORST_END -->
