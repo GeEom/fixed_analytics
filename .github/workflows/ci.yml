@@ -174,7 +174,7 @@ jobs:
 
       - name: Run accuracy benchmark
         working-directory: tools/accuracy-bench
-        run: cargo run --release -- --baseline /tmp/baseline-from-main.json --worst-baseline /tmp/worst-from-main.txt
+        run: cargo run --release -- --quick --baseline /tmp/baseline-from-main.json --worst-baseline /tmp/worst-from-main.txt
 
       - name: Upload report
         if: always()

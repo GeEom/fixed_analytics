@@ -1,5 +1,4 @@
-//! Algebraic functions: roots, norms and power-of-two scaling, each formed
-//! in the working arithmetic so no square or product underflows on the way.
+//! Roots, norms and power-of-two scaling, formed so no square or product underflows.
 
 use crate::bounded::NonNegative;
 use crate::error::{Error, Result};
@@ -58,8 +57,7 @@ pub fn norm<T: CordicNumber>(v: &[T]) -> T {
     fixed(sum.sqrt())
 }
 
-/// `v / |v|`, each component rounded once, so the direction stays exact even
-/// for a vector a few ulps long.
+/// `v / |v|`, each component rounded once, the direction exact even a few ulps long.
 /// # Errors
 /// Returns `DomainError` for the zero vector.
 #[must_use = "returns the unit vector which should be handled"]

@@ -50,8 +50,22 @@ fn emit(name: &str, x: Float) {
     println!("pub const {name}: C = (false, {e}, [{}]);", limbs.join(", "));
 }
 
+/// `x` in [2^−3, 2^−2) as `limbs` normalized limbs, for products reduced
+/// past what 384 bits cover.
+fn emit_long(name: &str, x: Float, limbs: u32) {
+    let m: Integer = (Float::with_val(64 * limbs + 128, &x) << (64 * limbs as i32 + 2))
+        .to_integer()
+        .unwrap();
+    let parts: Vec<String> = (0..limbs)
+        .map(|i| hex((m.clone() >> (64 * i)).to_u64_wrapping()))
+        .collect();
+    println!("pub const {name}: [u64; {limbs}] = [{}];", parts.join(", "));
+}
+
 fn main() {
     let p = BITS + 128;
+    let long = Float::with_val(768, Constant::Pi) * 2u32;
+    emit_long("FRAC_1_2PI_LONG", Float::with_val(768, 1) / long, 9);
     let pi = Float::with_val(p, Constant::Pi);
     let ln2 = Float::with_val(p, Constant::Log2);
     let ln10 = Float::with_val(p, 10).ln();

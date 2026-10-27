@@ -1,6 +1,5 @@
-//! Function cores in the working arithmetic, shared by the public functions.
-//! Each takes and returns working values; the public functions convert in
-//! exactly and round once on the way out.
+//! Function cores in the working arithmetic, shared by the public functions,
+//! which convert in exactly and round once on the way out.
 
 use crate::consts::{
     ATAN_SIXTEENTHS, COS_PI_128THS, EXP2_32NDS, FRAC_1_LN_2, LN_2, LN_SIXTEENTHS, PI, SIN_PI_128THS,
@@ -56,8 +55,7 @@ fn expm1_series<V: Work>(r: V) -> V {
     r * V::horner(r, &FACT, 1, 1, by_width::<V>([8, 14, 20]), false)
 }
 
-/// `e^x` for `|x| < HUGE`, as `2^(k/32)·e^r` with `|r| ≤ ln2/64`: the
-/// power from the table and a shift, the rest from [`expm1_series`].
+/// `e^x` for `|x| < HUGE`, as `2^(k/32)·e^r`, `|r| ≤ ln2/64`, the power from the table.
 pub fn exp<V: Work>(x: V) -> V {
     let steps = (x * V::constant(&FRAC_1_LN_2).ldexp(5)).round_int();
     let rest = x - V::constant(&LN_2).ldexp(-5).mul_int(steps);
@@ -81,8 +79,7 @@ fn atanh_series<V: Work>(s: V) -> V {
     s * V::horner(s.square(), &ODD, 0, 1, by_width::<V>([8, 13, 19]), false)
 }
 
-/// `ln x` for `x` in `[√½, √2)`: `ln(1 + j/16)` from the table, plus
-/// `2·atanh((x − c)/(x + c))` with `c = 1 + j/16` nearest `x`.
+/// `ln x` on `[√½, √2)`: `ln c`, `c = 1 + j/16` nearest, plus `2·atanh((x − c)/(x + c))`.
 fn ln_near_one<V: Work>(y: V) -> V {
     let one = V::one();
     let j = (y - one).ldexp(4).round_int().clamp(-5, 7);
@@ -123,8 +120,7 @@ pub fn log1p<V: Work>(u: V) -> V {
     }
 }
 
-/// `atan z` for `z` in `[0, 1]`: `atan(j/16)` from the table, plus the series
-/// for `atan((z − c)/(1 + z·c))` with `c = j/16` nearest `z`.
+/// `atan z` on `[0, 1]`: `atan c`, `c = j/16` nearest, plus that of `(z − c)/(1 + z·c)`.
 pub fn atan_unit<V: Work>(z: V) -> V {
     let j = z.ldexp(4).round_int().clamp(0, 16);
     let c = V::from_int(j).ldexp(-4);
@@ -133,8 +129,7 @@ pub fn atan_unit<V: Work>(z: V) -> V {
     entry::<V>(&ATAN_SIXTEENTHS, j) + t * series
 }
 
-/// `atan(num/den)` for `0 ≤ num` and `0 < den`, without forming a ratio
-/// above 1.
+/// `atan(num/den)` for `0 ≤ num` and `0 < den`, never forming a ratio above 1.
 pub fn atan_ratio<V: Work>(num: V, den: V) -> V {
     if num <= den {
         atan_unit(num / den)
@@ -143,9 +138,8 @@ pub fn atan_ratio<V: Work>(num: V, den: V) -> V {
     }
 }
 
-/// Sine and cosine of `(π/4)·(oct + w)` for `w` from [`Work::octant`]: the
-/// table's angle `jπ/128` nearest `(π/4)·w`, then the two series for the
-/// remainder `|d| ≤ π/256`.
+/// Sine and cosine of `(π/4)·(oct + w)`, `w` from [`Work::octant`]: the table's
+/// `jπ/128` nearest, then series for the rest, `|d| ≤ π/256`.
 pub fn sin_cos_octant<V: Work>(oct: u32, frac: V) -> (V, V) {
     let index = frac.ldexp(5).round_int().clamp(0, 32);
     let rest = (frac - V::from_int(index).ldexp(-5)) * pi::<V>().ldexp(-2);
@@ -171,13 +165,20 @@ pub fn sin_cos_octant<V: Work>(oct: u32, frac: V) -> (V, V) {
     }
 }
 
-/// A value past every type's range, which any of them saturates from.
+/// A value past `e^HUGE`, which every type saturates from even divided by its values.
 pub fn beyond<V: Work>() -> V {
-    V::one().ldexp(256)
+    V::one().ldexp(8192)
 }
 
-/// `φₖ(z) = (e^z − Σ_{n<k} zⁿ/n!)/z^k` for `k` in 1 to 3, which is `1/k!` at
-/// 0: by its series near 0, so it keeps relative precision there.
+/// `e^v`, past [`HUGE`] a value every type saturates or rounds to zero from.
+pub fn exp_wide<V: Work>(v: V) -> V {
+    if v.abs() > V::from_int(HUGE) {
+        return if v.is_neg() { V::zero() } else { beyond() };
+    }
+    exp(v)
+}
+
+/// `φₖ(z) = (e^z − Σ_{n<k} zⁿ/n!)/z^k` for `k` in 1 to 3, by its series near 0.
 pub fn phi<V: Work>(k: u32, z: V) -> V {
     if z.abs() <= V::one().ldexp(-1) {
         return V::horner(z, &FACT, k, 1, by_width::<V>([18, 30, 39]), false);
@@ -203,9 +204,8 @@ pub fn phi<V: Work>(k: u32, z: V) -> V {
     num / den
 }
 
-/// `ln(1 + v) − v` for `v > −1`. Near 0 it is `2s³·Σ s^{2k}/(2k + 3) −
-/// v²/(2 + v)` with `s = v/(2 + v)`, two terms of order `v²` that do not
-/// cancel.
+/// `ln(1 + v) − v`, `v > −1`; near 0 `2s³·Σ s^{2k}/(2k + 3) − v²/(2 + v)`, `s = v/(2 + v)`,
+/// two terms of order `v²` that do not cancel.
 pub fn log1p_minus<V: Work>(v: V) -> V {
     if v.abs() <= V::one().ldexp(-2) {
         let den = v + V::from_int(2);
@@ -238,9 +238,8 @@ pub fn log1p_ratio<V: Work>(z: V) -> V {
     log1p(z) / z
 }
 
-/// The Stumpff functions `cₖ(z) = Σ (−z)ⁿ/(2n + k)!` for k from 0 to 3, of
-/// either sign of `z`: the series near 0, and past it the closed forms in
-/// `√|z|`, with `c₂` from the half angle so that it does not cancel.
+/// The Stumpff functions `cₖ(z) = Σ (−z)ⁿ/(2n + k)!`, k from 0 to 3: the series near
+/// 0, past it closed forms in `√|z|`, `c₂` from the half angle so it does not cancel.
 pub fn stumpff<V: Work>(z: V) -> [V; 4] {
     if z.abs() <= V::one().ldexp(-2) {
         let n = by_width::<V>([10, 17, 21]);
@@ -282,8 +281,7 @@ pub fn sin_cos<V: Work>(w: V) -> (V, V) {
     (if w.is_neg() { -s } else { s }, c)
 }
 
-/// `frac(x/2π)`, the angle as a fraction of a turn in `[0, 1)`, from the
-/// same exact reduction as `sin` and `cos`.
+/// `frac(x/2π)` in `[0, 1)`, from the same exact reduction as `sin` and `cos`.
 pub fn turn_fraction<T: CordicNumber>(x: T) -> W<T> {
     let raw = x.raw_i128();
     let (oct, w) = W::<T>::octant(raw.unsigned_abs(), T::frac_bits(), true);

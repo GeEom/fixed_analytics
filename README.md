@@ -55,6 +55,8 @@ fixed_analytics = { version = "4.4.0", default-features = false }
 | Turns | `sin_cos_turns`, `atan2_turns`, `div_by_tau`, `wrap_radians`, `wrap_principal` | — |
 | Ratios | `stumpff`, `tan_ratio`, `atan_ratio`, `tanh_ratio` | `atanh_ratio` |
 | Algebraic | `sqrt_or_zero`, `hypot`, `norm`, `scale_exponent`, `scale_by` | `sqrt`, `sqrt_product`, `rsqrt`, `normalize` |
+| Special | `erf`, `erfc`, `fresnel` | `gamma` |
+| Complex (`Complex`) | `exp`, `exprel`, `exprel2`, `faddeeva`, `erf` | `e1`, `gamma_upper` |
 | Elliptic | `ellip_e`, `jacobi_sn_cn_dn`, `jacobi_am` | `ellip_k`, `ellip_pi`, `ellip_pi_complete`, `jacobi_inverse`, `carlson_rf`, `carlson_rf_roots`, `carlson_rj`, `carlson_rj_roots`, `carlson_rc`, `carlson_rd` |
 | Arithmetic | `mul_add`, `mul_div`, `div_or_saturate`, `dot` | — |
 | Enclosures | `enclose`, `sin_cos_range`, `exp_range`, `atan_range`, `tanh_range` | — |

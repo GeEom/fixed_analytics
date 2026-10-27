@@ -1,5 +1,4 @@
-//! Products, quotients and sums of products formed exactly in up to 384 bits,
-//! then rounded once to nearest, ties to even, and saturated.
+//! Products, quotients and sums of products formed exactly, then rounded once and saturated.
 
 use crate::traits::CordicNumber;
 
@@ -15,8 +14,7 @@ const fn wide(a: u128, b: u128) -> (u128, u128) {
     (hi, lo)
 }
 
-/// `(hi·2^128 + lo) / d` and its remainder, for `hi < d`, by two 64-bit
-/// digits (Hacker's Delight, divlu).
+/// `(hi·2^128 + lo) / d` and remainder, `hi < d`, by two 64-bit digits (divlu).
 const fn div_wide(hi: u128, lo: u128, d: u128) -> (u128, u128) {
     let s = d.leading_zeros();
     let d = d << s;
@@ -66,8 +64,7 @@ fn saturate<T: CordicNumber>(neg: bool, mag: u128) -> T {
     T::from_raw_i128(raw)
 }
 
-/// `(hi, lo) / 2^s` rounded to nearest even, saturating past 128 bits, for
-/// `s < 128`.
+/// `(hi, lo) / 2^s` rounded to nearest even, saturating past 128 bits, `s < 128`.
 const fn shift_round(hi: u128, lo: u128, s: u32) -> u128 {
     if s == 0 {
         return if hi == 0 { lo } else { u128::MAX };
@@ -128,8 +125,7 @@ const fn signed_add(
     }
 }
 
-/// `a · b / c` from the exact 256-bit product, rounded once. A zero `c`
-/// saturates by the sign of `a · b`, and gives 0 when that product is 0.
+/// `a · b / c` from the exact product, rounded once; a zero `c` saturates by its sign.
 #[must_use]
 #[cfg_attr(
     all(feature = "verify-no-panic", not(debug_assertions)),
@@ -152,8 +148,7 @@ pub fn mul_div<T: CordicNumber>(a: T, b: T, c: T) -> T {
     saturate(neg, quotient.saturating_add(u128::from(up)))
 }
 
-/// `a / b` rounded to nearest. A zero `b` saturates by the sign of `a`, and
-/// 0/0 gives 0; it never panics, unlike `fixed`'s division.
+/// `a / b` rounded to nearest; a zero `b` saturates by sign, 0/0 is 0, and it never panics.
 #[must_use]
 #[cfg_attr(
     all(feature = "verify-no-panic", not(debug_assertions)),
@@ -173,8 +168,7 @@ const fn accumulate(x: &mut (u128, u128, u128), hi: u128, lo: u128) {
     x.0 = x.0.wrapping_add(c1 as u128 + c2 as u128);
 }
 
-/// `Σ aᵢ·bᵢ` over the pairs of `a` and `b`, up to the shorter, summed exactly
-/// and rounded once.
+/// `Σ aᵢ·bᵢ` over the pairs, up to the shorter, summed exactly and rounded once.
 #[must_use]
 #[cfg_attr(
     all(feature = "verify-no-panic", not(debug_assertions)),

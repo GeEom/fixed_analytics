@@ -18,8 +18,7 @@ pub fn sin_cos_turns<T: CordicNumber>(t: T) -> (T, T) {
     (fixed(if raw < 0 { -s } else { s }), fixed(c))
 }
 
-/// The four-quadrant arctangent in turns, in `(−½, ½]`: `atan2(y, x)/2π`
-/// rounded once.
+/// The four-quadrant arctangent in turns, `atan2(y, x)/2π` in `(−½, ½]`, rounded once.
 #[must_use]
 #[cfg_attr(
     all(feature = "verify-no-panic", not(debug_assertions)),
@@ -54,8 +53,7 @@ pub fn div_by_tau<T: CordicNumber>(x: T) -> T {
     fixed(work(x) * W::<T>::constant(&FRAC_1_2PI))
 }
 
-/// `r` rounded into `[low, high]`: as it is when it lands there, else the
-/// end of the range nearer to it modulo 2π.
+/// `r` rounded into `[low, high]`, else to the end nearer it modulo 2π.
 fn round_into<T: CordicNumber>(r: W<T>, low: W<T>, high: W<T>) -> T {
     let t = fixed::<T>(r);
     if work(t) >= low && work(t) <= high {

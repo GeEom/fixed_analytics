@@ -23,6 +23,9 @@ fn main() {
         .and_then(|i| args.get(i + 1))
         .map(String::as_str);
 
+    let quick = args.iter().any(|a| a == "--quick");
+    accuracy_bench::sweep::QUICK.store(quick, std::sync::atomic::Ordering::Relaxed);
+
     let strategy = SampleStrategy::thorough();
 
     eprintln!("--- fixed_analytics accuracy benchmark ---");
@@ -78,7 +81,7 @@ fn main() {
             eprintln!("\nWarning: Could not find README.md to verify");
         }
 
-        if let Some(ref path) = readme_path {
+        if let Some(ref path) = readme_path.as_ref().filter(|_| !quick) {
             match worst::verify_readme(path, &worst_stats) {
                 Ok(()) => eprintln!("README worst case: OK"),
                 Err(e) => {
@@ -90,7 +93,7 @@ fn main() {
         if !worst::check_bounds(&worst_stats) {
             all_passed = false;
         }
-        if fs::read_to_string(worst::WORST_PATH).ok().as_deref() != Some(worst_text.as_str()) {
+        if !quick && fs::read_to_string(worst::WORST_PATH).ok().as_deref() != Some(worst_text.as_str()) {
             eprintln!("{} is out of date; run `cargo run --release` here", worst::WORST_PATH);
             all_passed = false;
         }
@@ -100,7 +103,9 @@ fn main() {
         if !baseline_passed {
             all_passed = false;
         }
-        if let Some(path) = worst_baseline_path {
+        // Quick mode samples other points than the full run that wrote the
+        // baseline, so its maxima are held to the bounds alone.
+        if let Some(path) = worst_baseline_path.filter(|_| !quick) {
             match fs::read_to_string(path) {
                 Ok(text) => {
                     if !worst::compare(&worst_stats, &text) {

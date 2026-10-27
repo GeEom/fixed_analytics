@@ -7,6 +7,7 @@ mod tests {
     use fixed::types::extra::{U5, U61};
     use fixed::types::{I16F16, I24F8, I32F32, I64F64};
     use fixed::{FixedI8, FixedI64};
+    use fixed_analytics::{Complex, erf, erfc, fresnel, gamma};
     use fixed_analytics::{
         CordicNumber, acos, acosh, acoth, asin, asin_from_gap, asinh, atan, atan_range, atan2,
         atanh, cos, cosh, coth, div_or_saturate, dot, exp, exp_range, hypot, ln, log2, log10,
@@ -104,6 +105,19 @@ mod tests {
         "div_by_tau",
         "wrap_radians",
         "wrap_principal",
+        "complex_mul",
+        "complex_div",
+        "complex_exp",
+        "complex_exprel",
+        "complex_exprel2",
+        "complex_faddeeva",
+        "complex_erf",
+        "complex_e1",
+        "complex_gamma_upper",
+        "erf",
+        "erfc",
+        "fresnel",
+        "gamma",
     ];
 
     trait Raw: CordicNumber {
@@ -233,12 +247,35 @@ mod tests {
             "div_by_tau" => one(div_by_tau(x)),
             "wrap_radians" => one(wrap_radians(x)),
             "wrap_principal" => one(wrap_principal(x)),
+            "erf" => one(erf(x)),
+            "erfc" => one(erfc(x)),
+            "fresnel" => pair(fresnel(x)),
+            "gamma" => res(gamma(x)),
+            n if n.starts_with("complex") => complex(n, x, y),
             _ => elliptic(name, x, y),
         }
     }
 
-    /// The elliptic functions. Their modulus comes from `|y|`, folded into
-    /// `[0, 1]`.
+    /// The complex functions of `x + iy`, both parts.
+    fn complex<T: CordicNumber>(name: &str, x: T, y: T) -> [Option<T>; 2] {
+        let z = Complex::new(x, y);
+        let w = Complex::new(y, x);
+        let parts = |c: Complex<T>| [Some(c.re), Some(c.im)];
+        match name {
+            "complex_mul" => parts(z * w),
+            "complex_div" => parts(z / w),
+            "complex_exp" => parts(z.exp()),
+            "complex_exprel" => parts(z.exprel()),
+            "complex_exprel2" => parts(z.exprel2()),
+            "complex_faddeeva" => parts(z.faddeeva()),
+            "complex_erf" => parts(z.erf()),
+            "complex_e1" => z.e1().map_or([None, None], parts),
+            "complex_gamma_upper" => z.gamma_upper(T::two()).map_or([None, None], parts),
+            _ => [None, None],
+        }
+    }
+
+    /// The elliptic functions, their modulus `|y|` folded into `[0, 1]`.
     fn elliptic<T: CordicNumber>(name: &str, x: T, y: T) -> [Option<T>; 2] {
         let one = |v: T| [Some(v), None];
         let res = |v: fixed_analytics::Result<T>| [v.ok(), None];
@@ -272,7 +309,6 @@ mod tests {
     }
 
     /// A few fixed values, then raw bits of every length in equal measure.
-    /// Tiny and huge values turn up as often as ordinary ones.
     fn inputs<T: Raw>(seed: u64) -> Vec<T> {
         let mut v: Vec<T> = [0.0, 1.0, -1.0, 0.5, -0.5, 2.0, -2.0, 3.0, -3.0]
             .iter()
@@ -350,8 +386,7 @@ mod tests {
         map
     }
 
-    /// Rows keyed by function and type, holding the hash and the version
-    /// that last moved it.
+    /// Rows keyed by function and type: the hash and the version that last moved it.
     type Pinned = BTreeMap<(String, String), (u64, String)>;
 
     fn pinned() -> Result<Pinned, String> {

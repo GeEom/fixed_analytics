@@ -10,6 +10,7 @@ use fixed_analytics::CordicNumber;
 use fixed_analytics::bounded::{NonNegative, OpenUnitInterval};
 use fixed_analytics::ops::algebraic::sqrt_nonneg;
 use fixed_analytics::ops::hyperbolic::atanh_open;
+use fixed_analytics::{Complex, erf, erfc, fresnel, gamma};
 use fixed_analytics::{
     Modulus, carlson_rc, carlson_rd, carlson_rf, carlson_rf_roots, carlson_rj, carlson_rj_roots,
     ellip_e, ellip_k, ellip_pi, ellip_pi_complete, jacobi_am, jacobi_inverse, jacobi_sn_cn_dn,
@@ -107,11 +108,37 @@ fn exercise<T: CordicNumber>(x: T, y: T, two: T) {
     keep(carlson_rj_roots(x, y, two, x));
     keep(carlson_rc(x, y));
     keep(carlson_rd(x, y, two));
+    exercise_more(x, y, two);
+}
+
+/// The turns and complex functions, kept apart so neither list grows too long.
+fn exercise_more<T: CordicNumber>(x: T, y: T, two: T) {
     keep(sin_cos_turns(x));
     keep(atan2_turns(y, x));
     keep(div_by_tau(x));
     keep(wrap_radians(x));
     keep(wrap_principal(x));
+    let z = Complex::new(x, y);
+    let w = Complex::new(two, x);
+    keep(z + w);
+    keep(z - w);
+    keep(z * w);
+    keep(z / w);
+    keep(-z);
+    keep(z.conj());
+    keep(z.norm());
+    keep(z.arg());
+    keep(z.exp());
+    keep(z.exprel());
+    keep(z.exprel2());
+    keep(z.faddeeva());
+    keep(z.erf());
+    keep(z.e1());
+    keep(z.gamma_upper(two));
+    keep(erf(x));
+    keep(erfc(x));
+    keep(fresnel(x));
+    keep(gamma(x));
 
     if let Some(nn) = NonNegative::new(x) {
         keep(sqrt_nonneg(nn));

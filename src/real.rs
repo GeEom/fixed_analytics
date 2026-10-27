@@ -1,8 +1,7 @@
 //! The arithmetic every function evaluates in: binary floating point with an
-//! `N`-limb mantissa, rounded to nearest even after each operation. A type
-//! works at twice its width or more and rounds once to itself at the end.
+//! `N`-limb mantissa, rounded to nearest even each step, 1.5 to 8 times a type's width.
 
-use crate::consts::{C, FRAC_1_2PI};
+use crate::consts::{C, FRAC_1_2PI, FRAC_1_2PI_LONG};
 use crate::series::Series;
 use core::cmp::Ordering;
 use core::fmt::Debug;
@@ -37,7 +36,7 @@ fn i32_of(x: i64) -> i32 {
     i32::try_from(x.clamp(i64::from(i32::MIN / 4), i64::from(i32::MAX / 4))).unwrap_or(0)
 }
 
-fn shl(limbs: &mut Scratch, len: usize, shift: u32) {
+fn shl(limbs: &mut [u64], len: usize, shift: u32) {
     let words = (shift / 64) as usize;
     let bits = shift % 64;
     for i in (0..len).rev() {
@@ -61,7 +60,7 @@ fn shl(limbs: &mut Scratch, len: usize, shift: u32) {
 }
 
 /// Shifts right by `s`, returning whether a set bit fell off the end.
-fn shr(limbs: &mut Scratch, len: usize, shift: u32) -> bool {
+fn shr(limbs: &mut [u64], len: usize, shift: u32) -> bool {
     let words = (shift / 64) as usize;
     let bits = shift % 64;
     let mut sticky = (0..words.min(len)).any(|i| limb(limbs, i) != 0);
@@ -260,9 +259,12 @@ pub trait Work:
     /// `⌊8·frac(t)⌋` and the fraction of it, measured from the octant's near
     /// end to π/4's multiple, so odd octants count back from their top.
     fn octant(mag: u128, frac: u32, radians: bool) -> (u32, Self);
-    /// [`octant`](Self::octant) of `|self|` radians, which must be below
-    /// `2^PREC`.
+    /// [`octant`](Self::octant) of `|self|` radians, below `2^PREC`.
     fn octant_of(self) -> (u32, Self);
+    /// [`octant`](Self::octant) of `|a·b|` radians from the exact product, below `2^300`.
+    fn octant_of_product(a: Self, b: Self) -> (u32, Self);
+    /// `a·b + c·d` from the exact products, rounded once.
+    fn dot2(a: Self, b: Self, c: Self, d: Self) -> Self;
     /// `Σ ±table[first + step·k]·u^k` for k from 0 to `n` by Horner's rule,
     /// the signs alternating when `alternate`, for `|u| < 1` and terms whose
     /// sum stays near 1, in fixed point with 62, 126 or 190 fractional bits.
@@ -285,8 +287,7 @@ pub trait Work:
     }
 }
 
-/// A binary floating-point value `m · 2^(e − 64N)`, the top bit of `m` set
-/// unless the value is zero.
+/// A binary floating-point value `m · 2^(e − 64N)`, `m`'s top bit set unless zero.
 #[derive(Clone, Copy, Debug)]
 pub struct Real<const N: usize> {
     neg: bool,
@@ -299,8 +300,7 @@ impl<const N: usize> Real<N> {
         self.m.last().copied().unwrap_or(0)
     }
 
-    /// Rounds the top `N` of `len` normalized limbs, the rest and `sticky`
-    /// deciding the rounding.
+    /// Rounds the top `N` of `len` normalized limbs by the rest and `sticky`.
     fn pack(neg: bool, e: i32, ext: &Scratch, len: usize, sticky: bool) -> Self {
         let low = len.saturating_sub(N);
         let mut m = [0u64; N];
@@ -435,8 +435,24 @@ impl<const N: usize> Real<N> {
         q.saturating_add(u128::from(up))
     }
 
-    /// The octant and remainder of `mag · 2^−point` turns, or radians when
-    /// `radians`, for `mag` of at most three limbs.
+    /// The exact product of the mantissas, in `2N` limbs.
+    fn product(&self, o: &Self) -> Scratch {
+        let mut p = [0; SCRATCH];
+        for i in 0..N {
+            let mut carry: u128 = 0;
+            for j in 0..N {
+                let cur = u128::from(limb(&p, i + j))
+                    + u128::from(limb(&self.m, i)) * u128::from(limb(&o.m, j))
+                    + carry;
+                set(&mut p, i + j, lo64(cur));
+                carry = cur >> 64;
+            }
+            set(&mut p, i + N, lo64(carry));
+        }
+        p
+    }
+
+    /// The octant and remainder of `mag · 2^−point` turns, or radians, `mag` in ≤ 3 limbs.
     fn octant_limbs(mag: &[u64], point: u32, radians: bool) -> (u32, Self) {
         let width = 64 * u32_of(N + 1);
         let mut z = [0; SCRATCH];
@@ -464,10 +480,15 @@ impl<const N: usize> Real<N> {
         } else {
             shr(&mut z, SCRATCH, point - need);
         }
-        let oct = u32::try_from(limb(&z, N + 1) & 7).unwrap_or(0);
+        Self::octant_from(&z)
+    }
+
+    /// The octant and remainder of turns shifted to put the octant at bit `64(N + 1)`.
+    fn octant_from(z: &[u64]) -> (u32, Self) {
+        let oct = u32::try_from(limb(z, N + 1) & 7).unwrap_or(0);
         let mut v = [0; SCRATCH];
         for i in 0..=N {
-            set(&mut v, i, limb(&z, i));
+            set(&mut v, i, limb(z, i));
         }
         if oct & 1 == 1 {
             if v.iter().all(|&x| x == 0) {
@@ -640,18 +661,7 @@ impl<const N: usize> Mul for Real<N> {
                 Self::round128(neg, e.saturating_sub(1), p << 1, false)
             };
         }
-        let mut p = [0; SCRATCH];
-        for i in 0..N {
-            let mut carry: u128 = 0;
-            for j in 0..N {
-                let cur = u128::from(limb(&p, i + j))
-                    + u128::from(limb(&self.m, i)) * u128::from(limb(&o.m, j))
-                    + carry;
-                set(&mut p, i + j, lo64(cur));
-                carry = cur >> 64;
-            }
-            set(&mut p, i + N, lo64(carry));
-        }
+        let mut p = self.product(&o);
         Self::normalize(neg, e, &mut p, 2 * N, false)
     }
 }
@@ -875,6 +885,72 @@ impl<const N: usize> Work for Real<N> {
             .max(0)
             .cast_unsigned();
         Self::octant_limbs(&self.m, point, true)
+    }
+
+    fn octant_of_product(a: Self, b: Self) -> (u32, Self) {
+        if a.is_zero() || b.is_zero() {
+            return (0, Self::zero());
+        }
+        let prod = a.product(&b);
+        let mut turns = [0u64; 16];
+        for (i, &cv) in FRAC_1_2PI_LONG.iter().enumerate() {
+            let mut carry: u128 = 0;
+            for j in 0..2 * N {
+                let cur = u128::from(limb(&turns, i + j))
+                    + u128::from(cv) * u128::from(limb(&prod, j))
+                    + carry;
+                set(&mut turns, i + j, lo64(cur));
+                carry = cur >> 64;
+            }
+            set(&mut turns, i + 2 * N, lo64(carry));
+        }
+        // |a·b| = prod·2^(e − 128N) and 1/2π = c·2^−578, so |a·b|/2π = turns·2^−point.
+        let point = i64::from(128 * u32_of(N) + 578) - i64::from(a.e) - i64::from(b.e);
+        let need = i64::from(64 * u32_of(N + 1) + 3);
+        let shift = u32::try_from((point - need).unsigned_abs())
+            .unwrap_or(u32::MAX)
+            .min(1024);
+        if point < need {
+            shl(&mut turns, 16, shift);
+        } else {
+            shr(&mut turns, 16, shift);
+        }
+        Self::octant_from(&turns)
+    }
+
+    fn dot2(a: Self, b: Self, c: Self, d: Self) -> Self {
+        if a.is_zero() || b.is_zero() {
+            return c * d;
+        }
+        if c.is_zero() || d.is_zero() {
+            return a * b;
+        }
+        let mut first = (a.neg != b.neg, a.e.saturating_add(b.e), a.product(&b));
+        let mut second = (c.neg != d.neg, c.e.saturating_add(d.e), c.product(&d));
+        if second.1 > first.1 {
+            core::mem::swap(&mut first, &mut second);
+        }
+        let low = 64 * u32_of(SCRATCH - 1 - 2 * N);
+        shl(&mut first.2, SCRATCH, low);
+        shl(&mut second.2, SCRATCH, low);
+        let sticky = shr(&mut second.2, SCRATCH, first.1.abs_diff(second.1).min(1024));
+        let top = first.1.saturating_add(64);
+        if first.0 == second.0 {
+            add_into(&mut first.2, &second.2, SCRATCH);
+            return Self::normalize(first.0, top, &mut first.2, SCRATCH, sticky);
+        }
+        if first.2.iter().rev().cmp(second.2.iter().rev()) == Ordering::Less {
+            sub_into(&mut second.2, &first.2, SCRATCH);
+            return Self::normalize(second.0, top, &mut second.2, SCRATCH, false);
+        }
+        sub_into(&mut first.2, &second.2, SCRATCH);
+        if sticky {
+            // What fell off `second` takes one more unit, and the rest rounds.
+            let mut one = [0; SCRATCH];
+            set(&mut one, 0, 1);
+            sub_into(&mut first.2, &one, SCRATCH);
+        }
+        Self::normalize(first.0, top, &mut first.2, SCRATCH, sticky)
     }
 
     fn horner(u: Self, table: &Series, first: u32, step: u32, n: u32, alternate: bool) -> Self {
