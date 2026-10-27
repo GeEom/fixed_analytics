@@ -25,11 +25,12 @@ assert!((log.to_num::<f32>() - 1.0).abs() < 0.01);
 
 | Category | Total | Fallible |
 |--------------|-------|----------|
-| Trigonometric | [`sin`], [`cos`], [`tan`], [`sin_cos`], [`atan`], [`atan2`] | [`asin`], [`acos`] |
+| Trigonometric | [`sin`], [`cos`], [`tan`], [`sin_cos`], [`atan`], [`atan2`] | [`asin`], [`acos`], [`asin_from_gap`] |
 | Hyperbolic | [`sinh`], [`cosh`], [`tanh`], [`sinh_cosh`], [`asinh`] | [`acosh`], [`atanh`], [`acoth`], [`coth`] |
 | Exponential | [`exp`], [`pow2`] | [`ln`], [`log2`], [`log10`], [`pow`] |
-| Algebraic | [`sqrt_or_zero`] | [`sqrt`] |
+| Algebraic | [`sqrt_or_zero`], [`hypot`], [`norm`], [`scale_exponent`], [`scale_by`] | [`sqrt`], [`sqrt_product`], [`rsqrt`], [`normalize`] |
 | Arithmetic | [`mul_add`], [`mul_div`], [`div_or_saturate`], [`dot`] | — |
+| Enclosures | [`enclose`], [`sin_cos_range`], [`exp_range`], [`atan_range`], [`tanh_range`] | — |
 
 Each function works in binary floating point at twice its type's width or
 more, from its arguments converted exactly, and rounds once. Complete absence
@@ -48,7 +49,8 @@ monotone.
 The accuracy tool checks all of this against MPFR on 104 layouts: every
 value of the 8- and 16-bit ones, and seeded samples of the wider ones.
 Accuracy regressions are not permitted across releases, and a release that
-changes any output bit says so in the changelog.
+changes any output bit says so in the changelog. The enclosure functions
+turn the bound into intervals certain to hold the exact value.
 
 # Features
 

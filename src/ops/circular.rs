@@ -106,6 +106,26 @@ pub fn asin<T: CordicNumber>(x: T) -> Result<T> {
     Ok(fixed(atan_ratio(a, cofactor(a)).with_sign(v.is_neg())))
 }
 
+/// `asin(1 − gap)` from the gap to 1, which keeps all of its bits where
+/// `1 − gap` would round. Domain: `gap` in `[0, 2]`.
+/// # Errors
+/// Returns `DomainError` if `gap` is outside `[0, 2]`.
+#[must_use = "returns the arcsine result which should be handled"]
+#[cfg_attr(
+    all(feature = "verify-no-panic", not(debug_assertions)),
+    no_panic::no_panic
+)]
+pub fn asin_from_gap<T: CordicNumber>(gap: T) -> Result<T> {
+    let g = work(gap);
+    let two = W::<T>::from_int(2);
+    if g.is_neg() || g > two {
+        return Err(Error::domain("asin_from_gap", "gap in range [0, 2]"));
+    }
+    let a = W::<T>::one() - g;
+    let s = (g * (two - g)).sqrt();
+    Ok(fixed(atan_ratio(a.abs(), s).with_sign(a.is_neg())))
+}
+
 /// Arccosine. Domain: `[-1, 1]`. Returns an angle in `[0, π]`.
 /// # Errors
 /// Returns `DomainError` if `|x| > 1`.

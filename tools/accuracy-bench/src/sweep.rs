@@ -41,6 +41,13 @@ pub enum Fun {
     MulDiv,
     DivOrSaturate,
     Dot3,
+    Hypot,
+    Norm3,
+    Normalize3,
+    ScaleBy,
+    SqrtProduct,
+    AsinFromGap,
+    Rsqrt,
 }
 
 use Fun::*;
@@ -48,6 +55,7 @@ use Fun::*;
 pub const ALL: &[Fun] = &[
     Sin, Cos, Tan, Asin, Acos, Atan, Atan2, Sinh, Cosh, Tanh, Coth, Asinh, Acosh, Atanh, Acoth,
     Exp, Pow2, Ln, Log2, Log10, Pow, Sqrt, SqrtOrZero, MulAdd, MulDiv, DivOrSaturate, Dot3,
+    Hypot, Norm3, Normalize3, ScaleBy, SqrtProduct, AsinFromGap, Rsqrt,
 ];
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -116,13 +124,20 @@ impl Fun {
             MulDiv => "mul_div",
             DivOrSaturate => "div_or_saturate",
             Dot3 => "dot3",
+            Hypot => "hypot",
+            Norm3 => "norm3",
+            Normalize3 => "normalize3",
+            ScaleBy => "scale_by",
+            SqrtProduct => "sqrt_product",
+            AsinFromGap => "asin_from_gap",
+            Rsqrt => "rsqrt",
         }
     }
 
     pub fn arity(self) -> usize {
         match self {
-            Atan2 | Pow | DivOrSaturate => 2,
-            MulAdd | MulDiv => 3,
+            Atan2 | Pow | DivOrSaturate | Hypot | ScaleBy | SqrtProduct => 2,
+            MulAdd | MulDiv | Norm3 | Normalize3 => 3,
             Dot3 => 6,
             _ => 1,
         }
@@ -159,6 +174,13 @@ impl Fun {
             MulDiv => Some(fa::mul_div(x, a[1], a[2])),
             DivOrSaturate => Some(fa::div_or_saturate(x, a[1])),
             Dot3 => Some(fa::dot(&a[0..3], &a[3..6])),
+            Hypot => Some(fa::hypot(x, a[1])),
+            Norm3 => Some(fa::norm(&a[0..3])),
+            Normalize3 => fa::normalize([x, a[1], a[2]]).ok().map(|v| v[0]),
+            ScaleBy => Some(fa::scale_by(x, exponent_of(a[1]))),
+            SqrtProduct => fa::sqrt_product(x, a[1]).ok(),
+            AsinFromGap => fa::asin_from_gap(x).ok(),
+            Rsqrt => fa::rsqrt(x).ok(),
         }
     }
 
@@ -173,8 +195,15 @@ impl Fun {
             Acosh => x >= one,
             Atanh => x > -one && x < one,
             Acoth => x < -one || x > one,
-            Ln | Log2 | Log10 => x > zero,
+            Ln | Log2 | Log10 | Rsqrt => x > zero,
             Sqrt => x >= zero,
+            AsinFromGap => x >= zero && x <= one + one,
+            SqrtProduct => !((x < zero && a[1] > zero) || (x > zero && a[1] < zero)),
+            Normalize3 => a.iter().any(|&v| v != zero),
+            ScaleBy => {
+                let e = a[1];
+                (e >> T::frac_n()) << T::frac_n() == e && exponent_of(e).abs() <= 2 * T::bits() as i32
+            }
             Pow => {
                 let e = a[1];
                 if x == zero {
@@ -239,6 +268,21 @@ impl Fun {
                 }
                 acc
             }
+            Hypot => (Float::with_val(PREC * 3, x.clone().square()) + a[1].clone().square()).sqrt(),
+            Norm3 | Normalize3 => {
+                let mut acc = Float::with_val(PREC * 3, 0);
+                for v in &a[0..3] {
+                    acc += v.clone().square();
+                }
+                if self == Norm3 { acc.sqrt() } else { x / acc.sqrt() }
+            }
+            ScaleBy => {
+                let e = a[1].to_i32_saturating().unwrap_or(0);
+                Float::with_val(PREC * 3, x) * Float::with_val(PREC, Float::i_exp(1, e))
+            }
+            SqrtProduct => Float::with_val(PREC * 3, &x * &a[1]).abs().sqrt(),
+            AsinFromGap => (one - x).asin(),
+            Rsqrt => one / x.sqrt(),
         }
     }
 
@@ -275,6 +319,8 @@ impl Fun {
             Atanh => vec![(f(-1.0), one, true)],
             Acoth => vec![(ninf, f(-1.0), false), (one, inf, false)],
             Ln | Log2 | Log10 => vec![(zero, inf, true)],
+            Rsqrt => vec![(zero, inf, false)],
+            AsinFromGap => vec![(zero.clone() - f(1e-300), f(2.0) + f(1e-300), false)],
             Sqrt => vec![(zero - f(1e-300), inf, true)],
             _ => vec![],
         }
@@ -404,6 +450,11 @@ fn candidates<T: Sut>(fun: Fun, rng: &mut Rng, n: usize) -> Vec<T> {
         .collect()
 }
 
+/// The integer part of `e`, the exponent `scale_by` reads from its sample.
+fn exponent_of<T: Sut>(e: T) -> i32 {
+    e.to_float().to_i32_saturating().unwrap_or(0)
+}
+
 fn exponent_candidates<T: Sut>(rng: &mut Rng, n: usize) -> Vec<T> {
     let mut v: Vec<T> = (-16..=16).map(|k: i32| <T as CordicNumber>::from_num(k)).collect();
     v.extend(candidates::<T>(Pow, rng, n));
@@ -447,7 +498,7 @@ fn points<T: Sut>(fun: Fun, rng: &mut Rng) -> Vec<Vec<T>> {
     } else {
         candidates::<T>(fun, rng, n)
     };
-    let ys = if fun == Pow {
+    let ys = if fun == Pow || fun == ScaleBy {
         exponent_candidates::<T>(rng, n)
     } else if T::bits() <= 16 {
         all::<T>()

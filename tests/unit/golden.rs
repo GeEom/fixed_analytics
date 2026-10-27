@@ -1,8 +1,5 @@
-//! Pins every function's output bits. tests/golden.txt holds a hash of each
-//! function's outputs on six types; a change fails `golden_outputs` until
-//! `GOLDEN_UPDATE=1` re-pins it, which stamps the changed rows with the
-//! crate version, and `golden_changes_in_changelog` then wants that version's
-//! CHANGELOG.md section to name each changed function.
+//! Pins every function's output bits in tests/golden.txt; CHANGELOG.md
+//! explains how a change is re-pinned and recorded.
 
 #[cfg(test)]
 mod tests {
@@ -11,9 +8,11 @@ mod tests {
     use fixed::types::{I16F16, I24F8, I32F32, I64F64};
     use fixed::{FixedI8, FixedI64};
     use fixed_analytics::{
-        CordicNumber, acos, acosh, acoth, asin, asinh, atan, atan2, atanh, cos, cosh, coth,
-        div_or_saturate, dot, exp, ln, log2, log10, mul_add, mul_div, pow, pow2, sin, sin_cos,
-        sinh, sinh_cosh, sqrt, sqrt_or_zero, tan, tanh,
+        CordicNumber, acos, acosh, acoth, asin, asin_from_gap, asinh, atan, atan_range, atan2,
+        atanh, cos, cosh, coth, div_or_saturate, dot, exp, exp_range, hypot, ln, log2, log10,
+        mul_add, mul_div, norm, normalize, pow, pow2, rsqrt, scale_by, scale_exponent, sin,
+        sin_cos, sin_cos_range, sinh, sinh_cosh, sqrt, sqrt_or_zero, sqrt_product, tan, tanh,
+        tanh_range,
     };
     use std::collections::BTreeMap;
     use std::fmt::Write;
@@ -52,6 +51,18 @@ mod tests {
         "mul_div",
         "div_or_saturate",
         "dot",
+        "hypot",
+        "norm",
+        "normalize",
+        "scale_exponent",
+        "scale_by",
+        "sqrt_product",
+        "rsqrt",
+        "asin_from_gap",
+        "sin_cos_range",
+        "exp_range",
+        "atan_range",
+        "tanh_range",
     ];
 
     trait Raw: CordicNumber {
@@ -82,6 +93,10 @@ mod tests {
         I32F32, i64, "I32F32";
         FixedI64<U61>, i64, "I3F61";
         I64F64, i128, "I64F64";
+    }
+
+    const fn pair<T: Copy>(range: (T, T)) -> [Option<T>; 2] {
+        [Some(range.0), Some(range.1)]
     }
 
     fn eval<T: CordicNumber>(name: &str, x: T, y: T) -> [Option<T>; 2] {
@@ -123,6 +138,27 @@ mod tests {
             "mul_div" => one(mul_div(x, y, y)),
             "div_or_saturate" => one(div_or_saturate(x, y)),
             "dot" => one(dot(&[x, y, x], &[y, y, x])),
+            "hypot" => one(hypot(x, y)),
+            "norm" => one(norm(&[x, y, x])),
+            "normalize" => normalize([x, y]).map_or([None, None], |v| [Some(v[0]), Some(v[1])]),
+            "scale_exponent" => {
+                let e = scale_exponent(x);
+                [
+                    e.map(|v| T::from_num(v.rem_euclid(4))),
+                    e.map(|v| T::from_num(v.div_euclid(16).clamp(-3, 3))),
+                ]
+            }
+            "scale_by" => one(scale_by(x, y.to_i32() % 40)),
+            "sqrt_product" => res(sqrt_product(x, y)),
+            "rsqrt" => res(rsqrt(x)),
+            "asin_from_gap" => res(asin_from_gap(x)),
+            "sin_cos_range" => {
+                let ((s_lo, s_hi), (c_lo, c_hi)) = sin_cos_range(x, y);
+                [Some(s_lo + s_hi), Some(c_lo + c_hi)]
+            }
+            "exp_range" => pair(exp_range(x, y)),
+            "atan_range" => pair(atan_range(x, y)),
+            "tanh_range" => pair(tanh_range(x, y)),
             _ => [None, None],
         }
     }

@@ -15,19 +15,18 @@ pub mod traits;
 
 pub use fixed;
 
-/// Every function's worst-case error, in ulps of the type it computes in.
-///
-/// A result lies strictly within one ulp of the exact value wherever that
-/// value is in range, and is the nearer end of the range otherwise. The
-/// [`ops::arith`] functions and [`sqrt`] round an exact value once, so they
-/// stay within half an ulp.
+/// Every function's worst-case error in ulps, strict, wherever the exact
+/// value is in range; out of range a result saturates.
 pub const ERROR_ULPS: u32 = 1;
 
 pub use error::{Error, Result};
 pub use traits::CordicNumber;
 
-pub use ops::algebraic::sqrt;
+pub use ops::algebraic::{
+    hypot, norm, normalize, rsqrt, scale_by, scale_exponent, sqrt, sqrt_product,
+};
 pub use ops::arith::{div_or_saturate, dot, mul_add, mul_div, sqrt_or_zero};
-pub use ops::circular::{acos, asin, atan, atan2, cos, sin, sin_cos, tan};
+pub use ops::circular::{acos, asin, asin_from_gap, atan, atan2, cos, sin, sin_cos, tan};
 pub use ops::exponential::{exp, ln, log2, log10, pow, pow2};
 pub use ops::hyperbolic::{acosh, acoth, asinh, atanh, cosh, coth, sinh, sinh_cosh, tanh};
+pub use ops::interval::{atan_range, enclose, exp_range, sin_cos_range, tanh_range};

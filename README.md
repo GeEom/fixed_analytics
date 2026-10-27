@@ -49,11 +49,12 @@ fixed_analytics = { version = "4.0.0", default-features = false }
 
 | Category | Total Functions | Fallible Functions |
 |----------|-----------------|-------------------|
-| Trigonometric | `sin`, `cos`, `tan`, `sin_cos`, `atan`, `atan2` | `asin`, `acos` |
+| Trigonometric | `sin`, `cos`, `tan`, `sin_cos`, `atan`, `atan2` | `asin`, `acos`, `asin_from_gap` |
 | Hyperbolic | `sinh`, `cosh`, `tanh`, `sinh_cosh`, `asinh` | `acosh`, `atanh`, `acoth`, `coth` |
 | Exponential | `exp`, `pow2` | `ln`, `log2`, `log10`, `pow` |
-| Algebraic | `sqrt_or_zero` | `sqrt` |
+| Algebraic | `sqrt_or_zero`, `hypot`, `norm`, `scale_exponent`, `scale_by` | `sqrt`, `sqrt_product`, `rsqrt`, `normalize` |
 | Arithmetic | `mul_add`, `mul_div`, `div_or_saturate`, `dot` | — |
+| Enclosures | `enclose`, `sin_cos_range`, `exp_range`, `atan_range`, `tanh_range` | — |
 
 Each function works in binary floating point at twice its type's width or more, from its arguments converted exactly, and rounds once to the type. Every one is within one ulp of the exact result on every type, `ERROR_ULPS`, and the arithmetic functions within half an ulp. Odd and even functions are exactly so and monotone functions stay monotone. Complete absence of panic is verified at the linker level via the [`no-panic`](https://github.com/dtolnay/no-panic) crate.
 
