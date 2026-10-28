@@ -2,7 +2,7 @@
 
 use crate::cx::{Cx, atan2, phi};
 use crate::error::{Error, Result};
-use crate::eval::{W, atan_ratio, exp_wide, fixed, sin_cos, sin_cos_octant, work};
+use crate::eval::{W, atan_ratio, exp_wide, fixed, sin_cos, sin_cos_octant, tiered, work};
 use crate::real::Work;
 use crate::traits::CordicNumber;
 use core::ops::{Add, Div, Mul, Neg, Sub};
@@ -25,6 +25,10 @@ impl<T: CordicNumber> Complex<T> {
 
     fn work(self) -> Cx<W<T>> {
         Cx::new(work(self.re), work(self.im))
+    }
+
+    fn work_in<V: Work>(self, as_work: fn(T) -> V) -> Cx<V> {
+        Cx::new(as_work(self.re), as_work(self.im))
     }
 
     fn round(z: Cx<W<T>>) -> Self {
@@ -56,7 +60,8 @@ impl<T: CordicNumber> Complex<T> {
         no_panic::no_panic
     )]
     pub fn exp(self) -> Self {
-        Self::round(self.work().exp())
+        let (re, im) = tiered!(T, |v| self.work_in(v).exp().parts());
+        Self::new(re, im)
     }
 
     /// `(e^z − 1)/z`, which is 1 at 0.
@@ -66,7 +71,8 @@ impl<T: CordicNumber> Complex<T> {
         no_panic::no_panic
     )]
     pub fn exprel(self) -> Self {
-        Self::round(phi(1, self.work()))
+        let (re, im) = tiered!(T, |v| phi(1, self.work_in(v)).parts());
+        Self::new(re, im)
     }
 
     /// `(e^z − 1 − z)/z²`, which is ½ at 0.
@@ -76,7 +82,8 @@ impl<T: CordicNumber> Complex<T> {
         no_panic::no_panic
     )]
     pub fn exprel2(self) -> Self {
-        Self::round(phi(2, self.work()))
+        let (re, im) = tiered!(T, |v| phi(2, self.work_in(v)).parts());
+        Self::new(re, im)
     }
 
     /// The Faddeeva function `w(z) = e^(−z²)·erfc(−iz)`.
@@ -86,7 +93,8 @@ impl<T: CordicNumber> Complex<T> {
         no_panic::no_panic
     )]
     pub fn faddeeva(self) -> Self {
-        Self::round(crate::cx::faddeeva(self.work()))
+        let (re, im) = tiered!(T, 48, |v| crate::cx::faddeeva(self.work_in(v)).parts());
+        Self::new(re, im)
     }
 
     /// `E₁(z) = ∫_z^∞ e^(−t)/t dt` on the principal branch, from above on the negative axis.
@@ -102,7 +110,8 @@ impl<T: CordicNumber> Complex<T> {
         if z.is_zero() {
             return Err(Error::domain("e1", "non-zero argument"));
         }
-        Ok(Self::round(crate::cx::e1(z)))
+        let (re, im) = tiered!(T, 24, |v| crate::cx::e1(self.work_in(v)).parts());
+        Ok(Self::new(re, im))
     }
 
     /// `Γ(a, z) = ∫_z^∞ t^(a−1)·e^(−t) dt` for real `a` in `(0, 128]`, principal branch.
@@ -118,7 +127,9 @@ impl<T: CordicNumber> Complex<T> {
         if wa <= W::<T>::zero() || wa > W::<T>::from_int(128) {
             return Err(Error::domain("gamma_upper", "a in (0, 128]"));
         }
-        Ok(Self::round(crate::cx::gamma_upper(wa, self.work())))
+        let (re, im) = tiered!(T, 24, |v| crate::cx::gamma_upper(v(a), self.work_in(v))
+            .parts());
+        Ok(Self::new(re, im))
     }
 
     /// The principal logarithm `ln|z| + i·arg z`, `arg z` in `(−π, π]`.
@@ -134,7 +145,8 @@ impl<T: CordicNumber> Complex<T> {
         if z.is_zero() {
             return Err(Error::domain("ln", "non-zero argument"));
         }
-        Ok(Self::round(z.ln()))
+        let (re, im) = tiered!(T, |v| self.work_in(v).ln().parts());
+        Ok(Self::new(re, im))
     }
 
     /// `z^a = e^(a·ln z)` for real `a`, principal branch; the phase's multiple of `π/4` reduced
@@ -200,13 +212,16 @@ impl<T: CordicNumber> Complex<T> {
         if eps < zero || eps >= T::one() || p < zero {
             return Err(Error::domain("exprel_weighted", "eps in [0, 1) and p >= 0"));
         }
-        let z = self.work();
-        let (k1, k2) = if eps == zero {
-            (phi(1, z), phi(2, z))
-        } else {
-            crate::cx::exprel_weighted(z, work(eps), work(p))
-        };
-        Ok((Self::round(k1), Self::round(k2)))
+        let ((r1, i1), (r2, i2)) = tiered!(T, 16, |v| {
+            let z = self.work_in(v);
+            let (k1, k2) = if eps == zero {
+                (phi(1, z), phi(2, z))
+            } else {
+                crate::cx::exprel_weighted(z, v(eps), v(p))
+            };
+            (k1.parts(), k2.parts())
+        });
+        Ok((Self::new(r1, i1), Self::new(r2, i2)))
     }
 
     /// The error function `erf z`.
@@ -216,7 +231,8 @@ impl<T: CordicNumber> Complex<T> {
         no_panic::no_panic
     )]
     pub fn erf(self) -> Self {
-        Self::round(crate::cx::erf(self.work()))
+        let (re, im) = tiered!(T, 48, |v| crate::cx::erf(self.work_in(v)).parts());
+        Self::new(re, im)
     }
 }
 

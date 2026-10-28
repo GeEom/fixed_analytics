@@ -10,6 +10,7 @@ pub(crate) mod sealed {
     /// alone implement it.
     pub trait Sealed {
         type Work: crate::real::Work;
+        type Narrow: crate::real::Work;
         fn raw_i128(self) -> i128;
         fn from_raw_i128(raw: i128) -> Self;
     }
@@ -231,6 +232,7 @@ macro_rules! impl_cordic_generic {
         $wide_type:ty,
         $sqrt_impl:ident,
         $work:ty,
+        $narrow:ty,
         $total_bits:expr,
         $max_frac:ty,
         $pi_frac:ty,
@@ -247,6 +249,7 @@ macro_rules! impl_cordic_generic {
                 + LeEqU128,
         {
             type Work = $work;
+            type Narrow = $narrow;
 
             #[inline]
             fn raw_i128(self) -> i128 {
@@ -471,6 +474,7 @@ impl_cordic_generic!(
     u16,
     sqrt_round_widened,
     Real<1>,
+    Real<1>,
     8,
     U8,
     U5,
@@ -483,6 +487,7 @@ impl_cordic_generic!(
     i16,
     u32,
     sqrt_round_widened,
+    Real<1>,
     Real<1>,
     16,
     U16,
@@ -497,6 +502,7 @@ impl_cordic_generic!(
     u64,
     sqrt_round_widened,
     Real<1>,
+    Real<1>,
     32,
     U32,
     U29,
@@ -510,6 +516,7 @@ impl_cordic_generic!(
     u128,
     sqrt_round_widened,
     Real<2>,
+    Real<1>,
     64,
     U64,
     U61,
@@ -523,6 +530,7 @@ impl_cordic_generic!(
     u128,
     sqrt_round_i128,
     Real<3>,
+    Real<2>,
     128,
     U128,
     U125,

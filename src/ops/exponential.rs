@@ -5,7 +5,7 @@ use crate::error::{Error, Result};
 use crate::eval::{
     HUGE, W, exp as exp_work, exp_wide, expm1 as expm1_work, fixed, ln as ln_work,
     log1p as log1p_work, log1p_minus, log1p_minus_ratio, log1p_ratio as log1p_ratio_work,
-    log2 as log2_work, phi, phis, work,
+    log2 as log2_work, phi, phis, tiered, work,
 };
 use crate::real::Work;
 use crate::traits::CordicNumber;
@@ -19,7 +19,16 @@ use crate::traits::CordicNumber;
     no_panic::no_panic
 )]
 pub fn exp<T: CordicNumber>(x: T) -> T {
-    fixed(exp_wide::<W<T>>(work(x)))
+    if crate::fast::applies::<T>()
+        && let Some((v, q)) = crate::fast::exp(x.raw_i128(), T::frac_bits())
+    {
+        // v·2^(q − 126) to 2^−121, keeping 24 guard bits below 2^(97 − frac).
+        let s = 126 - T::frac_bits().cast_signed() - q;
+        if s >= 30 {
+            return T::from_raw_i128(crate::fast::shift_round(v, s.cast_unsigned()));
+        }
+    }
+    tiered!(T, |v| exp_wide(v(x)))
 }
 
 /// Power `base^exponent`, as `exp(exponent · ln|base|)`, saturating like
@@ -72,7 +81,12 @@ pub fn ln<T: CordicNumber>(x: T) -> Result<T> {
     if x <= T::zero() {
         return Err(Error::domain("ln", "positive value"));
     }
-    Ok(fixed(ln_work(work(x))))
+    if crate::fast::applies::<T>() {
+        let v = crate::fast::ln(x.raw_i128(), T::frac_bits());
+        let raw = crate::fast::shift_round(v, 119 - T::frac_bits());
+        return Ok(T::from_raw_i128(if v < 0 { -raw } else { raw }));
+    }
+    Ok(tiered!(T, |v| ln_work(v(x))))
 }
 
 /// Base-2 logarithm. Domain: `x > 0`.
@@ -87,7 +101,7 @@ pub fn log2<T: CordicNumber>(x: T) -> Result<T> {
     if x <= T::zero() {
         return Err(Error::domain("log2", "positive value"));
     }
-    Ok(fixed(log2_work(work(x))))
+    Ok(tiered!(T, |v| log2_work(v(x))))
 }
 
 /// Base-10 logarithm. Domain: `x > 0`.
@@ -102,7 +116,7 @@ pub fn log10<T: CordicNumber>(x: T) -> Result<T> {
     if x <= T::zero() {
         return Err(Error::domain("log10", "positive value"));
     }
-    Ok(fixed(ln_work(work(x)) * W::<T>::constant(&FRAC_1_LN_10)))
+    Ok(tiered!(T, |v| log10_work(v(x))))
 }
 
 /// Power of two 2^x. Saturates to `T::MAX` above `log2(T::MAX)` and to zero
@@ -141,7 +155,7 @@ pub fn expm1<T: CordicNumber>(x: T) -> T {
     if v < W::<T>::from_int(-HUGE) {
         return -T::one();
     }
-    fixed(expm1_work(v))
+    tiered!(T, |v| expm1_work(v(x)))
 }
 
 /// `(e^x − 1)/x`, which is 1 at 0, saturating for large `x`.
@@ -151,7 +165,7 @@ pub fn expm1<T: CordicNumber>(x: T) -> T {
     no_panic::no_panic
 )]
 pub fn exprel<T: CordicNumber>(x: T) -> T {
-    fixed(phi(1, work(x)))
+    tiered!(T, |v| phi(1, v(x)))
 }
 
 /// `(e^x − 1 − x)/x²`, which is ½ at 0, saturating for large `x`.
@@ -161,7 +175,7 @@ pub fn exprel<T: CordicNumber>(x: T) -> T {
     no_panic::no_panic
 )]
 pub fn exprel2<T: CordicNumber>(x: T) -> T {
-    fixed(phi(2, work(x)))
+    tiered!(T, |v| phi(2, v(x)))
 }
 
 /// `[E₁, E₂, E₃, E₄, E₅, e^(−x)]`, with `Eₖ(x) = ∫₀¹ s^(k−1)·e^(−xs) ds`.
@@ -171,14 +185,17 @@ pub fn exprel2<T: CordicNumber>(x: T) -> T {
     no_panic::no_panic
 )]
 pub fn exp_moments<T: CordicNumber>(x: T) -> [T; 6] {
-    let v = work(x);
-    if v < W::<T>::from_int(-HUGE) {
+    if work(x) < W::<T>::from_int(-HUGE) {
         return [T::max_value(); 6];
     }
-    let (decay, parts) = if v > W::<T>::from_int(HUGE) {
-        let mut power = W::<T>::one();
+    tiered!(T, |v| moments_work(v(x)))
+}
+
+fn moments_work<V: Work>(v: V) -> [V; 6] {
+    let (decay, parts) = if v > V::from_int(HUGE) {
+        let mut power = V::one();
         (
-            W::<T>::zero(),
+            V::zero(),
             [0; 5].map(|_| {
                 power = power / v;
                 power
@@ -186,13 +203,17 @@ pub fn exp_moments<T: CordicNumber>(x: T) -> [T; 6] {
         )
     } else {
         let decay = exp_work(-v);
-        (decay, phis(v).map(|p| decay * p))
+        (decay, phis(v, decay).map(|p| decay * p))
     };
-    let mut out = [fixed(decay); 6];
+    let mut out = [decay; 6];
     for ((slot, part), factorial) in out.iter_mut().zip(parts).zip([1, 1, 2, 6, 24]) {
-        *slot = fixed(part.mul_int(factorial));
+        *slot = part.mul_int(factorial);
     }
     out
+}
+
+fn log10_work<V: Work>(x: V) -> V {
+    ln_work(x) * V::constant(&FRAC_1_LN_10)
 }
 
 /// `ln(1 + v)`, to full relative precision near 0. Domain: `v > −1`.
@@ -204,7 +225,7 @@ pub fn exp_moments<T: CordicNumber>(x: T) -> [T; 6] {
     no_panic::no_panic
 )]
 pub fn log1p<T: CordicNumber>(v: T) -> Result<T> {
-    above_minus_one(v, "log1p").map(|w| fixed(log1p_work(w)))
+    above_minus_one(v, "log1p").map(|_| tiered!(T, |w| log1p_work(w(v))))
 }
 
 /// `ln(1 + z)/z`, which is 1 at 0. Domain: `z > −1`.
@@ -216,7 +237,7 @@ pub fn log1p<T: CordicNumber>(v: T) -> Result<T> {
     no_panic::no_panic
 )]
 pub fn log1p_ratio<T: CordicNumber>(z: T) -> Result<T> {
-    above_minus_one(z, "log1p_ratio").map(|w| fixed(log1p_ratio_work(w)))
+    above_minus_one(z, "log1p_ratio").map(|_| tiered!(T, |w| log1p_ratio_work(w(z))))
 }
 
 /// `ln(1 + v) − v`, without cancelling near 0. Domain: `v > −1`.
@@ -228,7 +249,7 @@ pub fn log1p_ratio<T: CordicNumber>(z: T) -> Result<T> {
     no_panic::no_panic
 )]
 pub fn log1p_residual<T: CordicNumber>(v: T) -> Result<T> {
-    above_minus_one(v, "log1p_residual").map(|w| fixed(log1p_minus(w)))
+    above_minus_one(v, "log1p_residual").map(|_| tiered!(T, |w| log1p_minus(w(v))))
 }
 
 /// `(ln(1 + u) − u)/u²`, which is −½ at 0. Domain: `u > −1`.
@@ -240,7 +261,7 @@ pub fn log1p_residual<T: CordicNumber>(v: T) -> Result<T> {
     no_panic::no_panic
 )]
 pub fn log1p_residual_ratio<T: CordicNumber>(u: T) -> Result<T> {
-    above_minus_one(u, "log1p_residual_ratio").map(|w| fixed(log1p_minus_ratio(w)))
+    above_minus_one(u, "log1p_residual_ratio").map(|_| tiered!(T, |w| log1p_minus_ratio(w(u))))
 }
 
 fn above_minus_one<T: CordicNumber>(v: T, name: &'static str) -> Result<W<T>> {

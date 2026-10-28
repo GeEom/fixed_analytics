@@ -2,7 +2,7 @@
 
 use crate::bounded::OpenUnitInterval;
 use crate::error::{Error, Result};
-use crate::eval::{HUGE, W, expm1, fixed, log1p, sinh_cosh as sinh_cosh_work, work};
+use crate::eval::{HUGE, W, expm1, fixed, log1p, sinh_cosh as sinh_cosh_work, tiered, work};
 use crate::real::Work;
 use crate::traits::CordicNumber;
 
@@ -26,8 +26,7 @@ fn expm1_double<T: CordicNumber>(a: W<T>) -> W<T> {
     no_panic::no_panic
 )]
 pub fn sinh_cosh<T: CordicNumber>(x: T) -> (T, T) {
-    let (a, huge) = magnitude(x);
-    if huge {
+    if magnitude(x).1 {
         let s = if x.is_negative() {
             T::min_value()
         } else {
@@ -35,8 +34,10 @@ pub fn sinh_cosh<T: CordicNumber>(x: T) -> (T, T) {
         };
         return (s, T::max_value());
     }
-    let (s, c) = sinh_cosh_work(a);
-    (fixed(s.with_sign(x.is_negative())), fixed(c))
+    tiered!(T, |v| {
+        let (s, c) = sinh_cosh_work(v(x).abs());
+        (s.with_sign(x.is_negative()), c)
+    })
 }
 
 /// Hyperbolic sine. Saturates to `T::MAX` or `T::MIN` past `±asinh(T::MAX)`;
@@ -70,15 +71,15 @@ pub fn cosh<T: CordicNumber>(x: T) -> T {
     no_panic::no_panic
 )]
 pub fn tanh<T: CordicNumber>(x: T) -> T {
-    let (a, huge) = magnitude(x);
-    let one = W::<T>::one();
-    let t = if huge {
-        one
-    } else {
-        let u = expm1_double::<T>(a);
-        u / (u + one.ldexp(1))
-    };
-    fixed(t.with_sign(x.is_negative()))
+    if magnitude(x).1 {
+        return if x.is_negative() { -T::one() } else { T::one() };
+    }
+    tiered!(T, |v| tanh_work(v(x)))
+}
+
+fn tanh_work<V: Work>(x: V) -> V {
+    let u = expm1(x.abs().ldexp(1));
+    (u / (u + V::from_int(2))).with_sign(x.is_neg())
 }
 
 /// Hyperbolic cotangent. Domain: `x ≠ 0`.
@@ -111,12 +112,14 @@ pub fn coth<T: CordicNumber>(x: T) -> Result<T> {
     no_panic::no_panic
 )]
 pub fn asinh<T: CordicNumber>(x: T) -> T {
-    let z = work(x).abs();
-    let one = W::<T>::one();
-    // asinh(z) = log1p(z + z²/(1 + √(1 + z²))), exact in form for any z.
+    tiered!(T, |v| asinh_work(v(x)))
+}
+
+/// `asinh(z) = log1p(z + z²/(1 + √(1 + z²)))`, exact in form for any z.
+fn asinh_work<V: Work>(x: V) -> V {
+    let (z, one) = (x.abs(), V::one());
     let z2 = z.square();
-    let v = log1p(z + z2 / (one + (one + z2).sqrt()));
-    fixed(v.with_sign(x.is_negative()))
+    log1p(z + z2 / (one + (one + z2).sqrt())).with_sign(x.is_neg())
 }
 
 /// Inverse hyperbolic cosine. Domain: `x ≥ 1`.
@@ -131,9 +134,13 @@ pub fn acosh<T: CordicNumber>(x: T) -> Result<T> {
     if x < T::one() {
         return Err(Error::domain("acosh", "value >= 1"));
     }
-    // acosh(1 + t) = log1p(t + √(t(t + 2))), with t exact.
-    let t = work(x) - W::<T>::one();
-    Ok(fixed(log1p(t + (t * (t + W::<T>::from_int(2))).sqrt())))
+    Ok(tiered!(T, |v| acosh_work(v(x))))
+}
+
+/// `acosh(1 + t) = log1p(t + √(t(t + 2)))`, with t exact.
+fn acosh_work<V: Work>(x: V) -> V {
+    let t = x - V::one();
+    log1p(t + (t * (t + V::from_int(2))).sqrt())
 }
 
 /// Inverse hyperbolic tangent. Domain: `(-1, 1)`.
@@ -158,11 +165,15 @@ pub fn atanh<T: CordicNumber>(x: T) -> Result<T> {
     no_panic::no_panic
 )]
 pub fn atanh_open<T: CordicNumber>(x: OpenUnitInterval<T>) -> T {
-    let v = work(x.get());
-    let a = v.abs();
-    // atanh(a) = log1p(2a/(1 − a))/2, with 1 − a exact.
-    let r = log1p((a / (W::<T>::one() - a)).ldexp(1)).ldexp(-1);
-    fixed(r.with_sign(v.is_neg()))
+    tiered!(T, |v| atanh_work(v(x.get())))
+}
+
+/// `atanh(a) = log1p(2a/(1 − a))/2`, with 1 − a exact.
+fn atanh_work<V: Work>(x: V) -> V {
+    let a = x.abs();
+    log1p((a / (V::one() - a)).ldexp(1))
+        .ldexp(-1)
+        .with_sign(x.is_neg())
 }
 
 /// Inverse hyperbolic cotangent. Domain: `|x| > 1`.

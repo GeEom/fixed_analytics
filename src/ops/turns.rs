@@ -1,7 +1,7 @@
 //! Angles in turns, and radians wrapped by exact multiples of 2π.
 
 use crate::consts::FRAC_1_2PI;
-use crate::eval::{W, atan_ratio, fixed, half_pi, pi, sin_cos_octant, turn_fraction, work};
+use crate::eval::{W, fixed, pi, sin_cos_octant, tiered, turn_fraction, work};
 use crate::real::Work;
 use crate::traits::CordicNumber;
 
@@ -12,10 +12,20 @@ use crate::traits::CordicNumber;
     no_panic::no_panic
 )]
 pub fn sin_cos_turns<T: CordicNumber>(t: T) -> (T, T) {
+    if crate::fast::applies::<T>() {
+        let raw = t.raw_i128();
+        let (s, c) = crate::fast::sin_cos(raw.unsigned_abs(), T::frac_bits(), false);
+        let s = if raw < 0 { -s } else { s };
+        return (crate::fast::round(s), crate::fast::round(c));
+    }
+    tiered!(T, |v| turns_work(t, v))
+}
+
+fn turns_work<T: CordicNumber, V: Work>(t: T, _as_work: fn(T) -> V) -> (V, V) {
     let raw = t.raw_i128();
-    let (oct, w) = W::<T>::octant(raw.unsigned_abs(), T::frac_bits(), false);
+    let (oct, w) = V::octant(raw.unsigned_abs(), T::frac_bits(), false);
     let (s, c) = sin_cos_octant(oct, w);
-    (fixed(if raw < 0 { -s } else { s }), fixed(c))
+    (if raw < 0 { -s } else { s }, c)
 }
 
 /// The four-quadrant arctangent in turns, `atan2(y, x)/2π` in `(−½, ½]`, rounded once.
@@ -25,22 +35,11 @@ pub fn sin_cos_turns<T: CordicNumber>(t: T) -> (T, T) {
     no_panic::no_panic
 )]
 pub fn atan2_turns<T: CordicNumber>(y: T, x: T) -> T {
-    let (wy, wx) = (work(y), work(x));
-    let angle = if wx.is_zero() {
-        if wy.is_zero() {
-            W::<T>::zero()
-        } else {
-            half_pi()
-        }
-    } else {
-        let base = atan_ratio(wy.abs(), wx.abs());
-        if wx.is_neg() {
-            pi::<W<T>>() - base
-        } else {
-            base
-        }
-    };
-    fixed((angle * W::<T>::constant(&FRAC_1_2PI)).with_sign(wy.is_neg()))
+    tiered!(T, |v| atan2_turns_work(v(y), v(x)))
+}
+
+fn atan2_turns_work<V: Work>(y: V, x: V) -> V {
+    crate::cx::atan2(y, x) * V::constant(&FRAC_1_2PI)
 }
 
 /// `x/τ`, radians to turns, rounded once.
@@ -50,7 +49,11 @@ pub fn atan2_turns<T: CordicNumber>(y: T, x: T) -> T {
     no_panic::no_panic
 )]
 pub fn div_by_tau<T: CordicNumber>(x: T) -> T {
-    fixed(work(x) * W::<T>::constant(&FRAC_1_2PI))
+    tiered!(T, |v| by_constant(v(x), &FRAC_1_2PI, 0))
+}
+
+fn by_constant<V: Work>(x: V, c: &crate::consts::C, k: i32) -> V {
+    x * V::constant(c).ldexp(k)
 }
 
 /// `x·τ`, turns to radians, rounded once.
@@ -60,7 +63,7 @@ pub fn div_by_tau<T: CordicNumber>(x: T) -> T {
     no_panic::no_panic
 )]
 pub fn mul_by_tau<T: CordicNumber>(x: T) -> T {
-    fixed(work(x) * pi::<W<T>>().ldexp(1))
+    tiered!(T, |v| by_constant(v(x), &crate::consts::PI, 1))
 }
 
 /// `r` rounded into `[low, high]`, else to the end nearer it modulo 2π.

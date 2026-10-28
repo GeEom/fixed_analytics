@@ -2,14 +2,14 @@
 
 use crate::bounded::UnitInterval;
 use crate::error::{Error, Result};
-use crate::eval::{W, atan_ratio, atan_unit, fixed, half_pi, pi, sin_cos_octant, work};
+use crate::eval::{W, atan_ratio, beyond, fixed, pi, sin_cos_octant, tiered, work};
 use crate::real::Work;
 use crate::traits::CordicNumber;
 
-/// Sine and cosine of `angle`, reduced by 2π exactly at any magnitude.
-fn sin_cos_work<T: CordicNumber>(angle: T) -> (W<T>, W<T>) {
+/// Sine and cosine of `angle`, reduced by 2π exactly, in `as_work`'s working type.
+fn sin_cos_work<T: CordicNumber, V: Work>(angle: T, _as_work: fn(T) -> V) -> (V, V) {
     let raw = angle.raw_i128();
-    let (oct, w) = W::<T>::octant(raw.unsigned_abs(), T::frac_bits(), true);
+    let (oct, w) = V::octant(raw.unsigned_abs(), T::frac_bits(), true);
     let (s, c) = sin_cos_octant(oct, w);
     (if raw < 0 { -s } else { s }, c)
 }
@@ -28,8 +28,13 @@ fn cofactor<V: Work>(a: V) -> V {
     no_panic::no_panic
 )]
 pub fn sin_cos<T: CordicNumber>(angle: T) -> (T, T) {
-    let (s, c) = sin_cos_work(angle);
-    (fixed(s), fixed(c))
+    if crate::fast::applies::<T>() {
+        let raw = angle.raw_i128();
+        let (s, c) = crate::fast::sin_cos(raw.unsigned_abs(), T::frac_bits(), true);
+        let s = if raw < 0 { -s } else { s };
+        return (crate::fast::round(s), crate::fast::round(c));
+    }
+    tiered!(T, |v| sin_cos_work(angle, v))
 }
 
 /// Sine of any angle.
@@ -40,7 +45,7 @@ pub fn sin_cos<T: CordicNumber>(angle: T) -> (T, T) {
     no_panic::no_panic
 )]
 pub fn sin<T: CordicNumber>(angle: T) -> T {
-    fixed(sin_cos_work(angle).0)
+    sin_cos(angle).0
 }
 
 /// Cosine of any angle.
@@ -51,7 +56,7 @@ pub fn sin<T: CordicNumber>(angle: T) -> T {
     no_panic::no_panic
 )]
 pub fn cos<T: CordicNumber>(angle: T) -> T {
-    fixed(sin_cos_work(angle).1)
+    sin_cos(angle).1
 }
 
 /// Tangent, as `sin(angle) / cos(angle)` divided before rounding.
@@ -78,15 +83,16 @@ pub fn cos<T: CordicNumber>(angle: T) -> T {
     no_panic::no_panic
 )]
 pub fn tan<T: CordicNumber>(angle: T) -> T {
-    let (s, c) = sin_cos_work(angle);
+    tiered!(T, |v| tan_work(angle, v))
+}
+
+fn tan_work<T: CordicNumber, V: Work>(angle: T, as_work: fn(T) -> V) -> V {
+    let (s, c) = sin_cos_work(angle, as_work);
     if c.is_zero() {
-        return if s.is_neg() {
-            T::min_value()
-        } else {
-            T::max_value()
-        };
+        beyond::<V>().with_sign(s.is_neg())
+    } else {
+        s / c
     }
-    fixed(s / c)
 }
 
 /// Arcsine. Domain: `[-1, 1]`. Returns an angle in `[-π/2, π/2]`.
@@ -101,9 +107,10 @@ pub fn asin<T: CordicNumber>(x: T) -> Result<T> {
     if UnitInterval::new(x).is_none() {
         return Err(Error::domain("asin", "value in range [-1, 1]"));
     }
-    let v = work(x);
-    let a = v.abs();
-    Ok(fixed(atan_ratio(a, cofactor(a)).with_sign(v.is_neg())))
+    Ok(tiered!(T, |v| {
+        let a = v(x).abs();
+        atan_ratio(a, cofactor(a)).with_sign(x.is_negative())
+    }))
 }
 
 /// `asin(1 − gap)` from the gap to 1, which keeps all of its bits where
@@ -138,14 +145,13 @@ pub fn acos<T: CordicNumber>(x: T) -> Result<T> {
     if UnitInterval::new(x).is_none() {
         return Err(Error::domain("acos", "value in range [-1, 1]"));
     }
-    let v = work(x);
-    let a = v.abs();
+    Ok(tiered!(T, |v| acos_work(v(x))))
+}
+
+fn acos_work<V: Work>(x: V) -> V {
+    let a = x.abs();
     let near = atan_ratio(cofactor(a), a);
-    Ok(fixed(if v.is_neg() {
-        pi::<W<T>>() - near
-    } else {
-        near
-    }))
+    if x.is_neg() { pi::<V>() - near } else { near }
 }
 
 /// Arctangent of any value. Returns an angle in `[-π/2, π/2]`.
@@ -155,14 +161,12 @@ pub fn acos<T: CordicNumber>(x: T) -> Result<T> {
     no_panic::no_panic
 )]
 pub fn atan<T: CordicNumber>(x: T) -> T {
-    let v = work(x);
-    let (a, one) = (v.abs(), W::<T>::one());
-    let angle = if a <= one {
-        atan_unit(a)
-    } else {
-        half_pi::<W<T>>() - atan_unit(one / a)
-    };
-    fixed(angle.with_sign(v.is_neg()))
+    tiered!(T, |v| atan_work(v(x)))
+}
+
+fn atan_work<V: Work>(x: V) -> V {
+    let (a, one) = (x.abs(), V::one());
+    atan_ratio(a, one).with_sign(x.is_neg())
 }
 
 /// Four-quadrant arctangent. Returns an angle in `[-π, π]`: `π` along the
@@ -173,20 +177,11 @@ pub fn atan<T: CordicNumber>(x: T) -> T {
     no_panic::no_panic
 )]
 pub fn atan2<T: CordicNumber>(y: T, x: T) -> T {
-    let (wy, wx) = (work(y), work(x));
-    let angle = if wx.is_zero() {
-        if wy.is_zero() {
-            W::<T>::zero()
-        } else {
-            half_pi()
-        }
-    } else {
-        let base = atan_ratio(wy.abs(), wx.abs());
-        if wx.is_neg() {
-            pi::<W<T>>() - base
-        } else {
-            base
-        }
-    };
-    fixed(angle.with_sign(wy.is_neg()))
+    let (ry, rx) = (y.raw_i128(), x.raw_i128());
+    if crate::fast::applies::<T>() && ry != 0 && rx != 0 {
+        let angle = crate::fast::atan2(ry, rx);
+        let raw = crate::fast::shift_round(angle, 125 - T::frac_bits());
+        return T::from_raw_i128(if angle < 0 { -raw } else { raw });
+    }
+    tiered!(T, |v| crate::cx::atan2(v(y), v(x)))
 }

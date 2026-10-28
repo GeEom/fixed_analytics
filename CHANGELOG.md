@@ -79,8 +79,15 @@ turns to radians rounded once, and `sin_cos_range_turns`; `root_in`, a
 bracketed root finder by the ITP method with a fixed budget; and
 `kepler_universal`, the universal anomaly of a two-body orbit.
 
-Slower: on the benchmarks I16F16 functions take 2.4 to 11 times as long as
-in 3.1.1, and I64F64 ones 1.3 to 9 times; `sqrt` is as fast or faster.
+Speed against 3.1.1, per call: I16F16's elementary functions take 3.4 to 9
+times as long and I32F32's 1.6 to 6 times, while I64F64's run 0.65 to 2.4
+times as long, `ln` 1.5 and `atan2` 1.2 times faster, as `sin_cos`, `exp`,
+`ln` and `atan2` work in 126-bit fixed point on 128-bit types with at most 96
+fractional bits; `sqrt` is unchanged. A function works in a float as wide as
+its type when its result leaves 24 bits past the ulp, Carlson's duplication
+stops once its closing series is exact, and the Jacobi functions take
+Bulirsch's descent: on I64F64 `carlson_rj_roots` takes 6.7 µs and
+`jacobi_sn_cn_dn` 2.5 µs.
 
 ## 3.1.1
 

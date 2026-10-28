@@ -1,8 +1,11 @@
 //! Elliptic integrals and Jacobi elliptic functions of an exactly held [`Modulus`].
 
 use crate::error::{Error, Result};
-use crate::eval::{W, atan_ratio, by_width, fixed, half_pi, log1p, pi, sin_cos, sinh_cosh, work};
+use crate::eval::{
+    W, atan_ratio, by_width, fixed, half_pi, log1p, pi, sin_cos, sinh_cosh, tiered, work,
+};
 use crate::real::Work;
+use crate::series::ODD;
 use crate::traits::CordicNumber;
 
 /// An elliptic modulus, from the parameter `m` or the complement `k'`.
@@ -31,6 +34,14 @@ impl<T: CordicNumber> Modulus<T> {
         })
     }
 
+    fn at_separatrix(self) -> bool {
+        if self.complement {
+            self.value == T::zero()
+        } else {
+            self.value == T::one()
+        }
+    }
+
     /// The parameter `m`, rounded.
     #[must_use]
     pub fn parameter(self) -> T {
@@ -52,8 +63,12 @@ struct Parts<V> {
 }
 
 fn parts<T: CordicNumber>(modulus: Modulus<T>) -> Parts<W<T>> {
-    let one = W::<T>::one();
-    let v = work(modulus.value);
+    parts_in(modulus, work)
+}
+
+fn parts_in<T: CordicNumber, V: Work>(modulus: Modulus<T>, as_work: fn(T) -> V) -> Parts<V> {
+    let one = V::one();
+    let v = as_work(modulus.value);
     if modulus.complement {
         Parts {
             m: (one - v) * (one + v),
@@ -72,6 +87,12 @@ fn parts<T: CordicNumber>(modulus: Modulus<T>) -> Parts<W<T>> {
 
 /// `R_C(1, 1 + e)`, `atan √e/√e` or `atanh √−e/√−e`, from `e` and a maybe tiny `1 + e`.
 fn rc_one<V: Work>(e: V, one_plus_e: V) -> V {
+    // Σ (−e)^k/(2k + 1), as many terms as e's size needs below 2^−4.
+    let size = -e.exponent();
+    if size >= 4 {
+        let terms = V::PREC / size.cast_unsigned() + 1;
+        return V::horner(e, &ODD, 0, 1, terms, true);
+    }
     let t = e.abs().sqrt();
     if t.is_zero() {
         return V::one();
@@ -93,6 +114,12 @@ fn rc<V: Work>(x: V, y: V) -> V {
     rc_one((y - x) / x, y / x) / x.sqrt()
 }
 
+/// Whether deviations at most `spread·4^−M/A_M` leave a closing series of this `order` exact.
+fn converged<V: Work>(spread: V, scale: V, mean: V, order: i32) -> bool {
+    let bits = (V::PREC.cast_signed() + 4 + order - 1) / order;
+    (spread * scale).ldexp(bits) < mean.abs()
+}
+
 /// The deviations `(A₀ − v₀)/(4^M A_M)` after `M` duplication steps.
 fn deviation<V: Work>(a0: V, v0: V, scale: V, a: V) -> V {
     (a0 - v0) * scale / a
@@ -104,8 +131,12 @@ fn rf<V: Work>(x0: V, y0: V, z0: V, roots: Option<[V; 3]>) -> V {
     let a0 = (vx + vy + vz).div_int(3);
     let mut mean = a0;
     let mut scale = V::one();
+    let spread = (a0 - x0).abs().max((a0 - y0).abs()).max((a0 - z0).abs());
     // Octaves apart, about log₂log₂ of the ratio steps to meet; each then quarters the rest.
     for step in 0..by_width::<V>([13, 18, 23]) {
+        if converged(spread, scale, mean, 8) {
+            break;
+        }
         let [sx, sy, sz] = match roots {
             Some(r) if step == 0 => r.map(Work::abs),
             _ => [vx.sqrt(), vy.sqrt(), vz.sqrt()],
@@ -132,12 +163,19 @@ fn rf<V: Work>(x0: V, y0: V, z0: V, roots: Option<[V; 3]>) -> V {
     series / mean.sqrt()
 }
 
-/// The closing series of `R_J` and `R_D`, Carlson (1995).
+/// The closing series of `R_J` and `R_D` through degree 7, DLMF 19.36.2.
 fn rj_series<V: Work>(e2: V, e3: V, e4: V, e5: V) -> V {
-    V::one() - e2.mul_int(3).div_int(14) + e3.div_int(6) + e2.square().mul_int(9).div_int(88)
-        - e4.mul_int(3).div_int(22)
-        - (e2 * e3).mul_int(9).div_int(52)
-        + e5.mul_int(3).div_int(26)
+    let low =
+        V::one() - e2.mul_int(3).div_int(14) + e3.div_int(6) + e2.square().mul_int(9).div_int(88)
+            - e4.mul_int(3).div_int(22)
+            - (e2 * e3).mul_int(9).div_int(52)
+            + e5.mul_int(3).div_int(26);
+    let high = -(e2.square() * e2).div_int(16)
+        + e3.square().mul_int(3).div_int(40)
+        + (e2 * e4).mul_int(3).div_int(20)
+        + (e2.square() * e3).mul_int(45).div_int(272)
+        - (e3 * e4 + e2 * e5).mul_int(9).div_int(68);
+    low + high
 }
 
 /// `R_J(x, y, z, p)` for `p > 0`. A `p` far above the rest, which duplication
@@ -175,17 +213,23 @@ fn rj_duplicate<V: Work>(x0: V, y0: V, z0: V, p0: V, roots: Option<[V; 4]>) -> V
     let mut mean = a0;
     let mut scale = V::one();
     let mut sum = V::zero();
+    let spread = [x0, y0, z0, p0]
+        .iter()
+        .fold(V::zero(), |m, &v| m.max((a0 - v).abs()));
     for step in 0..by_width::<V>([15, 21, 28]) {
+        if converged(spread, scale, mean, 8) {
+            break;
+        }
         let [sx, sy, sz, sp] = match roots {
             Some(r) if step == 0 => r.map(Work::abs),
             _ => [vx.sqrt(), vy.sqrt(), vz.sqrt(), vp.sqrt()],
         };
         let lam = sx * sy + sx * sz + sy * sz;
-        let den = (sp + sx) * (sp + sy) * (sp + sz);
-        let ex = delta * scale.square() * scale / den.square();
+        let inv = V::one() / ((sp + sx) * (sp + sy) * (sp + sz));
+        let ex = delta * scale.square() * scale * inv.square();
         // 1 + ex = 2√vp(vp + λ)/den, as Π(√vp + √v) + Π(√vp − √v) = 2√vp(vp + λ).
-        let one_plus_e = (sp * (vp + lam)).ldexp(1) / den;
-        sum = sum + scale * rc_one(ex, one_plus_e) / den;
+        let one_plus_e = (sp * (vp + lam) * inv).ldexp(1);
+        sum = sum + scale * rc_one(ex, one_plus_e) * inv;
         mean = (mean + lam).ldexp(-2);
         vx = (vx + lam).ldexp(-2);
         vy = (vy + lam).ldexp(-2);
@@ -212,7 +256,13 @@ fn rd<V: Work>(x0: V, y0: V, z0: V) -> V {
     let mut mean = a0;
     let mut scale = V::one();
     let mut sum = V::zero();
+    let spread = [x0, y0, z0]
+        .iter()
+        .fold(V::zero(), |m, &v| m.max((a0 - v).abs()));
     for _ in 0..by_width::<V>([15, 21, 28]) {
+        if converged(spread, scale, mean, 8) {
+            break;
+        }
         let (sx, sy, sz) = (vx.sqrt(), vy.sqrt(), vz.sqrt());
         let lam = sx * sy + sx * sz + sy * sz;
         sum = sum + scale / (sz * (vz + lam));
@@ -251,39 +301,57 @@ fn complete_k<V: Work>(kc: V) -> V {
     half_pi::<V>() / agm(kc)
 }
 
-/// `(sn, cn)` of `v` in `[0, K/2]` by the AGM, `φ_N = 2^N a_N v` brought down by
-/// `φ_{n−1} = (φ_n + asin((c_n/a_n)·sin φ_n))/2`, each from its exact gap to 1.
-fn sn_cn_core<V: Work>(arg: V, k: V, kc: V) -> (V, V) {
-    const DEPTH: usize = 32;
-    let mut arith = [V::zero(); DEPTH];
-    let mut geo = [V::zero(); DEPTH];
-    let mut half_gap = [V::zero(); DEPTH];
-    let (mut an, mut bn, mut cn) = (V::one(), kc, k);
-    let mut depth_used = 0;
-    for i in 0..DEPTH {
-        if let (Some(x), Some(y), Some(z)) = (arith.get_mut(i), geo.get_mut(i), half_gap.get_mut(i))
-        {
-            (*x, *y, *z) = (an, bn, cn);
-        }
-        depth_used = i;
-        if V::negligible(&cn, &an) || i + 1 == DEPTH {
+const DEPTH: usize = 40;
+
+/// The AGM of 1 and `k′`, each level's means kept, `mean` its limit.
+struct Means<V> {
+    arith: [V; DEPTH],
+    geo: [V; DEPTH],
+    used: usize,
+    mean: V,
+}
+
+fn means<V: Work>(kc: V) -> Means<V> {
+    let one = V::one();
+    let mut out = Means {
+        arith: [V::zero(); DEPTH],
+        geo: [V::zero(); DEPTH],
+        used: 0,
+        mean: one,
+    };
+    let (mut a, mut b) = (one, kc);
+    for (i, (x, y)) in out.arith.iter_mut().zip(out.geo.iter_mut()).enumerate() {
+        (*x, *y) = (a, b);
+        out.used = i + 1;
+        out.mean = (a + b).ldexp(-1);
+        if (a - b).abs().ldexp(V::PREC.cast_signed() / 2 + 2) <= a {
             break;
         }
-        let next = (an + bn).ldexp(-1);
-        (an, bn, cn) = (next, (an * bn).sqrt(), cn.square().ldexp(-2) / next);
+        b = (a * b).sqrt();
+        a = out.mean;
     }
-    let mut phi = an.ldexp(i32::try_from(depth_used).unwrap_or(0)) * arg;
-    for i in (1..=depth_used).rev() {
-        let at = |table: &[V; DEPTH], idx: usize| table.get(idx).copied().unwrap_or_else(V::zero);
-        let (sine, co) = sin_cos(phi);
-        let ratio = at(&half_gap, i) / at(&arith, i);
-        let one = V::one();
-        let gap = at(&geo, i - 1) / at(&arith, i) + ratio * co.square() / (one + sine.abs());
-        let rest = one - gap;
-        let angle = atan_ratio(rest.abs(), (gap * (one + rest)).sqrt()).with_sign(sine.is_neg());
-        phi = (phi + angle).ldexp(-1);
+    out
+}
+
+/// `(sn, cn, dn)` of `v` in `[0, K/2]` by Bulirsch: `sin_cos` of `c·v`, then rational steps up.
+fn sn_cn_dn_core<V: Work>(arg: V, means: &Means<V>) -> (V, V, V) {
+    let one = V::one();
+    let (sine, cosine) = sin_cos(arg * means.mean);
+    if sine.is_zero() {
+        return (sine, cosine, one);
     }
-    sin_cos(phi)
+    let mut ratio = cosine / sine;
+    let mut cot = means.mean * ratio;
+    let mut dn = one;
+    for i in (0..means.used).rev() {
+        let at = |t: &[V; DEPTH]| t.get(i).copied().unwrap_or(one);
+        ratio = ratio * cot;
+        cot = cot * dn;
+        dn = (at(&means.geo) + ratio) / (at(&means.arith) + ratio);
+        ratio = cot / at(&means.arith);
+    }
+    let sn = one / (cot.square() + one).sqrt();
+    (sn, cot * sn, dn)
 }
 
 /// `(sn, cn, dn, am)` of `u` for the modulus parts.
@@ -305,8 +373,8 @@ fn jacobi_work<V: Work>(u: V, parts_: &Parts<V>) -> (V, V, V, V) {
         let am = atan_ratio(sh, one).with_sign(u.is_neg());
         return ((sh / ch).with_sign(u.is_neg()), sech, sech, am);
     }
-    let kk = parts_.m.sqrt();
-    let quarter = complete_k(parts_.kc);
+    let levels = means(parts_.kc);
+    let quarter = half_pi::<V>() / levels.mean;
     let period = quarter.ldexp(1);
     // u = (2^124·top + 2^62·high + low)·2K + rest, in parts so a 128-bit u fits.
     let cycles = u / period;
@@ -319,16 +387,10 @@ fn jacobi_work<V: Work>(u: V, parts_: &Parts<V>) -> (V, V, V, V) {
     let rest = u - whole(period);
     let dist = rest.abs();
     let (sn, cn, dn) = if dist <= quarter.ldexp(-1) {
-        let (sine, cosine) = sn_cn_core(dist, kk, parts_.kc);
-        (
-            sine,
-            cosine,
-            (cosine.square() + parts_.kc2 * sine.square()).sqrt(),
-        )
+        sn_cn_dn_core(dist, &levels)
     } else {
         // sn(K − w) = cn/dn, cn(K − w) = kk'·sn/dn and dn(K − w) = kk'/dn.
-        let (sine, cosine) = sn_cn_core(quarter - dist, kk, parts_.kc);
-        let delta = (cosine.square() + parts_.kc2 * sine.square()).sqrt();
+        let (sine, cosine, delta) = sn_cn_dn_core(quarter - dist, &levels);
         (cosine / delta, parts_.kc * sine / delta, parts_.kc / delta)
     };
     let am = atan_ratio(sn, cn.abs());
@@ -351,8 +413,12 @@ fn jacobi_work<V: Work>(u: V, parts_: &Parts<V>) -> (V, V, V, V) {
     no_panic::no_panic
 )]
 pub fn jacobi_sn_cn_dn<T: CordicNumber>(u: T, modulus: Modulus<T>) -> (T, T, T) {
-    let (sn, cn, dn, _) = jacobi_work(work(u), &parts(modulus));
-    (fixed(sn), fixed(cn), fixed(dn))
+    // am, which grows with u, joins the check: reducing u loses bits in proportion.
+    let ((sn, cn), (dn, _)) = tiered!(T, |v| {
+        let (sn, cn, dn, am) = jacobi_work(v(u), &parts_in(modulus, v));
+        ((sn, cn), (dn, am))
+    });
+    (sn, cn, dn)
 }
 
 /// The Jacobi amplitude `am(u)`, continuous: `am(u + 2K) = am(u) + π`.
@@ -362,7 +428,7 @@ pub fn jacobi_sn_cn_dn<T: CordicNumber>(u: T, modulus: Modulus<T>) -> (T, T, T) 
     no_panic::no_panic
 )]
 pub fn jacobi_am<T: CordicNumber>(u: T, modulus: Modulus<T>) -> T {
-    fixed(jacobi_work(work(u), &parts(modulus)).3)
+    tiered!(T, |v| jacobi_work(v(u), &parts_in(modulus, v)).3)
 }
 
 /// `R_F(cn², dn², 1)`, finite unless `cn` and `dn` are both 0.
@@ -387,13 +453,20 @@ fn rf_sq<V: Work>(cn: V, dn: V) -> Option<V> {
     no_panic::no_panic
 )]
 pub fn jacobi_inverse<T: CordicNumber>(sn: T, cn: T, dn: T, modulus: Modulus<T>) -> Result<T> {
-    let (sw, cw, dw) = (work(sn), work(cn), work(dn));
-    let Some(rf_value) = rf_sq(cw, dw) else {
+    if cn == T::zero() && dn == T::zero() {
         return Err(Error::domain("jacobi_inverse", "cn or dn non-zero"));
-    };
-    let part = sw.abs() * rf_value;
+    }
+    Ok(tiered!(T, |v| inverse_work(
+        v(sn),
+        v(cn),
+        v(dn),
+        &parts_in(modulus, v)
+    )))
+}
+
+fn inverse_work<V: Work>(sw: V, cw: V, dw: V, parts_: &Parts<V>) -> V {
+    let part = sw.abs() * rf_sq(cw, dw).unwrap_or_else(V::zero);
     let arg = if cw.is_neg() {
-        let parts_ = parts(modulus);
         if parts_.kc.is_zero() {
             crate::eval::beyond()
         } else {
@@ -402,7 +475,7 @@ pub fn jacobi_inverse<T: CordicNumber>(sn: T, cn: T, dn: T, modulus: Modulus<T>)
     } else {
         part
     };
-    Ok(fixed(arg.with_sign(sw.is_neg())))
+    arg.with_sign(sw.is_neg())
 }
 
 /// The complete elliptic integral of the first kind `K(m)`.
@@ -414,11 +487,10 @@ pub fn jacobi_inverse<T: CordicNumber>(sn: T, cn: T, dn: T, modulus: Modulus<T>)
     no_panic::no_panic
 )]
 pub fn ellip_k<T: CordicNumber>(modulus: Modulus<T>) -> Result<T> {
-    let p = parts(modulus);
-    if p.kc.is_zero() {
+    if modulus.at_separatrix() {
         return Err(Error::domain("ellip_k", "m below 1"));
     }
-    Ok(fixed(complete_k(p.kc)))
+    Ok(tiered!(T, |v| complete_k(parts_in(modulus, v).kc)))
 }
 
 /// The complete elliptic integral of the second kind `E(m)`, 1 at `m = 1`.
@@ -428,14 +500,16 @@ pub fn ellip_k<T: CordicNumber>(modulus: Modulus<T>) -> Result<T> {
     no_panic::no_panic
 )]
 pub fn ellip_e<T: CordicNumber>(modulus: Modulus<T>) -> T {
-    let p = parts(modulus);
-    if p.kc.is_zero() {
+    if modulus.at_separatrix() {
         return T::one();
     }
-    let one = W::<T>::one();
-    let zero = W::<T>::zero();
+    tiered!(T, |v| complete_e(&parts_in(modulus, v)))
+}
+
+fn complete_e<V: Work>(p: &Parts<V>) -> V {
+    let (one, zero) = (V::one(), V::zero());
     let f = rf(zero, p.kc2, one, Some([zero, p.kc, one]));
-    fixed(f - (p.m * rd(zero, p.kc2, one)).div_int(3))
+    f - (p.m * rd(zero, p.kc2, one)).div_int(3)
 }
 
 /// `Π(n; φ|m) = ∫₀^φ dθ/((1 − n·sin²θ)√(1 − m·sin²θ))`, `φ` in `(−π, π]` by `(sn, cn, dn)`.
@@ -447,19 +521,27 @@ pub fn ellip_e<T: CordicNumber>(modulus: Modulus<T>) -> T {
     no_panic::no_panic
 )]
 pub fn ellip_pi<T: CordicNumber>(n: T, sn: T, cn: T, dn: T, modulus: Modulus<T>) -> Result<T> {
-    let (nw, sw, cw, dw) = (work(n), work(sn), work(cn), work(dn));
+    let (nw, sw) = (work(n), work(sn));
     let one = W::<T>::one();
-    let s2 = sw.square();
-    let pole = one - nw * s2;
+    let pole = one - nw * sw.square();
     // Past π/2 the integral crosses its pole unless n < 1.
-    let reachable = !cw.is_neg() || nw < one;
-    let Some(rf_value) = rf_sq(cw, dw).filter(|_| !pole.is_neg() && !pole.is_zero() && reachable)
-    else {
+    let reachable = !cn.is_negative() || nw < one;
+    if (cn == T::zero() && dn == T::zero()) || pole.is_neg() || pole.is_zero() || !reachable {
         return Err(Error::domain(
             "ellip_pi",
             "1 - n sn^2 > 0, n < 1 past pi/2, cn or dn non-zero",
         ));
-    };
+    }
+    Ok(tiered!(T, |v| {
+        pi_work(v(n), v(sn), v(cn), v(dn), &parts_in(modulus, v))
+    }))
+}
+
+fn pi_work<V: Work>(nw: V, sw: V, cw: V, dw: V, parts_: &Parts<V>) -> V {
+    let one = V::one();
+    let s2 = sw.square();
+    let pole = one - nw * s2;
+    let rf_value = rf_sq(cw, dw).unwrap_or_else(V::zero);
     let rj_value = rj(
         cw.square(),
         dw.square(),
@@ -469,16 +551,15 @@ pub fn ellip_pi<T: CordicNumber>(n: T, sn: T, cn: T, dn: T, modulus: Modulus<T>)
     );
     let part = sw.abs() * (rf_value + (nw * s2 * rj_value).div_int(3));
     let total = if cw.is_neg() {
-        let parts_ = parts(modulus);
         if parts_.kc.is_zero() {
             crate::eval::beyond()
         } else {
-            complete_pi(nw, &parts_).ldexp(1) - part
+            complete_pi(nw, parts_).ldexp(1) - part
         }
     } else {
         part
     };
-    Ok(fixed(total.with_sign(sw.is_neg())))
+    total.with_sign(sw.is_neg())
 }
 
 fn complete_pi<V: Work>(n: V, p: &Parts<V>) -> V {
@@ -497,14 +578,13 @@ fn complete_pi<V: Work>(n: V, p: &Parts<V>) -> V {
     no_panic::no_panic
 )]
 pub fn ellip_pi_complete<T: CordicNumber>(n: T, modulus: Modulus<T>) -> Result<T> {
-    let p = parts(modulus);
-    if n >= T::one() || p.kc.is_zero() {
+    if n >= T::one() || modulus.at_separatrix() {
         return Err(Error::domain(
             "ellip_pi_complete",
             "n below 1 and m below 1",
         ));
     }
-    Ok(fixed(complete_pi(work(n), &p)))
+    Ok(tiered!(T, |v| complete_pi(v(n), &parts_in(modulus, v))))
 }
 
 /// Carlson's `R_F(x, y, z)`. Domain: `x, y, z ≥ 0`, at most one of them 0.
@@ -516,9 +596,8 @@ pub fn ellip_pi_complete<T: CordicNumber>(n: T, modulus: Modulus<T>) -> Result<T
     no_panic::no_panic
 )]
 pub fn carlson_rf<T: CordicNumber>(x: T, y: T, z: T) -> Result<T> {
-    let v = [work(x), work(y), work(z)];
-    check_rf(&v, "carlson_rf")?;
-    Ok(fixed(rf(v[0], v[1], v[2], None)))
+    check_rf(&[x, y, z], "carlson_rf")?;
+    Ok(tiered!(T, |v| rf(v(x), v(y), v(z), None)))
 }
 
 /// [`carlson_rf`] of the squares of `rx`, `ry` and `rz`, for arguments too small to hold.
@@ -530,15 +609,23 @@ pub fn carlson_rf<T: CordicNumber>(x: T, y: T, z: T) -> Result<T> {
     no_panic::no_panic
 )]
 pub fn carlson_rf_roots<T: CordicNumber>(rx: T, ry: T, rz: T) -> Result<T> {
-    let r = [work(rx), work(ry), work(rz)];
-    let v = r.map(Work::square);
-    check_rf(&v, "carlson_rf_roots")?;
-    Ok(fixed(rf(v[0], v[1], v[2], Some(r))))
+    let zeros = [rx, ry, rz].iter().filter(|&&r| r == T::zero()).count();
+    if zeros > 1 {
+        return Err(Error::domain(
+            "carlson_rf_roots",
+            "x, y, z >= 0 with at most one zero",
+        ));
+    }
+    Ok(tiered!(T, |v| {
+        let r = [v(rx), v(ry), v(rz)];
+        let [a, b, c] = r.map(Work::square);
+        rf(a, b, c, Some(r))
+    }))
 }
 
-fn check_rf<V: Work>(v: &[V; 3], name: &'static str) -> Result<()> {
-    let zeros = v.iter().filter(|x| x.is_zero()).count();
-    if v.iter().any(Work::is_neg) || zeros > 1 {
+fn check_rf<T: CordicNumber>(v: &[T; 3], name: &'static str) -> Result<()> {
+    let zeros = v.iter().filter(|&&x| x == T::zero()).count();
+    if v.iter().any(|x| x.is_negative()) || zeros > 1 {
         return Err(Error::domain(name, "x, y, z >= 0 with at most one zero"));
     }
     Ok(())
@@ -553,12 +640,11 @@ fn check_rf<V: Work>(v: &[V; 3], name: &'static str) -> Result<()> {
     no_panic::no_panic
 )]
 pub fn carlson_rj<T: CordicNumber>(x: T, y: T, z: T, p: T) -> Result<T> {
-    let args = [work(x), work(y), work(z)];
-    check_rf(&args, "carlson_rj")?;
+    check_rf(&[x, y, z], "carlson_rj")?;
     if p <= T::zero() {
         return Err(Error::domain("carlson_rj", "p > 0"));
     }
-    Ok(fixed(rj(args[0], args[1], args[2], work(p), None)))
+    Ok(tiered!(T, |v| rj(v(x), v(y), v(z), v(p), None)))
 }
 
 /// [`carlson_rj`] of the squares of `rx`, `ry`, `rz` and `rp`.
@@ -570,19 +656,21 @@ pub fn carlson_rj<T: CordicNumber>(x: T, y: T, z: T, p: T) -> Result<T> {
     no_panic::no_panic
 )]
 pub fn carlson_rj_roots<T: CordicNumber>(rx: T, ry: T, rz: T, rp: T) -> Result<T> {
-    let roots = [work(rx), work(ry), work(rz), work(rp)];
-    let squares = [roots[0].square(), roots[1].square(), roots[2].square()];
-    check_rf(&squares, "carlson_rj_roots")?;
-    if roots[3].is_zero() {
+    let zeros = [rx, ry, rz].iter().filter(|&&r| r == T::zero()).count();
+    if zeros > 1 {
+        return Err(Error::domain(
+            "carlson_rj_roots",
+            "x, y, z >= 0 with at most one zero",
+        ));
+    }
+    if rp == T::zero() {
         return Err(Error::domain("carlson_rj_roots", "rp non-zero"));
     }
-    Ok(fixed(rj(
-        squares[0],
-        squares[1],
-        squares[2],
-        roots[3].square(),
-        Some(roots),
-    )))
+    Ok(tiered!(T, |v| {
+        let roots = [v(rx), v(ry), v(rz), v(rp)];
+        let [a, b, c, d] = roots.map(Work::square);
+        rj(a, b, c, d, Some(roots))
+    }))
 }
 
 /// Carlson's `R_C(x, y)`. Domain: `x ≥ 0`, `y > 0`.
@@ -597,7 +685,7 @@ pub fn carlson_rc<T: CordicNumber>(x: T, y: T) -> Result<T> {
     if x < T::zero() || y <= T::zero() {
         return Err(Error::domain("carlson_rc", "x >= 0, y > 0"));
     }
-    Ok(fixed(rc(work(x), work(y))))
+    Ok(tiered!(T, |v| rc(v(x), v(y))))
 }
 
 /// Carlson's `R_D(x, y, z)`. Domain: `x, y ≥ 0`, not both 0, and `z > 0`.
@@ -616,5 +704,5 @@ pub fn carlson_rd<T: CordicNumber>(x: T, y: T, z: T) -> Result<T> {
             "x, y >= 0 not both zero, z > 0",
         ));
     }
-    Ok(fixed(rd(work(x), work(y), work(z))))
+    Ok(tiered!(T, |v| rd(v(x), v(y), v(z))))
 }

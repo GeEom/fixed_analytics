@@ -7,6 +7,7 @@ mod consts;
 mod cx;
 pub mod error;
 mod eval;
+mod fast;
 pub mod kernel;
 pub mod ops;
 mod real;
