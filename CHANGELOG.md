@@ -10,6 +10,12 @@ function in backticks.
 Releases before 3.1.1 are described on the
 [releases page](https://github.com/GeEom/fixed_analytics/releases).
 
+## 4.7.4
+
+No output changes that the golden table pins. The closing series of `R_J`
+and `R_D` runs through degree 7, DLMF 19.36.2, so duplication stops sooner:
+on I64F64 `carlson_rj_roots` takes 6.7 µs (7.9 in 4.7.3, 48.4 in 4.5.0).
+
 ## 4.7.3
 
 No output changes that the golden table pins. `atan2` and `ln` join the
