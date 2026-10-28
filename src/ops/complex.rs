@@ -37,18 +37,30 @@ impl<T: CordicNumber> Complex<T> {
 
     /// The conjugate `re − i·im`.
     #[must_use]
+    #[cfg_attr(
+        all(feature = "verify-no-panic", not(debug_assertions)),
+        no_panic::no_panic
+    )]
     pub fn conj(self) -> Self {
         Self::new(self.re, T::zero().saturating_sub(self.im))
     }
 
     /// The modulus `|z|`, rounded once.
     #[must_use]
+    #[cfg_attr(
+        all(feature = "verify-no-panic", not(debug_assertions)),
+        no_panic::no_panic
+    )]
     pub fn norm(self) -> T {
         fixed(self.work().abs())
     }
 
     /// The argument in `(−π, π]`, 0 at the origin.
     #[must_use]
+    #[cfg_attr(
+        all(feature = "verify-no-panic", not(debug_assertions)),
+        no_panic::no_panic
+    )]
     pub fn arg(self) -> T {
         fixed(atan2(work(self.im), work(self.re)))
     }

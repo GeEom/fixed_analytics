@@ -114,3 +114,18 @@ pub const ODD: Series = Series {
     q126: &tables(&INV_ODD).1,
     q190: &tables(&INV_ODD).2,
 };
+
+#[cfg(test)]
+mod tests {
+    use super::{FACT, ODD, tables};
+    use crate::consts::{INV_FACT, INV_ODD};
+
+    /// The tables built at compile time, built again at run time.
+    #[test]
+    fn tables_build_the_same_at_run_time() {
+        let fact = tables(&INV_FACT);
+        assert!(FACT.q62 == fact.0 && FACT.q126 == fact.1 && FACT.q190 == fact.2);
+        let odd = tables(&INV_ODD);
+        assert!(ODD.q62 == odd.0 && ODD.q126 == odd.1 && ODD.q190 == odd.2);
+    }
+}

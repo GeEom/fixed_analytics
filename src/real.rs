@@ -938,42 +938,9 @@ impl<const N: usize> Add for Real<N> {
             (self, other)
         };
         if N == 2 {
-            return Self::add_two(big, small);
-        }
-        if N == 3 {
-            return Self::add_wide(big, small);
-        }
-        let len = N + 1;
-        let mut acc = [0; SCRATCH];
-        let mut addend = [0; SCRATCH];
-        for i in 0..N {
-            set(&mut acc, i + 1, limb(&big.m, i));
-            set(&mut addend, i + 1, limb(&small.m, i));
-        }
-        let gap = i64::from(big.e) - i64::from(small.e);
-        let sticky = if gap >= 64 * i64::from(u32_of(len)) {
-            addend = [0; SCRATCH];
-            true
+            Self::add_two(big, small)
         } else {
-            shr(&mut addend, len, u32::try_from(gap).unwrap_or(0))
-        };
-        if big.neg == small.neg {
-            if add_into(&mut acc, &addend, len) {
-                let lost = shr(&mut acc, len, 1);
-                let top = limb(&acc, len - 1) | 1 << 63;
-                set(&mut acc, len - 1, top);
-                Self::pack(big.neg, big.e.saturating_add(1), &acc, len, sticky || lost)
-            } else {
-                Self::pack(big.neg, big.e, &acc, len, sticky)
-            }
-        } else {
-            sub_into(&mut acc, &addend, len);
-            if sticky {
-                let mut one = [0; SCRATCH];
-                set(&mut one, 0, 1);
-                sub_into(&mut acc, &one, len);
-            }
-            Self::normalize(big.neg, big.e, &mut acc, len, sticky)
+            Self::add_wide(big, small)
         }
     }
 }

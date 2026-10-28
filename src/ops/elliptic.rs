@@ -18,6 +18,10 @@ pub struct Modulus<T> {
 impl<T: CordicNumber> Modulus<T> {
     /// From `m = k²`, in `[0, 1]`.
     #[must_use]
+    #[cfg_attr(
+        all(feature = "verify-no-panic", not(debug_assertions)),
+        no_panic::no_panic
+    )]
     pub fn from_parameter(m: T) -> Option<Self> {
         (m >= T::zero() && m <= T::one()).then_some(Self {
             value: m,
@@ -27,6 +31,10 @@ impl<T: CordicNumber> Modulus<T> {
 
     /// From the complement `k' = √(1 − m)`, in `[0, 1]`, exact where `m` is near 1.
     #[must_use]
+    #[cfg_attr(
+        all(feature = "verify-no-panic", not(debug_assertions)),
+        no_panic::no_panic
+    )]
     pub fn from_complement(kc: T) -> Option<Self> {
         (kc >= T::zero() && kc <= T::one()).then_some(Self {
             value: kc,
@@ -44,12 +52,20 @@ impl<T: CordicNumber> Modulus<T> {
 
     /// The parameter `m`, rounded.
     #[must_use]
+    #[cfg_attr(
+        all(feature = "verify-no-panic", not(debug_assertions)),
+        no_panic::no_panic
+    )]
     pub fn parameter(self) -> T {
         fixed(parts(self).m)
     }
 
     /// The complement `k'`, rounded.
     #[must_use]
+    #[cfg_attr(
+        all(feature = "verify-no-panic", not(debug_assertions)),
+        no_panic::no_panic
+    )]
     pub fn complement(self) -> T {
         fixed(parts(self).kc)
     }

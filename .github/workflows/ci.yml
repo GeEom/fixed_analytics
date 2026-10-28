@@ -117,16 +117,17 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Check all pub fns are annotated
+        # Every non-const pub fn in src/ops, methods included, sits under its
+        # no_panic attribute; const fns cannot carry it.
         run: |
-          pub_fns=$(grep -r '^pub fn ' src/ops/*.rs | wc -l)
-          annotations=$(grep -r 'no_panic::no_panic' src/ops/*.rs | wc -l)
-          echo "pub fn count: $pub_fns"
-          echo "no_panic annotations: $annotations"
-          if [ "$pub_fns" -ne "$annotations" ]; then
-            echo "::error::Not all public functions in src/ops/ have #[no_panic] annotation ($annotations/$pub_fns)"
-            grep -n '^pub fn ' src/ops/*.rs
+          awk 'FNR == 1 { last = -10 }
+               /no_panic::no_panic/ { last = FNR }
+               /^[[:space:]]*pub fn / && FNR - last > 3 { print FILENAME ":" FNR ": " $0; bad = 1 }
+               END { exit bad }' src/ops/*.rs || {
+            echo "::error::These public functions in src/ops/ lack the no_panic annotation"
             exit 1
-          fi
+          }
+          echo "annotated: $(grep -c 'no_panic::no_panic' src/ops/*.rs | awk -F: '{ s += $2 } END { print s }')"
 
       - name: Build with no-panic verification
         run: cargo build --profile no-panic-check --features verify-no-panic --bin verify_no_panic

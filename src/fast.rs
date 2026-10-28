@@ -211,3 +211,16 @@ pub fn ln(raw: i128, frac: u32) -> i128 {
     let k = i128::from(k);
     ((head + tail) >> 7) + ((k * hi) << 57) + ((k * lo) >> 7)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{COS, EXP2, SIN, table, table_of};
+    use crate::consts::{COS_PI_128THS, EXP2_32NDS, SIN_PI_128THS};
+
+    #[test]
+    fn tables_build_the_same_at_run_time() {
+        assert_eq!(table(&SIN_PI_128THS), SIN);
+        assert_eq!(table(&COS_PI_128THS), COS);
+        assert_eq!(table_of(&EXP2_32NDS), EXP2);
+    }
+}
