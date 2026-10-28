@@ -38,6 +38,10 @@ impl<V: Work> Cx<V> {
         Self::real(V::zero())
     }
 
+    pub const fn parts(self) -> (V, V) {
+        (self.re, self.im)
+    }
+
     #[must_use]
     pub fn scale(self, k: V) -> Self {
         Self::new(self.re * k, self.im * k)

@@ -2,7 +2,7 @@
 
 use crate::bounded::NonNegative;
 use crate::error::{Error, Result};
-use crate::eval::{W, fixed, work};
+use crate::eval::{W, fixed, tiered, work};
 use crate::real::Work;
 use crate::traits::CordicNumber;
 
@@ -40,8 +40,7 @@ pub fn sqrt_nonneg<T: CordicNumber>(x: NonNegative<T>) -> T {
     no_panic::no_panic
 )]
 pub fn hypot<T: CordicNumber>(x: T, y: T) -> T {
-    let sum = work(x).square() + work(y).square();
-    fixed(sum.sqrt())
+    tiered!(T, |v| (v(x).square() + v(y).square()).sqrt())
 }
 
 /// The Euclidean norm `√(Σ vᵢ²)` of any number of components, rounded once.
@@ -51,10 +50,17 @@ pub fn hypot<T: CordicNumber>(x: T, y: T) -> T {
     no_panic::no_panic
 )]
 pub fn norm<T: CordicNumber>(v: &[T]) -> T {
-    let sum = v
-        .iter()
-        .fold(W::<T>::zero(), |acc, &x| acc + work(x).square());
-    fixed(sum.sqrt())
+    tiered!(T, |w| norm_work(v, w))
+}
+
+fn inverse<V: Work>(x: V) -> V {
+    V::one() / x
+}
+
+fn norm_work<T: CordicNumber, V: Work>(v: &[T], as_work: fn(T) -> V) -> V {
+    v.iter()
+        .fold(V::zero(), |acc, &x| acc + as_work(x).square())
+        .sqrt()
 }
 
 /// `v / |v|`, each component rounded once, the direction exact even a few ulps long.
@@ -66,14 +72,13 @@ pub fn norm<T: CordicNumber>(v: &[T]) -> T {
     no_panic::no_panic
 )]
 pub fn normalize<T: CordicNumber, const N: usize>(v: [T; N]) -> Result<[T; N]> {
-    let sum = v
-        .iter()
-        .fold(W::<T>::zero(), |acc, &x| acc + work(x).square());
-    if sum.is_zero() {
+    if v.iter().all(|&x| x == T::zero()) {
         return Err(Error::domain("normalize", "non-zero vector"));
     }
-    let inv = W::<T>::one() / sum.sqrt();
-    Ok(v.map(|x| fixed(work(x) * inv)))
+    Ok(tiered!(T, |w| {
+        let inv = inverse(norm_work(&v, w));
+        v.map(|x| w(x) * inv)
+    }))
 }
 
 /// `⌊log₂|x|⌋`, the power of two of the leading bit, or `None` for zero.

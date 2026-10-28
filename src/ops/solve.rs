@@ -1,7 +1,7 @@
 //! A bracketed root finder, and the universal-variable Kepler equation.
 
 use crate::error::{Error, Result};
-use crate::eval::{HUGE, W, beyond, fixed, stumpff, work};
+use crate::eval::{HUGE, W, beyond, stumpff, tiered, work};
 use crate::real::Work;
 use crate::traits::CordicNumber;
 
@@ -109,12 +109,17 @@ fn kepler_residual<V: Work>(chi: V, r0: V, sigma0: V, alpha: V, tau: V) -> (V, V
     no_panic::no_panic
 )]
 pub fn kepler_universal<T: CordicNumber>(r0: T, sigma0: T, alpha: T, tau: T) -> Result<T> {
-    let (r, s, a, t) = (work(r0), work(sigma0), work(alpha), work(tau));
+    let (r, s, a) = (work(r0), work(sigma0), work(alpha));
     let two = W::<T>::from_int(2);
     let h2 = W::<T>::dot2(r, two - a * r, -s, s);
     let slack = (r.ldexp(1) + s.square()).ldexp(8 - W::<T>::PREC.cast_signed());
     if !r.is_neg() && !r.is_zero() && h2 >= -slack {
-        return Ok(fixed(kepler_work(r, s, a, t)));
+        return Ok(tiered!(T, |v| kepler_work(
+            v(r0),
+            v(sigma0),
+            v(alpha),
+            v(tau)
+        )));
     }
     Err(Error::domain(
         "kepler_universal",

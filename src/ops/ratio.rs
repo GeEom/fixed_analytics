@@ -3,7 +3,8 @@
 use crate::bounded::OpenUnitInterval;
 use crate::error::{Error, Result};
 use crate::eval::{
-    W, atan_ratio as atan_of_ratio, expm1, fixed, log1p, sin_cos, stumpff as stumpff_work, work,
+    HUGE, atan_ratio as atan_of_ratio, beyond, expm1, log1p, sin_cos, stumpff as stumpff_work,
+    tiered,
 };
 use crate::real::Work;
 use crate::traits::CordicNumber;
@@ -15,7 +16,7 @@ use crate::traits::CordicNumber;
     no_panic::no_panic
 )]
 pub fn stumpff<T: CordicNumber>(z: T) -> [T; 4] {
-    stumpff_work(work(z)).map(fixed)
+    tiered!(T, |v| stumpff_work(v(z)))
 }
 
 /// `(tan x / x, cos x)`, the first 1 at 0 and saturating at the poles.
@@ -25,16 +26,19 @@ pub fn stumpff<T: CordicNumber>(z: T) -> [T; 4] {
     no_panic::no_panic
 )]
 pub fn tan_ratio<T: CordicNumber>(x: T) -> (T, T) {
-    let v = work(x);
+    tiered!(T, |v| tan_ratio_work(v(x)))
+}
+
+fn tan_ratio_work<V: Work>(v: V) -> (V, V) {
     let (s, c) = sin_cos(v);
     let ratio = if v.is_zero() {
-        W::<T>::one()
+        V::one()
     } else if c.is_zero() {
-        crate::eval::beyond::<W<T>>().with_sign(s.is_neg() != v.is_neg())
+        beyond::<V>().with_sign(s.is_neg() != v.is_neg())
     } else {
         s / (v * c)
     };
-    (fixed(ratio), fixed(c))
+    (ratio, c)
 }
 
 /// `atan z / z`, which is 1 at 0.
@@ -44,11 +48,15 @@ pub fn tan_ratio<T: CordicNumber>(x: T) -> (T, T) {
     no_panic::no_panic
 )]
 pub fn atan_ratio<T: CordicNumber>(z: T) -> T {
-    let a = work(z).abs();
-    if a.is_zero() {
+    if z == T::zero() {
         return T::one();
     }
-    fixed(atan_of_ratio(a, W::<T>::one()) / a)
+    tiered!(T, |v| atan_ratio_work(v(z)))
+}
+
+fn atan_ratio_work<V: Work>(z: V) -> V {
+    let a = z.abs();
+    atan_of_ratio(a, V::one()) / a
 }
 
 /// `atanh z / z`, which is 1 at 0. Domain: `(-1, 1)`.
@@ -63,12 +71,15 @@ pub fn atanh_ratio<T: CordicNumber>(z: T) -> Result<T> {
     if OpenUnitInterval::new(z).is_none() {
         return Err(Error::domain("atanh_ratio", "value in range (-1, 1)"));
     }
-    let a = work(z).abs();
-    if a.is_zero() {
+    if z == T::zero() {
         return Ok(T::one());
     }
-    let atanh = log1p((a / (W::<T>::one() - a)).ldexp(1)).ldexp(-1);
-    Ok(fixed(atanh / a))
+    Ok(tiered!(T, |v| atanh_ratio_work(v(z))))
+}
+
+fn atanh_ratio_work<V: Work>(z: V) -> V {
+    let a = z.abs();
+    log1p((a / (V::one() - a)).ldexp(1)).ldexp(-1) / a
 }
 
 /// `tanh x / x`, which is 1 at 0.
@@ -78,13 +89,17 @@ pub fn atanh_ratio<T: CordicNumber>(z: T) -> Result<T> {
     no_panic::no_panic
 )]
 pub fn tanh_ratio<T: CordicNumber>(x: T) -> T {
-    let a = work(x).abs();
-    if a.is_zero() {
+    if x == T::zero() {
         return T::one();
     }
-    if a > W::<T>::from_int(crate::eval::HUGE) {
-        return fixed(W::<T>::one() / a);
+    tiered!(T, |v| tanh_ratio_work(v(x)))
+}
+
+fn tanh_ratio_work<V: Work>(x: V) -> V {
+    let a = x.abs();
+    if a > V::from_int(HUGE) {
+        return V::one() / a;
     }
     let u = expm1(a.ldexp(1));
-    fixed(u / ((u + W::<T>::from_int(2)) * a))
+    u / ((u + V::from_int(2)) * a)
 }

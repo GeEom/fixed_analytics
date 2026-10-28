@@ -13,6 +13,88 @@ use crate::traits::sealed::Sealed;
 /// The working type of `T`.
 pub type W<T> = <T as Sealed>::Work;
 
+/// The narrow working type of `T`, as wide as `T`.
+pub type Narrow<T> = <T as Sealed>::Narrow;
+
+/// Bits a narrow result must keep past `T`'s ulp to be trusted.
+const GUARD: i32 = 24;
+
+pub fn narrow<T: CordicNumber>(x: T) -> Narrow<T> {
+    Narrow::<T>::from_raw(x.raw_i128(), T::frac_bits())
+}
+
+/// Whether `T` has a working type narrower than `W<T>` that leaves guard bits,
+/// and `extra` more for what the function itself may cancel.
+pub fn has_narrow<T: CordicNumber>(extra: i32) -> bool {
+    Narrow::<T>::PREC < W::<T>::PREC
+        && T::frac_bits().cast_signed() + GUARD + extra < Narrow::<T>::PREC.cast_signed()
+}
+
+/// Results in either working type, rounded to `T` all at once.
+pub trait Outputs<T> {
+    type Rounded;
+    fn fits(&self) -> bool;
+    fn round(self) -> Self::Rounded;
+}
+
+impl<T: CordicNumber, V: Work> Outputs<T> for V {
+    type Rounded = T;
+    fn fits(&self) -> bool {
+        let room = V::PREC.cast_signed() - T::frac_bits().cast_signed() - GUARD;
+        self.is_zero() || self.exponent() <= room
+    }
+    fn round(self) -> T {
+        let lo = T::min_value().raw_i128();
+        let hi = T::max_value().raw_i128();
+        T::from_raw_i128(self.to_raw(T::frac_bits(), lo, hi, false))
+    }
+}
+
+impl<T: CordicNumber, A: Outputs<T>, B: Outputs<T>> Outputs<T> for (A, B) {
+    type Rounded = (A::Rounded, B::Rounded);
+    fn fits(&self) -> bool {
+        self.0.fits() && self.1.fits()
+    }
+    fn round(self) -> Self::Rounded {
+        (self.0.round(), self.1.round())
+    }
+}
+
+impl<T: CordicNumber, A: Outputs<T>, const K: usize> Outputs<T> for [A; K] {
+    type Rounded = [A::Rounded; K];
+    fn fits(&self) -> bool {
+        self.iter().all(Outputs::fits)
+    }
+    fn round(self) -> Self::Rounded {
+        self.map(Outputs::round)
+    }
+}
+
+/// `$body`, arguments converted by `$v`, in `Narrow<T>` where every result fits, else in `W<T>`.
+macro_rules! tiered {
+    ($t:ty, |$v:ident| $body:expr) => {
+        $crate::eval::tiered!($t, 0, |$v| $body)
+    };
+    ($t:ty, $extra:expr, |$v:ident| $body:expr) => {{
+        let mut done = None;
+        if $crate::eval::has_narrow::<$t>($extra) {
+            let $v = $crate::eval::narrow::<$t>;
+            let out = $body;
+            if $crate::eval::Outputs::<$t>::fits(&out) {
+                done = Some($crate::eval::Outputs::<$t>::round(out));
+            }
+        }
+        match done {
+            Some(r) => r,
+            None => {
+                let $v = $crate::eval::work::<$t>;
+                $crate::eval::Outputs::<$t>::round($body)
+            }
+        }
+    }};
+}
+pub(crate) use tiered;
+
 /// Arguments past this saturate every function of them that grows.
 pub const HUGE: i64 = 4096;
 
@@ -205,9 +287,9 @@ pub fn phi<V: Work>(k: u32, z: V) -> V {
     num / den
 }
 
-/// `φ₁` to `φ₅`: near 0 `φ₅`'s series and `φₖ = 1/k! + z·φₖ₊₁`, past it `φ₁` from `expm1`
-/// and `φₖ₊₁ = (φₖ − 1/k!)/z`, losing at most 11 bits, at `|z| = ½`.
-pub fn phis<V: Work>(z: V) -> [V; 5] {
+/// `φ₁` to `φ₅` given `e^(−z)`: near 0 `φ₅`'s series and `φₖ = 1/k! + z·φₖ₊₁`, past it
+/// `φ₁` from `e^z − 1` and `φₖ₊₁ = (φₖ − 1/k!)/z`, losing at most 11 bits, at `|z| = ½`.
+pub fn phis<V: Work>(z: V, decay: V) -> [V; 5] {
     let inv_fact = |k: usize| INV_FACT.get(k).map_or_else(V::zero, V::constant);
     let mut out = [V::zero(); 5];
     if z.abs() <= V::one().ldexp(-1) {
@@ -221,10 +303,11 @@ pub fn phis<V: Work>(z: V) -> [V; 5] {
     if z > V::from_int(HUGE) {
         return [beyond(); 5];
     }
+    // e^z − 1 = 1/e^(−z) − 1, which past |z| = ½ cancels by at most two bits.
     let mut cur = if z < V::from_int(-HUGE) {
         -V::one()
     } else {
-        expm1(z)
+        V::one() / decay - V::one()
     } / z;
     for (k, slot) in out.iter_mut().enumerate() {
         *slot = cur;
@@ -280,20 +363,20 @@ pub fn stumpff<V: Work>(z: V) -> [V; 4] {
         if w > V::from_int(HUGE) {
             return [beyond(); 4];
         }
-        let (sh, ch) = sinh_cosh(w);
-        let (half, _) = sinh_cosh(w.ldexp(-1));
-        let c1 = sh / w;
+        let (half, half_c) = sinh_cosh(w.ldexp(-1));
+        let c1 = (half * half_c).ldexp(1) / w;
         [
-            ch,
+            one + half.square().ldexp(1),
             c1,
             (half.square() / w.square()).ldexp(1),
             (c1 - one) / -z,
         ]
     } else {
-        let (s, c) = sin_cos(w);
-        let (half, _) = sin_cos(w.ldexp(-1));
-        let c1 = s / w;
-        [c, c1, (half.square() / z).ldexp(1), (one - c1) / z]
+        // sin w = 2·s·c and cos w = (c − s)(c + s), exact in form at its zeros.
+        let (half, half_c) = sin_cos(w.ldexp(-1));
+        let c1 = (half * half_c).ldexp(1) / w;
+        let c0 = (half_c - half) * (half_c + half);
+        [c0, c1, (half.square() / z).ldexp(1), (one - c1) / z]
     }
 }
 
