@@ -27,6 +27,10 @@ pub use ops::algebraic::{
 };
 pub use ops::arith::{div_or_saturate, dot, mul_add, mul_div, sqrt_or_zero};
 pub use ops::circular::{acos, asin, asin_from_gap, atan, atan2, cos, sin, sin_cos, tan};
+pub use ops::elliptic::{
+    Modulus, carlson_rc, carlson_rd, carlson_rf, carlson_rf_roots, carlson_rj, carlson_rj_roots,
+    ellip_e, ellip_k, ellip_pi, ellip_pi_complete, jacobi_am, jacobi_inverse, jacobi_sn_cn_dn,
+};
 pub use ops::exponential::{
     exp, exp_moments, expm1, exprel, exprel2, ln, log1p, log1p_ratio, log1p_residual,
     log1p_residual_ratio, log2, log10, pow, pow2,

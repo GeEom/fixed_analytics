@@ -1,8 +1,5 @@
-//! Arithmetic that rounds once.
-//!
-//! Products, quotients and sums of products are formed exactly in up to 384
-//! bits, then rounded to nearest, ties to even. Results beyond the type's
-//! range saturate to its nearer end.
+//! Products, quotients and sums of products formed exactly in up to 384 bits,
+//! then rounded once to nearest, ties to even, and saturated.
 
 use crate::traits::CordicNumber;
 

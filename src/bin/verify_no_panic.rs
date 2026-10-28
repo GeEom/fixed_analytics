@@ -11,6 +11,10 @@ use fixed_analytics::bounded::{NonNegative, OpenUnitInterval};
 use fixed_analytics::ops::algebraic::sqrt_nonneg;
 use fixed_analytics::ops::hyperbolic::atanh_open;
 use fixed_analytics::{
+    Modulus, carlson_rc, carlson_rd, carlson_rf, carlson_rf_roots, carlson_rj, carlson_rj_roots,
+    ellip_e, ellip_k, ellip_pi, ellip_pi_complete, jacobi_am, jacobi_inverse, jacobi_sn_cn_dn,
+};
+use fixed_analytics::{
     acos, acosh, acoth, asin, asin_from_gap, asinh, atan, atan_range, atan2, atanh, cos, cosh,
     coth, div_or_saturate, dot, enclose, exp, exp_range, hypot, ln, log2, log10, mul_add, mul_div,
     norm, normalize, pow, pow2, rsqrt, scale_by, scale_exponent, sin, sin_cos, sin_cos_range, sinh,
@@ -84,6 +88,24 @@ fn exercise<T: CordicNumber>(x: T, y: T, two: T) {
     keep(atan_ratio(x));
     keep(atanh_ratio(x));
     keep(tanh_ratio(x));
+    if let Some(m) = Modulus::from_complement(y) {
+        keep(ellip_k(m));
+        keep(ellip_e(m));
+        keep(ellip_pi_complete(x, m));
+        keep(ellip_pi(x, y, x, y, m));
+        keep(jacobi_sn_cn_dn(x, m));
+        keep(jacobi_am(x, m));
+        keep(jacobi_inverse(x, y, x, m));
+        keep(m.parameter());
+        keep(m.complement());
+    }
+    keep(Modulus::from_parameter(y));
+    keep(carlson_rf(x, y, two));
+    keep(carlson_rf_roots(x, y, two));
+    keep(carlson_rj(x, y, two, x));
+    keep(carlson_rj_roots(x, y, two, x));
+    keep(carlson_rc(x, y));
+    keep(carlson_rd(x, y, two));
 
     if let Some(nn) = NonNegative::new(x) {
         keep(sqrt_nonneg(nn));

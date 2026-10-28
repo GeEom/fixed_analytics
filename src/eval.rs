@@ -36,7 +36,7 @@ pub fn half_pi<V: Work>() -> V {
 }
 
 /// The entry for this width, from entries for 64-, 128- and 192-bit mantissas.
-const fn by_width<V: Work>(n: [u32; 3]) -> u32 {
+pub const fn by_width<V: Work>(n: [u32; 3]) -> u32 {
     match V::PREC {
         0..=64 => n[0],
         65..=128 => n[1],

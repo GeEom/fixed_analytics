@@ -31,9 +31,8 @@ pub fn exp<T: CordicNumber>(x: T) -> T {
     fixed(exp_wide::<T>(work(x)))
 }
 
-/// Power `base^exponent`, as `exp(exponent · ln|base|)`, saturating like [`exp`].
-///
-/// A negative base takes its sign from the exponent's parity.
+/// Power `base^exponent`, as `exp(exponent · ln|base|)`, saturating like
+/// [`exp`]; a negative base takes its sign from the exponent's parity.
 /// # Errors
 /// Returns `DomainError` for a zero base with a negative exponent, or a
 /// negative base with a non-integer exponent, which has no real result.

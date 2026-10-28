@@ -1,8 +1,5 @@
-//! Intervals certain to hold the exact value.
-//!
-//! A result `y` is within [`ERROR_ULPS`](crate::ERROR_ULPS) of the truth, so
-//! the exact value lies in `[y − ulp, y + ulp]`. An end at `T::MIN` or
-//! `T::MAX` stands for everything past it.
+//! Intervals certain to hold the exact value, by [`ERROR_ULPS`](crate::ERROR_ULPS).
+//! An end at `T::MIN` or `T::MAX` stands for everything past it.
 
 use crate::eval::{W, pi, turn_fraction, work};
 use crate::ops::circular::{atan, sin_cos};
@@ -75,11 +72,8 @@ pub fn tanh_range<T: CordicNumber>(lo: T, hi: T) -> (T, T) {
     rising(tanh, lo, hi, -T::one(), T::one())
 }
 
-/// The ranges `((sin_min, sin_max), (cos_min, cos_max))` of sine and cosine
-/// over `[lo, hi]`, rounded outward.
-///
-/// An extreme inside the interval, found from the exact reduction of `lo`,
-/// gives ±1; one within the working error of an end counts as inside.
+/// The ranges `((sin_min, sin_max), (cos_min, cos_max))` over `[lo, hi]`,
+/// rounded outward; an extreme within the working error of an end counts.
 #[must_use]
 #[cfg_attr(
     all(feature = "verify-no-panic", not(debug_assertions)),

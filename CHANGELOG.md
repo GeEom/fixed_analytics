@@ -45,6 +45,14 @@ integrals `∫₀¹ s^(k−1)·e^(−xs) ds` for k up to 3 with `e^(−x)`; `log
 Stumpff functions `c₀` to `c₃` of either sign; and `tan_ratio`, `atan_ratio`,
 `atanh_ratio` and `tanh_ratio`.
 
+New: elliptic integrals and functions. `Modulus` holds `m` or its
+complement `k'` exact. `ellip_k`, `ellip_e` and `ellip_pi_complete` are the
+complete integrals, `ellip_pi` the incomplete third kind from `(sn, cn, dn)`,
+`jacobi_sn_cn_dn` and `jacobi_am` the Jacobi functions of any argument, and
+`jacobi_inverse` their inverse. `carlson_rf`, `carlson_rj`, `carlson_rc` and
+`carlson_rd` are Carlson's integrals, with `carlson_rf_roots` and
+`carlson_rj_roots` taking square roots for arguments too small to hold.
+
 Slower: on the benchmarks I16F16 functions take 2.4 to 11 times as long as
 in 3.1.1, and I64F64 ones 1.3 to 9 times; `sqrt` is as fast or faster.
 
