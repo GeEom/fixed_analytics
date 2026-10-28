@@ -10,6 +10,22 @@ function in backticks.
 Releases before 3.1.1 are described on the
 [releases page](https://github.com/GeEom/fixed_analytics/releases).
 
+## 4.7.0
+
+Faster, most of all for the elliptic functions: on I64F64 `carlson_rj_roots`
+runs 5× faster, `jacobi_sn_cn_dn` 4.8×, `jacobi_inverse` 3.1×, `ellip_k` 1.7×
+and `sin_cos` 1.5×; on I32F32 the elementary functions run 2–5× faster and the
+elliptic ones 7–12×. The working arithmetic adds and multiplies two and three
+limbs in 256 bits, correctly rounded as before, and seeds division and square
+roots from tables. A function whose result leaves 24 bits past its type's ulp
+works in a float as wide as the type, else again in the wider one. Carlson's
+duplication stops once its closing series is exact, and the Jacobi functions
+take Bulirsch's descent, one AGM shared with `K`.
+
+Output changes, within half an ulp of the exact value plus at most 2^−30 on
+32-bit fractions: `exprel`, `exp_moments`, `log1p_ratio`, `stumpff` and
+`Complex::exprel` (golden name `complex_exprel`).
+
 ## 4.6.0
 
 Output changes: `exp_moments` returns `[E₁, …, E₅, e^(−x)]`, the moments up
