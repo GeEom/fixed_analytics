@@ -10,6 +10,21 @@ function in backticks.
 Releases before 3.1.1 are described on the
 [releases page](https://github.com/GeEom/fixed_analytics/releases).
 
+## 4.6.0
+
+Output changes: `exp_moments` returns `[E₁, …, E₅, e^(−x)]`, the moments up
+to `k = 5` all from one exponential, so `E₁` to `E₃` move by a few bits.
+
+New: `Complex::exprel_weighted`, `exprel` and `exprel2` under the weight
+`((1 − εt)/(1 − εs))^p/(1 − εs)` for complex `z`, `ε` in `[0, 1)` and `p ≥ 0`,
+which keep their precision as `ε → 0`; the complex logarithm `Complex::ln`
+and real power `Complex::pow`, exact in phase on the axes and diagonals;
+`Complex::saturating_add`, `saturating_sub`, `saturating_mul`,
+`saturating_div` and `saturating_neg`, the operators by name; `mul_by_tau`,
+turns to radians rounded once, and `sin_cos_range_turns`; `root_in`, a
+bracketed root finder by the ITP method with a fixed budget; and
+`kepler_universal`, the universal anomaly of a two-body orbit.
+
 ## 4.5.0
 
 No output changes.

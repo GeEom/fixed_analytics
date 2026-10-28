@@ -30,14 +30,14 @@ Requires Rust 1.95 or later.
 
 ```toml
 [dependencies]
-fixed_analytics = "4.5.0"
+fixed_analytics = "4.6.0"
 ```
 
 For `no_std` environments:
 
 ```toml
 [dependencies]
-fixed_analytics = { version = "4.5.0", default-features = false }
+fixed_analytics = { version = "4.6.0", default-features = false }
 ```
 
 ## Available Functions
@@ -157,6 +157,8 @@ The largest error seen, in ulps of the type, against MPFR on exact inputs. The s
 | exp_moments_e1 | 0.50 | 0.50 | 0.50 |
 | exp_moments_e2 | 0.50 | 0.50 | 0.50 |
 | exp_moments_e3 | 0.50 | 0.50 | 0.50 |
+| exp_moments_e4 | 0.50 | 0.50 | 0.50 |
+| exp_moments_e5 | 0.50 | 0.50 | 0.50 |
 | log1p | 0.50 | 0.50 | 0.50 |
 | log1p_ratio | 0.50 | 0.50 | 0.50 |
 | log1p_residual | 0.50 | 0.50 | 0.50 |
@@ -190,6 +192,7 @@ The largest error seen, in ulps of the type, against MPFR on exact inputs. The s
 | div_by_tau | 0.50 | 0.50 | 0.50 |
 | wrap_radians | 0.50 | 0.50 | 0.50 |
 | wrap_principal | 0.50 | 0.50 | 0.50 |
+| mul_by_tau | 0.50 | 0.50 | 0.50 |
 | c_mul_re | 0.50 | 0.50 | 0.50 |
 | c_mul_im | 0.50 | 0.50 | 0.50 |
 | c_div_re | 0.50 | 0.50 | 0.50 |
@@ -208,6 +211,15 @@ The largest error seen, in ulps of the type, against MPFR on exact inputs. The s
 | e1_im | 0.50 | 0.50 | 0.50 |
 | gamma_upper_re | 0.50 | 0.50 | 0.50 |
 | gamma_upper_im | 0.50 | 0.50 | 0.50 |
+| c_ln_re | 0.50 | 0.50 | 0.50 |
+| c_ln_im | 0.50 | 0.50 | 0.50 |
+| c_pow_re | 0.50 | 0.50 | 0.50 |
+| c_pow_im | 0.50 | 0.50 | 0.50 |
+| exprel_weighted_k1_re | 0.50 | 0.50 | 0.50 |
+| exprel_weighted_k1_im | 0.50 | 0.50 | 0.49 |
+| exprel_weighted_k2_re | 0.50 | 0.50 | 0.49 |
+| exprel_weighted_k2_im | 0.50 | 0.50 | 0.50 |
+| kepler_universal | 0.50 | 0.50 | 0.50 |
 | erf | 0.50 | 0.50 | 0.50 |
 | erfc | 0.50 | 0.50 | 0.50 |
 | fresnel_c | 0.50 | 0.50 | 0.50 |
