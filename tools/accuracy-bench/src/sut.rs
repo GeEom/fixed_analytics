@@ -10,8 +10,8 @@ pub const PREC: u32 = 320;
 
 /// A type under test: any signed `fixed` type the crate implements.
 pub trait Sut: CordicNumber + Fixed + Send + Sync + core::fmt::Debug + 'static {
-    fn raw(self) -> i128;
-    fn from_raw(raw: i128) -> Self;
+    fn rb(self) -> i128;
+    fn from_rb(raw: i128) -> Self;
 
     fn bits() -> u32 {
         <Self as CordicNumber>::total_bits()
@@ -22,11 +22,11 @@ pub trait Sut: CordicNumber + Fixed + Send + Sync + core::fmt::Debug + 'static {
     }
 
     fn min_raw() -> i128 {
-        <Self as CordicNumber>::min_value().raw()
+        <Self as CordicNumber>::min_value().rb()
     }
 
     fn max_raw() -> i128 {
-        <Self as CordicNumber>::max_value().raw()
+        <Self as CordicNumber>::max_value().rb()
     }
 
     fn name() -> String {
@@ -34,7 +34,7 @@ pub trait Sut: CordicNumber + Fixed + Send + Sync + core::fmt::Debug + 'static {
     }
 
     fn to_float(self) -> Float {
-        Float::with_val(PREC, Integer::from(self.raw())) >> Self::frac_n()
+        Float::with_val(PREC, Integer::from(self.rb())) >> Self::frac_n()
     }
 
     /// The nearest value to `x`, saturating at the ends of the range.
@@ -48,7 +48,7 @@ pub trait Sut: CordicNumber + Fixed + Send + Sync + core::fmt::Debug + 'static {
             }),
             None => 0,
         };
-        Self::from_raw(raw.clamp(Self::min_raw(), Self::max_raw()))
+        Self::from_rb(raw.clamp(Self::min_raw(), Self::max_raw()))
     }
 
     fn neg_sat(self) -> Self {
@@ -61,12 +61,12 @@ where
     F: CordicNumber + Fixed + Send + Sync + core::fmt::Debug + 'static,
     F::Bits: TryInto<i128> + TryFrom<i128>,
 {
-    fn raw(self) -> i128 {
+    fn rb(self) -> i128 {
         self.to_bits().try_into().ok().unwrap_or(0)
     }
 
-    fn from_raw(raw: i128) -> Self {
-        let clamped = raw.clamp(F::MIN.raw(), F::MAX.raw());
+    fn from_rb(raw: i128) -> Self {
+        let clamped = raw.clamp(F::MIN.rb(), F::MAX.rb());
         F::from_bits(clamped.try_into().ok().unwrap_or_else(|| F::ZERO.to_bits()))
     }
 }

@@ -1,5 +1,5 @@
 //! Pins every function's output bits. tests/golden.txt holds a hash of each
-//! function's outputs on four types; a change fails `golden_outputs` until
+//! function's outputs on six types; a change fails `golden_outputs` until
 //! `GOLDEN_UPDATE=1` re-pins it, which stamps the changed rows with the
 //! crate version, and `golden_changes_in_changelog` then wants that version's
 //! CHANGELOG.md section to name each changed function.
@@ -7,10 +7,13 @@
 #[cfg(test)]
 mod tests {
     use crate::unit::support::Lcg;
+    use fixed::types::extra::{U5, U61};
     use fixed::types::{I16F16, I24F8, I32F32, I64F64};
+    use fixed::{FixedI8, FixedI64};
     use fixed_analytics::{
-        CordicNumber, acos, acosh, acoth, asin, asinh, atan, atan2, atanh, cos, cosh, coth, exp,
-        ln, log2, log10, pow, pow2, sin, sin_cos, sinh, sinh_cosh, sqrt, tan, tanh,
+        CordicNumber, acos, acosh, acoth, asin, asinh, atan, atan2, atanh, cos, cosh, coth,
+        div_or_saturate, dot, exp, ln, log2, log10, mul_add, mul_div, pow, pow2, sin, sin_cos,
+        sinh, sinh_cosh, sqrt, sqrt_or_zero, tan, tanh,
     };
     use std::collections::BTreeMap;
     use std::fmt::Write;
@@ -44,6 +47,11 @@ mod tests {
         "log10",
         "pow",
         "sqrt",
+        "sqrt_or_zero",
+        "mul_add",
+        "mul_div",
+        "div_or_saturate",
+        "dot",
     ];
 
     trait Raw: CordicNumber {
@@ -68,9 +76,11 @@ mod tests {
     }
 
     raw! {
+        FixedI8<U5>, i8, "I3F5";
         I16F16, i32, "I16F16";
         I24F8, i32, "I24F8";
         I32F32, i64, "I32F32";
+        FixedI64<U61>, i64, "I3F61";
         I64F64, i128, "I64F64";
     }
 
@@ -108,6 +118,11 @@ mod tests {
             "log10" => res(log10(x)),
             "pow" => res(pow(x, y)),
             "sqrt" => res(sqrt(x)),
+            "sqrt_or_zero" => one(sqrt_or_zero(x)),
+            "mul_add" => one(mul_add(x, y, x)),
+            "mul_div" => one(mul_div(x, y, y)),
+            "div_or_saturate" => one(div_or_saturate(x, y)),
+            "dot" => one(dot(&[x, y, x], &[y, y, x])),
             _ => [None, None],
         }
     }
@@ -169,9 +184,11 @@ mod tests {
         let mut map = BTreeMap::new();
         for &name in FUNCTIONS {
             for (ty, hash) in [
+                (<FixedI8<U5> as Raw>::NAME, digest::<FixedI8<U5>>(name)),
                 (<I16F16 as Raw>::NAME, digest::<I16F16>(name)),
                 (<I24F8 as Raw>::NAME, digest::<I24F8>(name)),
                 (<I32F32 as Raw>::NAME, digest::<I32F32>(name)),
+                (<FixedI64<U61> as Raw>::NAME, digest::<FixedI64<U61>>(name)),
                 (<I64F64 as Raw>::NAME, digest::<I64F64>(name)),
             ] {
                 map.insert((name.to_string(), ty.to_string()), hash);

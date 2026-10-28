@@ -1,6 +1,6 @@
 [package]
 name = "fixed_analytics"
-version = "3.1.1"
+version = "4.0.0"
 edition.workspace = true
 rust-version.workspace = true
 authors = ["David Gathercole"]
@@ -16,7 +16,7 @@ categories = ["mathematics", "no-std", "algorithms", "embedded"]
 # and CI configuration, which would pin anyone building the packaged crate to
 # this repo's toolchain.
 exclude = [
-    "docs/exp.md", "docs/sin_cos.md", "docs/sinh_cosh.md", "docs/sqrt.md",
+    "docs/engine.md", "docs/sqrt.md",
     "rust-toolchain.toml", "clippy.toml", "codecov.yml", ".github/",
 ]
 

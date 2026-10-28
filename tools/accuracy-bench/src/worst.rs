@@ -83,6 +83,30 @@ fn worse(cur: f64, base: f64) -> bool {
     cur > base * (1.0 + 1e-9) + 1e-12
 }
 
+/// Prints every row past the crate's stated bound, or that breaks a symmetry
+/// or monotonicity, or errs; true if none.
+pub fn check_bounds(stats: &[FunStats]) -> bool {
+    let limit = f64::from(fixed_analytics::ERROR_ULPS);
+    let mut ok = true;
+    for s in stats {
+        let exact = crate::sweep::ALL
+            .iter()
+            .find(|f| f.name() == s.fun)
+            .is_some_and(|f| f.rounds_once());
+        let bound = if exact { 0.5 } else { limit };
+        let over = if exact { s.max_ulps > bound } else { s.max_ulps >= bound };
+        if over || s.parity_bad > 0 || s.mono_bad > 0 || s.errors > 0 {
+            ok = false;
+            println!(
+                "BOUND {} {}: {:.3e} ulps (bound {bound}), symmetry {}, monotonicity {}, errors {}: {}",
+                s.fun, s.ty, s.max_ulps, s.parity_bad, s.mono_bad, s.errors, s.example
+            );
+        }
+    }
+    println!("Bounds: {}", if ok { "every function within its bound" } else { "FAILED" });
+    ok
+}
+
 /// Prints every row where `current` is worse than `baseline`; true if none.
 pub fn compare(current: &[FunStats], baseline: &str) -> bool {
     let base = parse(baseline);

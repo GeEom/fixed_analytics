@@ -11,8 +11,9 @@ use fixed_analytics::bounded::{NonNegative, OpenUnitInterval};
 use fixed_analytics::ops::algebraic::sqrt_nonneg;
 use fixed_analytics::ops::hyperbolic::atanh_open;
 use fixed_analytics::{
-    acos, acosh, acoth, asin, asinh, atan, atan2, atanh, cos, cosh, coth, exp, ln, log2, log10,
-    pow, pow2, sin, sin_cos, sinh, sinh_cosh, sqrt, tan, tanh,
+    acos, acosh, acoth, asin, asinh, atan, atan2, atanh, cos, cosh, coth, div_or_saturate, dot,
+    exp, ln, log2, log10, mul_add, mul_div, pow, pow2, sin, sin_cos, sinh, sinh_cosh, sqrt,
+    sqrt_or_zero, tan, tanh,
 };
 
 /// Hands `v` to `black_box`, so the optimizer must compute it in full.
@@ -47,6 +48,11 @@ fn exercise<T: CordicNumber>(x: T, y: T, two: T) {
     keep(coth(x));
     keep(acoth(two));
     keep(pow(two, x));
+    keep(sqrt_or_zero(x));
+    keep(mul_add(x, y, two));
+    keep(mul_div(x, y, two));
+    keep(div_or_saturate(x, y));
+    keep(dot(&[x, y], &[two, x]));
 
     if let Some(nn) = NonNegative::new(x) {
         keep(sqrt_nonneg(nn));

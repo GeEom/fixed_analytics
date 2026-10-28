@@ -13,5 +13,6 @@ for extreme inputs: `sinh` to `T::MAX` or `T::MIN` past `±asinh(T::MAX)`, and
 | I16F16 | \|x\| > ~11.1 |
 | I32F32 | \|x\| > ~22.2 |
 
-Below that, both come from a Taylor polynomial on `|x| ≤ 1.118`, extended by
-halving the argument and doubling back.
+Below that, both come from `u = expm1(|x|)`, as `sinh = (u + u/(1 + u))/2`
+and `cosh = 1 + u²/(2(1 + u))`, which keep their relative precision at any
+size.

@@ -36,13 +36,18 @@ pub enum Fun {
     Log10,
     Pow,
     Sqrt,
+    SqrtOrZero,
+    MulAdd,
+    MulDiv,
+    DivOrSaturate,
+    Dot3,
 }
 
 use Fun::*;
 
 pub const ALL: &[Fun] = &[
     Sin, Cos, Tan, Asin, Acos, Atan, Atan2, Sinh, Cosh, Tanh, Coth, Asinh, Acosh, Atanh, Acoth,
-    Exp, Pow2, Ln, Log2, Log10, Pow, Sqrt,
+    Exp, Pow2, Ln, Log2, Log10, Pow, Sqrt, SqrtOrZero, MulAdd, MulDiv, DivOrSaturate, Dot3,
 ];
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -59,6 +64,18 @@ const PAIRS_16: usize = 1 << 18;
 
 pub const fn sample_count() -> usize {
     SAMPLES
+}
+
+/// `num / den`, with 0 for 0/0 and an infinity of the numerator's sign for a
+/// zero denominator, as the saturating forms define it.
+fn ratio(num: Float, den: &Float) -> Float {
+    if num.is_zero() {
+        return f(0.0);
+    }
+    if den.is_zero() {
+        return f(if num.is_sign_negative() { f64::NEG_INFINITY } else { f64::INFINITY });
+    }
+    num / den
 }
 
 fn f(x: f64) -> Float {
@@ -94,12 +111,19 @@ impl Fun {
             Log10 => "log10",
             Pow => "pow",
             Sqrt => "sqrt",
+            SqrtOrZero => "sqrt_or_zero",
+            MulAdd => "mul_add",
+            MulDiv => "mul_div",
+            DivOrSaturate => "div_or_saturate",
+            Dot3 => "dot3",
         }
     }
 
     pub fn arity(self) -> usize {
         match self {
-            Atan2 | Pow => 2,
+            Atan2 | Pow | DivOrSaturate => 2,
+            MulAdd | MulDiv => 3,
+            Dot3 => 6,
             _ => 1,
         }
     }
@@ -130,6 +154,11 @@ impl Fun {
             Log10 => fa::log10(x).ok(),
             Pow => fa::pow(x, a[1]).ok(),
             Sqrt => fa::sqrt(x).ok(),
+            SqrtOrZero => Some(fa::sqrt_or_zero(x)),
+            MulAdd => Some(fa::mul_add(x, a[1], a[2])),
+            MulDiv => Some(fa::mul_div(x, a[1], a[2])),
+            DivOrSaturate => Some(fa::div_or_saturate(x, a[1])),
+            Dot3 => Some(fa::dot(&a[0..3], &a[3..6])),
         }
     }
 
@@ -193,7 +222,30 @@ impl Fun {
                 }
             }
             Sqrt => x.sqrt(),
+            SqrtOrZero => {
+                if x.is_sign_positive() && !x.is_zero() {
+                    x.sqrt()
+                } else {
+                    f(0.0)
+                }
+            }
+            MulAdd => Float::with_val(PREC * 3, &x * &a[1]) + &a[2],
+            MulDiv => ratio(Float::with_val(PREC * 3, &x * &a[1]), &a[2]),
+            DivOrSaturate => ratio(x, &a[1]),
+            Dot3 => {
+                let mut acc = Float::with_val(PREC * 3, 0);
+                for i in 0..3 {
+                    acc += Float::with_val(PREC * 3, &a[i] * &a[i + 3]);
+                }
+                acc
+            }
         }
+    }
+
+    /// Whether the result is exact before its one rounding, so its error is at
+    /// most half an ulp.
+    pub fn rounds_once(self) -> bool {
+        matches!(self, Sqrt | SqrtOrZero | MulAdd | MulDiv | DivOrSaturate | Dot3)
     }
 
     pub fn parity(self) -> Parity {
@@ -224,7 +276,7 @@ impl Fun {
             Acoth => vec![(ninf, f(-1.0), false), (one, inf, false)],
             Ln | Log2 | Log10 => vec![(zero, inf, true)],
             Sqrt => vec![(zero - f(1e-300), inf, true)],
-            Atan2 | Pow => vec![],
+            _ => vec![],
         }
     }
 
@@ -321,9 +373,9 @@ fn clamp_raw<T: Sut>(r: i128) -> i128 {
 /// small values, and values crowding the hot points.
 fn candidates<T: Sut>(fun: Fun, rng: &mut Rng, n: usize) -> Vec<T> {
     let mut centers = vec![0, T::min_raw(), T::max_raw()];
-    let pi_t = T::from_float(&pi()).raw();
+    let pi_t = T::from_float(&pi()).rb();
     centers.extend([pi_t, -pi_t, pi_t / 2, -pi_t / 2]);
-    centers.extend(fun.hot::<T>().iter().map(|h| T::from_float(h).raw()));
+    centers.extend(fun.hot::<T>().iter().map(|h| T::from_float(h).rb()));
     let mut raws = Vec::with_capacity(n + centers.len() * 2 * 130);
     for &c in &centers {
         for d in -3..=3 {
@@ -348,7 +400,7 @@ fn candidates<T: Sut>(fun: Fun, rng: &mut Rng, n: usize) -> Vec<T> {
         raws.push(r);
     }
     raws.into_iter()
-        .map(|r| T::from_raw(clamp_raw::<T>(r)))
+        .map(|r| T::from_rb(clamp_raw::<T>(r)))
         .collect()
 }
 
@@ -359,7 +411,7 @@ fn exponent_candidates<T: Sut>(rng: &mut Rng, n: usize) -> Vec<T> {
 }
 
 fn all<T: Sut>() -> Vec<T> {
-    (T::min_raw()..=T::max_raw()).map(T::from_raw).collect()
+    (T::min_raw()..=T::max_raw()).map(T::from_rb).collect()
 }
 
 fn points<T: Sut>(fun: Fun, rng: &mut Rng) -> Vec<Vec<T>> {
@@ -370,6 +422,17 @@ fn points<T: Sut>(fun: Fun, rng: &mut Rng) -> Vec<Vec<T>> {
             candidates::<T>(fun, rng, SAMPLES)
         };
         return xs.into_iter().map(|x| vec![x]).collect();
+    }
+    if fun.arity() > 2 {
+        let xs = if T::bits() <= 16 {
+            all::<T>()
+        } else {
+            candidates::<T>(fun, rng, SAMPLES)
+        };
+        let n = if T::bits() <= 16 { PAIRS_16 } else { SAMPLES };
+        return (0..n)
+            .map(|_| (0..fun.arity()).map(|_| xs[rng.below(xs.len())]).collect())
+            .collect();
     }
     if T::bits() <= 8 {
         let xs = all::<T>();
@@ -493,7 +556,9 @@ fn parity<T: Sut>(fun: Fun, pts: &[Vec<T>], s: &mut FunStats) {
         };
         s.parity_n += 1;
         let want = if kind == Parity::Odd { y.neg_sat() } else { y };
-        if z != want {
+        // −MAX is MIN + ulp, so an odd function saturating at MAX meets MIN.
+        let saturated = kind == Parity::Odd && y == T::max_value() && z == T::min_value();
+        if z != want && !saturated {
             s.parity_bad += 1;
             if s.example.is_empty() {
                 s.example = format!(
@@ -511,7 +576,7 @@ fn monotone<T: Sut>(fun: Fun, pts: &[Vec<T>], s: &mut FunStats) {
     for (lo, hi, rising) in fun.monotone() {
         let mut raws: Vec<i128> = Vec::new();
         for p in pts {
-            let r = p[0].raw();
+            let r = p[0].rb();
             raws.push(r);
             if T::bits() > 16 {
                 raws.push(clamp_raw::<T>(r.saturating_add(1)));
@@ -522,7 +587,7 @@ fn monotone<T: Sut>(fun: Fun, pts: &[Vec<T>], s: &mut FunStats) {
         raws.dedup();
         let mut prev: Option<(T, T)> = None;
         for r in raws {
-            let x = T::from_raw(r);
+            let x = T::from_rb(r);
             let xf = x.to_float();
             if xf <= lo || xf >= hi || !fun.defined(&[x]) {
                 continue;

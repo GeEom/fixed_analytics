@@ -506,7 +506,7 @@ mod reduction {
         );
         assert_eq!(
             pow(-I16F16::from_num(200), I16F16::from_num(3))?,
-            -I16F16::MAX
+            I16F16::MIN
         );
         assert_eq!(pow(-I16F16::from_num(3), I16F16::ZERO)?, I16F16::ONE);
         assert_eq!(pow(-I16F16::ONE, I16F16::from_num(7))?, -I16F16::ONE);

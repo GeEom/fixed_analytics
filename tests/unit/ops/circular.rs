@@ -448,16 +448,17 @@ mod tests {
             use core::f64::consts::PI;
             let pole_3pi2 = 3.0 * PI / 2.0;
 
-            let far_from_pole = I16F16::from_num(pole_3pi2 - 0.0001);
-            let near_pole = I16F16::from_num(pole_3pi2 - 0.00005);
+            // tan(3π/2 − d) ≈ 1/d, which passes MAX = 32768 below d ≈ 3.05e-5.
+            let far_from_pole = I16F16::from_num(pole_3pi2 - 0.00005);
+            let near_pole = I16F16::from_num(pole_3pi2 - 0.00002);
 
             assert!(
                 !is_max_16(tan(far_from_pole)),
-                "tan(3π/2 - 0.0001) should not saturate"
+                "tan(3π/2 - 0.00005) should not saturate"
             );
             assert!(
                 is_max_16(tan(near_pole)),
-                "tan(3π/2 - 0.00005) should saturate to MAX"
+                "tan(3π/2 - 0.00002) should saturate to MAX"
             );
         }
     }
@@ -478,35 +479,58 @@ mod reduction_and_accuracy {
 
     #[test]
     fn sin_cos_is_correct_within_pi_of_max() {
-        // n·2π exceeds MAX here; saturation used to return (0, 1).
-        for angle in [I32F32::MAX, I32F32::MIN, I32F32::MAX - I32F32::ONE] {
+        // Against mpmath at 400 bits; a rounded 2π would miss these by far.
+        let cases: [(I32F32, f64, f64); 3] = [
+            (
+                I32F32::MAX,
+                -0.971_310_175_848_310_1,
+                0.237_816_194_346_652_58,
+            ),
+            (
+                I32F32::MIN,
+                0.971_310_175_792_939_2,
+                0.237_816_194_572_803_37,
+            ),
+            (
+                I32F32::MAX - I32F32::ONE,
+                -0.724_916_554_984_174_1,
+                -0.688_836_692_046_726_6,
+            ),
+        ];
+        for (angle, want_s, want_c) in cases {
             let (s, c) = sin_cos(angle);
-            let r = reduced_f64(angle);
             let (s, c): (f64, f64) = (s.to_num(), c.to_num());
             assert!(
-                (s - r.sin()).abs() < 1e-5,
-                "sin({angle}) = {s}, want {}",
-                r.sin()
+                (s - want_s).abs() < 2.4e-10,
+                "sin({angle}) = {s}, want {want_s}"
             );
             assert!(
-                (c - r.cos()).abs() < 1e-5,
-                "cos({angle}) = {c}, want {}",
-                r.cos()
+                (c - want_c).abs() < 2.4e-10,
+                "cos({angle}) = {c}, want {want_c}"
             );
         }
-        for angle in [I24F8::MAX, I24F8::MIN] {
+        let narrow: [(I24F8, f64, f64); 2] = [
+            (
+                I24F8::MAX,
+                0.435_767_374_705_169_85,
+                -0.900_059_328_679_262_2,
+            ),
+            (
+                I24F8::MIN,
+                -0.432_248_202_256_797_8,
+                -0.901_754_673_758_759_3,
+            ),
+        ];
+        for (angle, want_s, want_c) in narrow {
             let (s, c) = sin_cos(angle);
-            let r = reduced_f64(angle);
             let (s, c): (f64, f64) = (s.to_num(), c.to_num());
             assert!(
-                (s - r.sin()).abs() < 0.02,
-                "sin({angle}) = {s}, want {}",
-                r.sin()
+                (s - want_s).abs() < 0.002,
+                "sin({angle}) = {s}, want {want_s}"
             );
             assert!(
-                (c - r.cos()).abs() < 0.02,
-                "cos({angle}) = {c}, want {}",
-                r.cos()
+                (c - want_c).abs() < 0.002,
+                "cos({angle}) = {c}, want {want_c}"
             );
         }
     }
