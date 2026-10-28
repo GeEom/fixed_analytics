@@ -10,6 +10,15 @@ function in backticks.
 Releases before 3.1.1 are described on the
 [releases page](https://github.com/GeEom/fixed_analytics/releases).
 
+## 4.7.3
+
+No output changes that the golden table pins. `atan2` and `ln` join the
+126-bit fixed-point kernels on 128-bit types with at most 96 fractional
+bits, each with one division by a reciprocal refined in Q126: on I64F64
+`atan2` takes 116 ns (194 in 4.7.2, 370 in 4.5.0) and `ln` 89 ns (187, 259).
+Their worst cases rise to half an ulp plus at most 2^−31 from 80 fractional
+bits up.
+
 ## 4.7.2
 
 No output changes that the golden table pins. On 128-bit types with at most
