@@ -158,23 +158,23 @@ impl<T: CordicNumber> Complex<T> {
         let (x, y) = (self.re.raw_i128(), self.im.raw_i128());
         let (ax, ay) = (x.unsigned_abs(), y.unsigned_abs());
         let (wx, wy) = (z.re.abs(), z.im.abs());
-        let (k, eta) = if ax == ay {
-            (if x < 0 { 3u8 } else { 1 }, W::<T>::zero())
-        } else if ax > ay {
-            if x < 0 {
-                (4, -atan_ratio(wy, wx))
-            } else {
-                (0, atan_ratio(wy, wx))
-            }
-        } else if x < 0 {
-            (2, atan_ratio(wx, wy))
-        } else {
+        // atan2(|y|, |x|) = j·π/4 + ψ about the nearest axis or diagonal, ψ to
+        // full relative precision; past π/2, π − that.
+        let (line, psi) = if ax == ay {
+            (1u8, W::<T>::zero())
+        } else if wy.mul_int(5) <= wx.mul_int(2) {
+            (0, atan_ratio(wy, wx))
+        } else if wx.mul_int(5) <= wy.mul_int(2) {
             (2, -atan_ratio(wx, wy))
+        } else {
+            let gap = wy - wx;
+            (1, atan_ratio(gap.abs(), wx + wy).with_sign(gap.is_neg()))
         };
+        let (eighths, eta) = if x < 0 { (4 - line, -psi) } else { (line, psi) };
         // a·k/8 turns, from |a|·k reduced modulo 2^(frac + 3).
         let point = T::frac_bits() + 3;
         let mask = u128::MAX >> (128 - point);
-        let turns = power.raw_i128().unsigned_abs().wrapping_mul(k.into()) & mask;
+        let turns = power.raw_i128().unsigned_abs().wrapping_mul(eighths.into()) & mask;
         let (oct, frac) = W::<T>::octant(turns, point, false);
         let (s1, c1) = sin_cos_octant(oct, frac);
         let s1 = if power.is_negative() { -s1 } else { s1 };
