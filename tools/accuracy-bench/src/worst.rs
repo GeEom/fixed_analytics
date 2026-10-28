@@ -162,7 +162,7 @@ pub fn readme_section(stats: &[FunStats]) -> String {
     writeln!(out, "### Worst-case error\n").unwrap();
     writeln!(
         out,
-        "The largest error seen, in ulps of the type, against MPFR on exact inputs. The sweep covers {n_types} layouts from 8 to 128 bits, every value of each 8- and 16-bit one and {} seeded samples of each wider one; tools/accuracy-bench/worst.txt holds every layout.\n",
+        "The largest error seen, in ulps of the type, against MPFR on exact inputs. The sweep covers {n_types} layouts from 8 to 128 bits, every value of each 8- and 16-bit one and {} seeded samples of each wider one; tools/accuracy-bench/worst.txt holds every layout. The directed forms, `_down` and `_up`, come within a rounding of a whole ulp, and the sweep checks exactly that each is below one and on its side.\n",
         crate::sweep::sample_count()
     )
     .unwrap();

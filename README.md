@@ -113,7 +113,7 @@ Relative error statistics measured against MPFR reference implementations. Accur
 <!-- WORST_START -->
 ### Worst-case error
 
-The largest error seen, in ulps of the type, against MPFR on exact inputs. The sweep covers 104 layouts from 8 to 128 bits, every value of each 8- and 16-bit one and 40000 seeded samples of each wider one; tools/accuracy-bench/worst.txt holds every layout.
+The largest error seen, in ulps of the type, against MPFR on exact inputs. The sweep covers 104 layouts from 8 to 128 bits, every value of each 8- and 16-bit one and 40000 seeded samples of each wider one; tools/accuracy-bench/worst.txt holds every layout. The directed forms, `_down` and `_up`, come within a rounding of a whole ulp, and the sweep checks exactly that each is below one and on its side.
 
 | Function | I16F16 | I32F32 | I64F64 |
 |----------|------|------|------|
@@ -225,4 +225,15 @@ The largest error seen, in ulps of the type, against MPFR on exact inputs. The s
 | fresnel_c | 0.50 | 0.50 | 0.50 |
 | fresnel_s | 0.50 | 0.50 | 0.50 |
 | gamma | 0.50 | 0.50 | 0.50 |
+| mul_down | 1.00 | 1.00 | 1.00 |
+| mul_up | 1.00 | 1.00 | 1.00 |
+| mul_div_down | 1.00 | 1.00 | 1.00 |
+| mul_div_up | 1.00 | 1.00 | 1.00 |
+| mul_add_down | 1.00 | 1.00 | 1.00 |
+| mul_add_up | 1.00 | 1.00 | 1.00 |
+| div_down | 1.00 | 1.00 | 1.00 |
+| div_up | 1.00 | 1.00 | 1.00 |
+| dot3_down | 1.00 | 1.00 | 1.00 |
+| dot3_up | 1.00 | 1.00 | 1.00 |
+| ellip_pi_increment | 0.50 | 0.50 | 0.50 |
 <!-- WORST_END -->
