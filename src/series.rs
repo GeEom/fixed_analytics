@@ -1,10 +1,8 @@
-//! Coefficient tables as fixed point, built at compile time from the 384-bit
-//! constants, for the working widths' Horner evaluation.
+//! Fixed-point coefficient tables, built at compile time from the 384-bit constants.
 
 use crate::consts::{C, INV_FACT, INV_ODD};
 
-/// A table of coefficients in `[0, 1]` as fixed point with 62, 126 and 190
-/// fractional bits, for the one-, two- and three-limb working widths.
+/// Coefficients in `[0, 1]` with 62, 126 and 190 fractional bits, one per working width.
 pub struct Series {
     pub q62: &'static [i64],
     pub q126: &'static [i128],

@@ -2,6 +2,7 @@
 
 pub mod functions;
 pub mod metrics;
+pub mod complex_ref;
 pub mod elliptic_ref;
 pub mod readme;
 pub mod reference;

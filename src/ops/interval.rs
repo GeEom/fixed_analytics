@@ -8,8 +8,7 @@ use crate::ops::hyperbolic::tanh;
 use crate::real::Work;
 use crate::traits::CordicNumber;
 
-/// `[y − ulp, y + ulp]`, which holds the exact value of any function whose
-/// result is `y`.
+/// `[y − ulp, y + ulp]`, which holds the exact value of any function giving `y`.
 #[must_use]
 #[cfg_attr(
     all(feature = "verify-no-panic", not(debug_assertions)),
@@ -89,7 +88,6 @@ pub fn sin_cos_range<T: CordicNumber>(lo: T, hi: T) -> ((T, T), (T, T)) {
     }
     let start = turn_fraction(lo);
     let slack = W::<T>::one().ldexp(16 - W::<T>::PREC.cast_signed());
-    // Whether the turn fraction `at` lies within `span` turns past `start`.
     let reaches = |quarter: i64| {
         let at = W::<T>::from_int(quarter).ldexp(-2);
         let ahead = at - start;

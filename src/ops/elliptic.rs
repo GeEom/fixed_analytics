@@ -1,5 +1,4 @@
-//! Elliptic integrals and Jacobi elliptic functions, of a [`Modulus`] held
-//! exact as given.
+//! Elliptic integrals and Jacobi elliptic functions of an exactly held [`Modulus`].
 
 use crate::error::{Error, Result};
 use crate::eval::{W, atan_ratio, by_width, fixed, half_pi, log1p, pi, sin_cos, sinh_cosh, work};
@@ -14,7 +13,7 @@ pub struct Modulus<T> {
 }
 
 impl<T: CordicNumber> Modulus<T> {
-    /// From the parameter `m = k²`, in `[0, 1]`.
+    /// From `m = k²`, in `[0, 1]`.
     #[must_use]
     pub fn from_parameter(m: T) -> Option<Self> {
         (m >= T::zero() && m <= T::one()).then_some(Self {
@@ -23,8 +22,7 @@ impl<T: CordicNumber> Modulus<T> {
         })
     }
 
-    /// From the complementary modulus `k' = √(1 − m)`, in `[0, 1]`, which
-    /// keeps its bits where `m` is all but 1.
+    /// From the complement `k' = √(1 − m)`, in `[0, 1]`, exact where `m` is near 1.
     #[must_use]
     pub fn from_complement(kc: T) -> Option<Self> {
         (kc >= T::zero() && kc <= T::one()).then_some(Self {
@@ -72,8 +70,7 @@ fn parts<T: CordicNumber>(modulus: Modulus<T>) -> Parts<W<T>> {
     }
 }
 
-/// `R_C(1, 1 + e)`, which is `atan √e/√e` above 0 and `atanh √−e/√−e`
-/// below, from `e` and `1 + e` both, since `1 + e` may be tiny.
+/// `R_C(1, 1 + e)`, `atan √e/√e` or `atanh √−e/√−e`, from `e` and a maybe tiny `1 + e`.
 fn rc_one<V: Work>(e: V, one_plus_e: V) -> V {
     let t = e.abs().sqrt();
     if t.is_zero() {
@@ -88,8 +85,7 @@ fn rc_one<V: Work>(e: V, one_plus_e: V) -> V {
     }
 }
 
-/// `R_C(x, y)` for `x ≥ 0` and `y > 0`, through the ratios so that `x` near
-/// `y` does not cancel.
+/// `R_C(x, y)` for `x ≥ 0` and `y > 0`, by ratios so `x` near `y` does not cancel.
 fn rc<V: Work>(x: V, y: V) -> V {
     if x.is_zero() {
         return half_pi::<V>() / y.sqrt();
@@ -102,15 +98,13 @@ fn deviation<V: Work>(a0: V, v0: V, scale: V, a: V) -> V {
     (a0 - v0) * scale / a
 }
 
-/// `R_F(x, y, z)` by duplication; `roots`, when given, replace the first
-/// square roots so a tiny argument enters at its root's precision.
+/// `R_F(x, y, z)` by duplication, any `roots` standing in for the first square roots.
 fn rf<V: Work>(x0: V, y0: V, z0: V, roots: Option<[V; 3]>) -> V {
     let (mut vx, mut vy, mut vz) = (x0, y0, z0);
     let a0 = (vx + vy + vz).div_int(3);
     let mut mean = a0;
     let mut scale = V::one();
-    // Arguments octaves apart first take about log₂log₂ of their ratio steps
-    // to come together, then each step quarters the deviations.
+    // Octaves apart, about log₂log₂ of the ratio steps to meet; each then quarters the rest.
     for step in 0..by_width::<V>([13, 18, 23]) {
         let [sx, sy, sz] = match roots {
             Some(r) if step == 0 => r.map(Work::abs),
@@ -146,10 +140,9 @@ fn rj_series<V: Work>(e2: V, e3: V, e4: V, e5: V) -> V {
         + e5.mul_int(3).div_int(26)
 }
 
-/// `R_J(x, y, z, p)` for `p > 0`. Duplication brings a `p` far above the
-/// others down only fourfold a step, so there DLMF 19.21.12 trades it for a
-/// `q` near the smallest of them: with `x` that one,
-/// `(p − x)R_J(p) + (q − x)R_J(q) = 3R_F − 3R_C(yz/x, pq/x)`.
+/// `R_J(x, y, z, p)` for `p > 0`. A `p` far above the rest, which duplication
+/// brings down only fourfold a step, DLMF 19.21.12 trades for `q` near the least,
+/// `x`: `(p − x)R_J(p) + (q − x)R_J(q) = 3R_F − 3R_C(yz/x, pq/x)`.
 fn rj<V: Work>(x0: V, y0: V, z0: V, p0: V, roots: Option<[V; 4]>) -> V {
     let mut sorted = [(x0, 0), (y0, 1), (z0, 2)];
     sorted.sort_unstable_by_key(|entry| entry.0);
@@ -174,8 +167,7 @@ fn rj<V: Work>(x0: V, y0: V, z0: V, p0: V, roots: Option<[V; 4]>) -> V {
     rest / (p0 - lo)
 }
 
-/// [`rj`] by duplication with the `R_C` terms `e_m = 4^(−3m)·δ/d_m²` taken
-/// from `δ = (p − x)(p − y)(p − z)` once.
+/// [`rj`] by duplication, its `R_C` terms `4^(−3m)·δ/d_m²` from one `δ = Π(p − v)`.
 fn rj_duplicate<V: Work>(x0: V, y0: V, z0: V, p0: V, roots: Option<[V; 4]>) -> V {
     let (mut vx, mut vy, mut vz, mut vp) = (x0, y0, z0, p0);
     let a0 = (vx + vy + vz + vp.ldexp(1)).div_int(5);
@@ -259,9 +251,8 @@ fn complete_k<V: Work>(kc: V) -> V {
     half_pi::<V>() / agm(kc)
 }
 
-/// `(sn, cn)` of `v` in `[0, K/2]` by the AGM: `φ_N = 2^N a_N v`, then down
-/// through `φ_{n−1} = (φ_n + asin((c_n/a_n)·sin φ_n))/2`, each arcsine taken
-/// from its exact gap to 1, `b_{n−1}/a_n + (c_n/a_n)·cos²φ/(1 + |sin φ|)`.
+/// `(sn, cn)` of `v` in `[0, K/2]` by the AGM, `φ_N = 2^N a_N v` brought down by
+/// `φ_{n−1} = (φ_n + asin((c_n/a_n)·sin φ_n))/2`, each from its exact gap to 1.
 fn sn_cn_core<V: Work>(arg: V, k: V, kc: V) -> (V, V) {
     const DEPTH: usize = 32;
     let mut arith = [V::zero(); DEPTH];
@@ -387,8 +378,7 @@ fn rf_sq<V: Work>(cn: V, dn: V) -> Option<V> {
     ))
 }
 
-/// The `u` in `(−2K, 2K]` with these [`jacobi_sn_cn_dn`] values, passed
-/// together so that none comes from a subtraction.
+/// The `u` in `(−2K, 2K]` with these [`jacobi_sn_cn_dn`] values, all given so none is derived.
 /// # Errors
 /// Returns `DomainError` when `cn` and `dn` are both 0, where `u` is infinite.
 #[must_use = "returns the argument which should be handled"]
@@ -448,8 +438,7 @@ pub fn ellip_e<T: CordicNumber>(modulus: Modulus<T>) -> T {
     fixed(f - (p.m * rd(zero, p.kc2, one)).div_int(3))
 }
 
-/// `Π(n; φ|m) = ∫₀^φ dθ/((1 − n·sin²θ)√(1 − m·sin²θ))` from `(sn, cn, dn)`
-/// of `φ`, over `(−π, π]`.
+/// `Π(n; φ|m) = ∫₀^φ dθ/((1 − n·sin²θ)√(1 − m·sin²θ))`, `φ` in `(−π, π]` by `(sn, cn, dn)`.
 /// # Errors
 /// Returns `DomainError` when `1 − n·sn² ≤ 0`, or `cn` and `dn` are both 0.
 #[must_use = "returns the integral which should be handled"]
@@ -532,8 +521,7 @@ pub fn carlson_rf<T: CordicNumber>(x: T, y: T, z: T) -> Result<T> {
     Ok(fixed(rf(v[0], v[1], v[2], None)))
 }
 
-/// [`carlson_rf`] of the squares of `rx`, `ry` and `rz`, for arguments too
-/// small to hold their bits.
+/// [`carlson_rf`] of the squares of `rx`, `ry` and `rz`, for arguments too small to hold.
 /// # Errors
 /// Returns `DomainError` if two of the roots are 0.
 #[must_use = "returns the integral which should be handled"]
@@ -556,8 +544,7 @@ fn check_rf<V: Work>(v: &[V; 3], name: &'static str) -> Result<()> {
     Ok(())
 }
 
-/// Carlson's `R_J(x, y, z, p)`. Domain: `x, y, z ≥ 0`, at most one of them
-/// 0, and `p > 0`.
+/// Carlson's `R_J(x, y, z, p)`. Domain: `x, y, z ≥ 0`, at most one 0, and `p > 0`.
 /// # Errors
 /// Returns `DomainError` outside the domain.
 #[must_use = "returns the integral which should be handled"]

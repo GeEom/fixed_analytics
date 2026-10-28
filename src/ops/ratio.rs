@@ -8,8 +8,7 @@ use crate::eval::{
 use crate::real::Work;
 use crate::traits::CordicNumber;
 
-/// The Stumpff functions `[c₀, c₁, c₂, c₃]`, `cₖ(z) = Σ (−z)ⁿ/(2n + k)!`,
-/// for either sign of `z` with no branch at 0, where they are `1/k!`.
+/// The Stumpff functions `[c₀, c₁, c₂, c₃]`, `cₖ(z) = Σ (−z)ⁿ/(2n + k)!`, of either sign.
 #[must_use]
 #[cfg_attr(
     all(feature = "verify-no-panic", not(debug_assertions)),

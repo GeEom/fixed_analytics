@@ -4,12 +4,14 @@
 
 pub mod bounded;
 mod consts;
+mod cx;
 pub mod error;
 mod eval;
 pub mod kernel;
 pub mod ops;
 mod real;
 mod series;
+mod stirling;
 pub mod tables;
 pub mod traits;
 
@@ -27,6 +29,7 @@ pub use ops::algebraic::{
 };
 pub use ops::arith::{div_or_saturate, dot, mul_add, mul_div, sqrt_or_zero};
 pub use ops::circular::{acos, asin, asin_from_gap, atan, atan2, cos, sin, sin_cos, tan};
+pub use ops::complex::Complex;
 pub use ops::elliptic::{
     Modulus, carlson_rc, carlson_rd, carlson_rf, carlson_rf_roots, carlson_rj, carlson_rj_roots,
     ellip_e, ellip_k, ellip_pi, ellip_pi_complete, jacobi_am, jacobi_inverse, jacobi_sn_cn_dn,
@@ -38,4 +41,5 @@ pub use ops::exponential::{
 pub use ops::hyperbolic::{acosh, acoth, asinh, atanh, cosh, coth, sinh, sinh_cosh, tanh};
 pub use ops::interval::{atan_range, enclose, exp_range, sin_cos_range, tanh_range};
 pub use ops::ratio::{atan_ratio, atanh_ratio, stumpff, tan_ratio, tanh_ratio};
+pub use ops::special::{erf, erfc, fresnel, gamma};
 pub use ops::turns::{atan2_turns, div_by_tau, sin_cos_turns, wrap_principal, wrap_radians};

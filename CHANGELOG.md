@@ -58,6 +58,14 @@ reduction is its own bits with no rounded π, and `atan2_turns` returns one.
 `div_by_tau` is `x/τ` rounded once, and `wrap_radians` and `wrap_principal`
 reduce to `[0, 2π)` and `(−π, π]` by exact multiples of 2π.
 
+New: `Complex`, a complex number over any of the types, whose arithmetic
+rounds each part once and whose division cannot overflow for a non-zero
+divisor, with `exp`, `exprel` and `exprel2`. The Faddeeva function
+`faddeeva`, the complex `erf`, the exponential integral `e1` and the upper
+incomplete gamma function `gamma_upper`, for `a` in `(0, 128]`, work on any
+complex argument, on the principal branch. `erf`, `erfc`, `fresnel` and
+`gamma` take a real one.
+
 Slower: on the benchmarks I16F16 functions take 2.4 to 11 times as long as
 in 3.1.1, and I64F64 ones 1.3 to 9 times; `sqrt` is as fast or faster.
 

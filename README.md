@@ -55,6 +55,8 @@ fixed_analytics = { version = "4.0.0", default-features = false }
 | Turns | `sin_cos_turns`, `atan2_turns`, `div_by_tau`, `wrap_radians`, `wrap_principal` | — |
 | Ratios | `stumpff`, `tan_ratio`, `atan_ratio`, `tanh_ratio` | `atanh_ratio` |
 | Algebraic | `sqrt_or_zero`, `hypot`, `norm`, `scale_exponent`, `scale_by` | `sqrt`, `sqrt_product`, `rsqrt`, `normalize` |
+| Special | `erf`, `erfc`, `fresnel` | `gamma` |
+| Complex (`Complex`) | `exp`, `exprel`, `exprel2`, `faddeeva`, `erf` | `e1`, `gamma_upper` |
 | Elliptic | `ellip_e`, `jacobi_sn_cn_dn`, `jacobi_am` | `ellip_k`, `ellip_pi`, `ellip_pi_complete`, `jacobi_inverse`, `carlson_rf`, `carlson_rf_roots`, `carlson_rj`, `carlson_rj_roots`, `carlson_rc`, `carlson_rd` |
 | Arithmetic | `mul_add`, `mul_div`, `div_or_saturate`, `dot` | — |
 | Enclosures | `enclose`, `sin_cos_range`, `exp_range`, `atan_range`, `tanh_range` | — |
@@ -187,4 +189,27 @@ The largest error seen, in ulps of the type, against MPFR on exact inputs. The s
 | div_by_tau | 0.50 | 0.50 | 0.50 |
 | wrap_radians | 0.50 | 0.50 | 0.50 |
 | wrap_principal | 0.50 | 0.50 | 0.50 |
+| c_mul_re | 0.50 | 0.50 | 0.50 |
+| c_mul_im | 0.50 | 0.50 | 0.50 |
+| c_div_re | 0.50 | 0.50 | 0.50 |
+| c_div_im | 0.50 | 0.50 | 0.50 |
+| c_exp_re | 0.50 | 0.50 | 0.50 |
+| c_exp_im | 0.50 | 0.50 | 0.50 |
+| c_exprel_re | 0.50 | 0.50 | 0.50 |
+| c_exprel_im | 0.50 | 0.50 | 0.50 |
+| c_exprel2_re | 0.50 | 0.50 | 0.50 |
+| c_exprel2_im | 0.50 | 0.50 | 0.50 |
+| faddeeva_re | 0.50 | 0.50 | 0.50 |
+| faddeeva_im | 0.50 | 0.50 | 0.50 |
+| c_erf_re | 0.50 | 0.50 | 0.50 |
+| c_erf_im | 0.50 | 0.50 | 0.50 |
+| e1_re | 0.50 | 0.50 | 0.50 |
+| e1_im | 0.50 | 0.50 | 0.50 |
+| gamma_upper_re | 0.50 | 0.50 | 0.50 |
+| gamma_upper_im | 0.50 | 0.50 | 0.50 |
+| erf | 0.50 | 0.50 | 0.50 |
+| erfc | 0.50 | 0.50 | 0.50 |
+| fresnel_c | 0.50 | 0.50 | 0.50 |
+| fresnel_s | 0.50 | 0.50 | 0.50 |
+| gamma | 0.50 | 0.50 | 0.50 |
 <!-- WORST_END -->

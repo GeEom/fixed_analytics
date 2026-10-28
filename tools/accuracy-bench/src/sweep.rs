@@ -87,6 +87,29 @@ pub enum Fun {
     DivByTau,
     WrapRadians,
     WrapPrincipal,
+    CMulRe,
+    CMulIm,
+    CDivRe,
+    CDivIm,
+    CExpRe,
+    CExpIm,
+    CExprelRe,
+    CExprelIm,
+    CExprel2Re,
+    CExprel2Im,
+    FaddeevaRe,
+    FaddeevaIm,
+    CErfRe,
+    CErfIm,
+    E1Re,
+    E1Im,
+    GammaUpperRe,
+    GammaUpperIm,
+    Erf,
+    Erfc,
+    FresnelC,
+    FresnelS,
+    Gamma,
 }
 
 use Fun::*;
@@ -98,6 +121,7 @@ pub const ALL: &[Fun] = &[
     Expm1, Exprel, Exprel2, MomentE1, MomentE2, MomentE3, Log1p, Log1pRatio, Log1pResidual, Log1pResidualRatio, StumpffC0, StumpffC1, StumpffC2, StumpffC3, TanRatio, AtanRatio, AtanhRatio, TanhRatio,
     EllipK, EllipKm, EllipE, JacobiSn, JacobiCn, JacobiDn, JacobiAm, JacobiInverse, CarlsonRf, CarlsonRfRoots, CarlsonRj, CarlsonRc, CarlsonRd, EllipPi, EllipPiComplete,
     SinTurns, CosTurns, Atan2Turns, DivByTau, WrapRadians, WrapPrincipal,
+    CMulRe, CMulIm, CDivRe, CDivIm, CExpRe, CExpIm, CExprelRe, CExprelIm, CExprel2Re, CExprel2Im, FaddeevaRe, FaddeevaIm, CErfRe, CErfIm, E1Re, E1Im, GammaUpperRe, GammaUpperIm, Erf, Erfc, FresnelC, FresnelS, Gamma,
 ];
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -113,6 +137,24 @@ const SAMPLES: usize = 40_000;
 const PAIRS_16: usize = 1 << 18;
 /// Samples per type for the costly functions.
 const HEAVY_SAMPLES: usize = 3_000;
+
+/// CI's quick mode: an eighth of the samples, and only 8-bit types swept
+/// whole, so the run fits a small runner. Local runs, which write worst.txt,
+/// stay full.
+pub static QUICK: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+fn quick() -> bool {
+    QUICK.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+fn scaled(n: usize) -> usize {
+    if quick() { n / 8 } else { n }
+}
+
+/// Types this narrow are swept whole for one argument.
+fn exhaustive_bits() -> u32 {
+    if quick() { 8 } else { 16 }
+}
 
 pub const fn sample_count() -> usize {
     SAMPLES
@@ -153,7 +195,7 @@ fn elliptic_points<T: Sut>(fun: Fun, rng: &mut Rng) -> Vec<Vec<T>> {
     let unit: Vec<T> = any.iter().map(|&v| { let a = CordicNumber::abs(v); if a > one { T::from_rb(a.rb() % one.rb().max(1)) } else { a } }).collect();
     let pos: Vec<T> = any.iter().map(|&v| CordicNumber::abs(v)).collect();
     let pick = |rng: &mut Rng, v: &[T]| v[rng.below(v.len())];
-    (0..HEAVY_SAMPLES)
+    (0..scaled(HEAVY_SAMPLES))
         .map(|_| match fun {
             EllipK | EllipKm | EllipE => vec![pick(rng, &unit)],
             JacobiSn | JacobiCn | JacobiDn | JacobiAm => vec![pick(rng, &any), pick(rng, &unit)],
@@ -162,6 +204,9 @@ fn elliptic_points<T: Sut>(fun: Fun, rng: &mut Rng) -> Vec<Vec<T>> {
             CarlsonRj => (0..4).map(|_| pick(rng, &pos)).collect(),
             CarlsonRc => vec![pick(rng, &pos), pick(rng, &pos)],
             EllipPiComplete => vec![pick(rng, &any), pick(rng, &unit)],
+            FaddeevaRe | FaddeevaIm | CErfRe | CErfIm | E1Re | E1Im => vec![pick(rng, &any), pick(rng, &any)],
+            GammaUpperRe | GammaUpperIm => vec![pick(rng, &pos), pick(rng, &any), pick(rng, &any)],
+            FresnelC | FresnelS => vec![pick(rng, &any)],
             _ => {
                 let kc = pick(rng, &unit);
                 let phi = Float::with_val(PREC, rng.next() as f64 / u64::MAX as f64 * 6.2 - 3.1);
@@ -331,6 +376,29 @@ impl Fun {
             DivByTau => "div_by_tau",
             WrapRadians => "wrap_radians",
             WrapPrincipal => "wrap_principal",
+            CMulRe => "c_mul_re",
+            CMulIm => "c_mul_im",
+            CDivRe => "c_div_re",
+            CDivIm => "c_div_im",
+            CExpRe => "c_exp_re",
+            CExpIm => "c_exp_im",
+            CExprelRe => "c_exprel_re",
+            CExprelIm => "c_exprel_im",
+            CExprel2Re => "c_exprel2_re",
+            CExprel2Im => "c_exprel2_im",
+            FaddeevaRe => "faddeeva_re",
+            FaddeevaIm => "faddeeva_im",
+            CErfRe => "c_erf_re",
+            CErfIm => "c_erf_im",
+            E1Re => "e1_re",
+            E1Im => "e1_im",
+            GammaUpperRe => "gamma_upper_re",
+            GammaUpperIm => "gamma_upper_im",
+            Erf => "erf",
+            Erfc => "erfc",
+            FresnelC => "fresnel_c",
+            FresnelS => "fresnel_s",
+            Gamma => "gamma",
         }
     }
 
@@ -339,7 +407,10 @@ impl Fun {
             Atan2 | Pow | DivOrSaturate | Hypot | ScaleBy | SqrtProduct => 2,
             MulAdd | MulDiv | Norm3 | Normalize3 | CarlsonRf | CarlsonRfRoots | CarlsonRd => 3,
             JacobiSn | JacobiCn | JacobiDn | JacobiAm | CarlsonRc | EllipPiComplete | Atan2Turns => 2,
-            JacobiInverse | CarlsonRj => 4,
+            JacobiInverse | CarlsonRj | CMulRe | CMulIm | CDivRe | CDivIm => 4,
+            CExpRe | CExpIm | CExprelRe | CExprelIm | CExprel2Re | CExprel2Im | FaddeevaRe
+            | FaddeevaIm | CErfRe | CErfIm | E1Re | E1Im => 2,
+            GammaUpperRe | GammaUpperIm => 3,
             EllipPi => 5,
             Dot3 => 6,
             _ => 1,
@@ -424,6 +495,33 @@ impl Fun {
             DivByTau => Some(fa::div_by_tau(x)),
             WrapRadians => Some(fa::wrap_radians(x)),
             WrapPrincipal => Some(fa::wrap_principal(x)),
+            CMulRe | CMulIm | CDivRe | CDivIm => {
+                let (u, v) = (fa::Complex::new(x, a[1]), fa::Complex::new(a[2], a[3]));
+                let r = if matches!(self, CMulRe | CMulIm) { u * v } else { u / v };
+                Some(if matches!(self, CMulRe | CDivRe) { r.re } else { r.im })
+            }
+            CExpRe | CExpIm | CExprelRe | CExprelIm | CExprel2Re | CExprel2Im | FaddeevaRe
+            | FaddeevaIm | CErfRe | CErfIm | E1Re | E1Im => {
+                let z = fa::Complex::new(x, a[1]);
+                let r = match self {
+                    CExpRe | CExpIm => z.exp(),
+                    CExprelRe | CExprelIm => z.exprel(),
+                    CExprel2Re | CExprel2Im => z.exprel2(),
+                    FaddeevaRe | FaddeevaIm => z.faddeeva(),
+                    CErfRe | CErfIm => z.erf(),
+                    _ => z.e1().ok()?,
+                };
+                Some(if (self as u32) % 2 == (CExpRe as u32) % 2 { r.re } else { r.im })
+            }
+            GammaUpperRe | GammaUpperIm => {
+                let r = fa::Complex::new(a[1], a[2]).gamma_upper(x).ok()?;
+                Some(if self == GammaUpperRe { r.re } else { r.im })
+            }
+            Erf => Some(fa::erf(x)),
+            Erfc => Some(fa::erfc(x)),
+            FresnelC => Some(fa::fresnel(x).0),
+            FresnelS => Some(fa::fresnel(x).1),
+            Gamma => fa::gamma(x).ok(),
         }
     }
 
@@ -457,6 +555,9 @@ impl Fun {
                 a[4] >= zero && a[4] <= one && pole.is_sign_positive() && !pole.is_zero() && reachable && (a[2] != zero || a[3] != zero)
             }
             EllipPiComplete => x < one && a[1] > zero && a[1] <= one,
+            E1Re | E1Im => x != zero || a[1] != zero,
+            GammaUpperRe | GammaUpperIm => x > zero && x.to_float() <= 128,
+            Gamma => x > zero,
             Sqrt => x >= zero,
             AsinFromGap => x >= zero && x <= one + one,
             SqrtProduct => !((x < zero && a[1] > zero) || (x > zero && a[1] < zero)),
@@ -562,6 +663,61 @@ impl Fun {
                     }
                 }
             }
+            CMulRe | CMulIm | CDivRe | CDivIm => {
+                let p = PREC * 3;
+                let u = rug::Complex::with_val(p, (&a[0], &a[1]));
+                let v = rug::Complex::with_val(p, (&a[2], &a[3]));
+                let r = if matches!(self, CMulRe | CMulIm) {
+                    u * v
+                } else if v.is_zero() {
+                    let part = |c: &Float| ratio(c.clone(), &Float::with_val(PREC, 0));
+                    return if self == CDivRe { part(u.real()) } else { part(u.imag()) };
+                } else {
+                    u / v
+                };
+                if matches!(self, CMulRe | CDivRe) { r.real().clone() } else { r.imag().clone() }
+            }
+            CExpRe | CExpIm | CExprelRe | CExprelIm | CExprel2Re | CExprel2Im => {
+                let p = PREC * 3;
+                let z = rug::Complex::with_val(p, (&a[0], &a[1]));
+                let r = if z.is_zero() {
+                    let at = match self { CExpRe | CExpIm => 1.0, CExprelRe | CExprelIm => 1.0, _ => 0.5 };
+                    rug::Complex::with_val(p, (at, 0))
+                } else {
+                    let e = crate::complex_ref::exp_capped(&z);
+                    let em1 = rug::Complex::with_val(p, &e - 1u32);
+                    match self {
+                        CExpRe | CExpIm => e,
+                        CExprelRe | CExprelIm => em1 / &z,
+                        _ => (em1 - &z) / rug::Complex::with_val(p, &z * &z),
+                    }
+                };
+                if (self as u32) % 2 == (CExpRe as u32) % 2 { r.real().clone() } else { r.imag().clone() }
+            }
+            FaddeevaRe | FaddeevaIm | CErfRe | CErfIm | E1Re | E1Im => {
+                use crate::complex_ref as cr;
+                let r = match self {
+                    FaddeevaRe | FaddeevaIm => cr::faddeeva(&a[0], &a[1]),
+                    CErfRe | CErfIm => cr::erf(&a[0], &a[1]),
+                    _ => cr::e1(&a[0], &a[1]),
+                };
+                if (self as u32) % 2 == (CExpRe as u32) % 2 { r.real().clone() } else { r.imag().clone() }
+            }
+            GammaUpperRe | GammaUpperIm => {
+                let r = crate::complex_ref::gamma_upper(&a[0], &a[1], &a[2]);
+                if self == GammaUpperRe { r.real().clone() } else { r.imag().clone() }
+            }
+            Erf => Float::with_val(PREC * 3, &x).erf(),
+            Erfc => Float::with_val(PREC * 3, &x).erfc(),
+            FresnelC | FresnelS => {
+                let p = PREC * 3;
+                let c = Float::with_val(p, Constant::Pi).sqrt() / 2u32 * &x;
+                let e = crate::complex_ref::erf(&c, &Float::with_val(p, -&c));
+                let half = rug::Complex::with_val(p, (0.5, 0.5));
+                let r = half * e;
+                if self == FresnelC { r.real().clone() } else { r.imag().clone() }
+            }
+            Gamma => Float::with_val(PREC * 3, &x).gamma(),
             Atan2Turns => {
                 let p = PREC * 3;
                 Float::with_val(p, x.atan2(&a[1])) / (Float::with_val(p, Constant::Pi) * 2u32)
@@ -579,6 +735,8 @@ impl Fun {
     pub fn heavy(self) -> bool {
         matches!(
             self,
+            FaddeevaRe | FaddeevaIm | CErfRe | CErfIm | E1Re | E1Im | GammaUpperRe | GammaUpperIm
+                | FresnelC | FresnelS |
             EllipK | EllipKm | EllipE | JacobiSn | JacobiCn | JacobiDn | JacobiAm | JacobiInverse
                 | CarlsonRf | CarlsonRfRoots | CarlsonRj | CarlsonRc | CarlsonRd | EllipPi
                 | EllipPiComplete
@@ -594,7 +752,7 @@ impl Fun {
     pub fn parity(self) -> Parity {
         match self {
             Sin | Tan | Asin | Atan | Sinh | Tanh | Coth | Asinh | Atanh | Acoth | SinTurns
-            | DivByTau => Parity::Odd,
+            | DivByTau | Erf | FresnelC | FresnelS => Parity::Odd,
             Cos | Cosh | TanRatio | AtanRatio | AtanhRatio | TanhRatio | CosTurns => Parity::Even,
             _ => Parity::Neither,
         }
@@ -621,7 +779,8 @@ impl Fun {
             Ln | Log2 | Log10 => vec![(zero, inf, true)],
             Rsqrt => vec![(zero, inf, false)],
             SinTurns => vec![(f(-0.25), f(0.25), true)],
-            DivByTau => vec![(ninf, inf, true)],
+            DivByTau | Erf => vec![(ninf, inf, true)],
+            Erfc => vec![(ninf, inf, false)],
             Expm1 | Exprel | Exprel2 | Log1p => vec![(ninf, inf, true)],
             MomentE1 | MomentE2 | MomentE3 | Log1pRatio => vec![(ninf, inf, false)],
             StumpffC0 | StumpffC1 | StumpffC2 | StumpffC3 => vec![(ninf, zero.clone() + f(1e-300), false)],
@@ -776,10 +935,10 @@ fn points<T: Sut>(fun: Fun, rng: &mut Rng) -> Vec<Vec<T>> {
         return elliptic_points(fun, rng);
     }
     if fun.arity() == 1 {
-        let xs = if T::bits() <= 16 {
+        let xs = if T::bits() <= exhaustive_bits() {
             all::<T>()
         } else {
-            candidates::<T>(fun, rng, SAMPLES)
+            candidates::<T>(fun, rng, scaled(SAMPLES))
         };
         return xs.into_iter().map(|x| vec![x]).collect();
     }
@@ -787,9 +946,9 @@ fn points<T: Sut>(fun: Fun, rng: &mut Rng) -> Vec<Vec<T>> {
         let xs = if T::bits() <= 16 {
             all::<T>()
         } else {
-            candidates::<T>(fun, rng, SAMPLES)
+            candidates::<T>(fun, rng, scaled(SAMPLES))
         };
-        let n = if T::bits() <= 16 { PAIRS_16 } else { SAMPLES };
+        let n = scaled(if T::bits() <= 16 { PAIRS_16 } else { SAMPLES });
         return (0..n)
             .map(|_| (0..fun.arity()).map(|_| xs[rng.below(xs.len())]).collect())
             .collect();
@@ -801,7 +960,7 @@ fn points<T: Sut>(fun: Fun, rng: &mut Rng) -> Vec<Vec<T>> {
             .flat_map(|&x| xs.iter().map(move |&y| vec![x, y]))
             .collect();
     }
-    let n = if T::bits() <= 16 { PAIRS_16 } else { SAMPLES };
+    let n = scaled(if T::bits() <= 16 { PAIRS_16 } else { SAMPLES });
     let xs = if T::bits() <= 16 {
         all::<T>()
     } else {

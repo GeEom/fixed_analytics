@@ -3,21 +3,12 @@
 use crate::consts::{FRAC_1_LN_10, LN_2};
 use crate::error::{Error, Result};
 use crate::eval::{
-    HUGE, W, beyond, exp as exp_work, expm1 as expm1_work, fixed, ln as ln_work,
+    HUGE, W, exp as exp_work, exp_wide, expm1 as expm1_work, fixed, ln as ln_work,
     log1p as log1p_work, log1p_minus, log1p_minus_ratio, log1p_ratio as log1p_ratio_work,
     log2 as log2_work, phi, work,
 };
 use crate::real::Work;
 use crate::traits::CordicNumber;
-
-/// `e^v`, or for `|v|` past [`HUGE`] a value every type saturates or rounds
-/// to zero from.
-fn exp_wide<T: CordicNumber>(v: W<T>) -> W<T> {
-    if v.abs() > W::<T>::from_int(HUGE) {
-        return if v.is_neg() { W::<T>::zero() } else { beyond() };
-    }
-    exp_work(v)
-}
 
 /// Exponential function e^x. Saturates to `T::MAX` above `ln(T::MAX)` and to
 /// zero where e^x rounds below half an ulp; the [module docs](self) list the
@@ -28,7 +19,7 @@ fn exp_wide<T: CordicNumber>(v: W<T>) -> W<T> {
     no_panic::no_panic
 )]
 pub fn exp<T: CordicNumber>(x: T) -> T {
-    fixed(exp_wide::<T>(work(x)))
+    fixed(exp_wide::<W<T>>(work(x)))
 }
 
 /// Power `base^exponent`, as `exp(exponent · ln|base|)`, saturating like
@@ -56,7 +47,7 @@ pub fn pow<T: CordicNumber>(base: T, exponent: T) -> Result<T> {
             ))
         };
     }
-    let magnitude = exp_wide::<T>(work(exponent) * ln_work(work(base).abs()));
+    let magnitude = exp_wide::<W<T>>(work(exponent) * ln_work(work(base).abs()));
     if !base.is_negative() {
         return Ok(fixed(magnitude));
     }
