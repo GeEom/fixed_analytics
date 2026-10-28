@@ -66,6 +66,19 @@ incomplete gamma function `gamma_upper`, for `a` in `(0, 128]`, work on any
 complex argument, on the principal branch. `erf`, `erfc`, `fresnel` and
 `gamma` take a real one.
 
+`exp_moments` returns `[E₁, …, E₅, e^(−x)]`, the moments up to `k = 5` all
+from one exponential.
+
+New: `Complex::exprel_weighted`, `exprel` and `exprel2` under the weight
+`((1 − εt)/(1 − εs))^p/(1 − εs)` for complex `z`, `ε` in `[0, 1)` and `p ≥ 0`,
+which keep their precision as `ε → 0`; the complex logarithm `Complex::ln`
+and real power `Complex::pow`, exact in phase on the axes and diagonals;
+`Complex::saturating_add`, `saturating_sub`, `saturating_mul`,
+`saturating_div` and `saturating_neg`, the operators by name; `mul_by_tau`,
+turns to radians rounded once, and `sin_cos_range_turns`; `root_in`, a
+bracketed root finder by the ITP method with a fixed budget; and
+`kepler_universal`, the universal anomaly of a two-body orbit.
+
 Slower: on the benchmarks I16F16 functions take 2.4 to 11 times as long as
 in 3.1.1, and I64F64 ones 1.3 to 9 times; `sqrt` is as fast or faster.
 

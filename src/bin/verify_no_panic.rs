@@ -10,7 +10,7 @@ use fixed_analytics::CordicNumber;
 use fixed_analytics::bounded::{NonNegative, OpenUnitInterval};
 use fixed_analytics::ops::algebraic::sqrt_nonneg;
 use fixed_analytics::ops::hyperbolic::atanh_open;
-use fixed_analytics::{Complex, erf, erfc, fresnel, gamma};
+use fixed_analytics::{Complex, erf, erfc, fresnel, gamma, kepler_universal, root_in};
 use fixed_analytics::{
     Modulus, carlson_rc, carlson_rd, carlson_rf, carlson_rf_roots, carlson_rj, carlson_rj_roots,
     ellip_e, ellip_k, ellip_pi, ellip_pi_complete, jacobi_am, jacobi_inverse, jacobi_sn_cn_dn,
@@ -25,7 +25,10 @@ use fixed_analytics::{
     atan_ratio, atanh_ratio, exp_moments, expm1, exprel, exprel2, log1p, log1p_ratio,
     log1p_residual, log1p_residual_ratio, stumpff, tan_ratio, tanh_ratio,
 };
-use fixed_analytics::{atan2_turns, div_by_tau, sin_cos_turns, wrap_principal, wrap_radians};
+use fixed_analytics::{
+    atan2_turns, div_by_tau, mul_by_tau, sin_cos_range_turns, sin_cos_turns, wrap_principal,
+    wrap_radians,
+};
 
 /// Hands `v` to `black_box`, so the optimizer must compute it in full.
 fn keep<V>(v: V) {
@@ -116,6 +119,8 @@ fn exercise_more<T: CordicNumber>(x: T, y: T, two: T) {
     keep(sin_cos_turns(x));
     keep(atan2_turns(y, x));
     keep(div_by_tau(x));
+    keep(mul_by_tau(x));
+    keep(sin_cos_range_turns(x, y));
     keep(wrap_radians(x));
     keep(wrap_principal(x));
     let z = Complex::new(x, y);
@@ -125,6 +130,14 @@ fn exercise_more<T: CordicNumber>(x: T, y: T, two: T) {
     keep(z * w);
     keep(z / w);
     keep(-z);
+    keep(z.saturating_add(w));
+    keep(z.saturating_sub(w));
+    keep(z.saturating_mul(w));
+    keep(z.saturating_div(w));
+    keep(z.saturating_neg());
+    keep(z.ln());
+    keep(z.pow(two));
+    keep(z.exprel_weighted(y, two));
     keep(z.conj());
     keep(z.norm());
     keep(z.arg());
@@ -139,6 +152,8 @@ fn exercise_more<T: CordicNumber>(x: T, y: T, two: T) {
     keep(erfc(x));
     keep(fresnel(x));
     keep(gamma(x));
+    keep(root_in(|t: T| t.saturating_sub(y), x, two, 40));
+    keep(kepler_universal(two, y, x, two));
 
     if let Some(nn) = NonNegative::new(x) {
         keep(sqrt_nonneg(nn));

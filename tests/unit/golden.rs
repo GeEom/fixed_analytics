@@ -24,7 +24,10 @@ mod tests {
         atan_ratio, atanh_ratio, exp_moments, expm1, exprel, exprel2, log1p, log1p_ratio,
         log1p_residual, log1p_residual_ratio, stumpff, tan_ratio, tanh_ratio,
     };
-    use fixed_analytics::{atan2_turns, div_by_tau, sin_cos_turns, wrap_principal, wrap_radians};
+    use fixed_analytics::{
+        atan2_turns, div_by_tau, kepler_universal, mul_by_tau, root_in, sin_cos_range_turns,
+        sin_cos_turns, wrap_principal, wrap_radians,
+    };
     use std::collections::BTreeMap;
     use std::fmt::Write;
 
@@ -105,6 +108,10 @@ mod tests {
         "div_by_tau",
         "wrap_radians",
         "wrap_principal",
+        "mul_by_tau",
+        "sin_cos_range_turns",
+        "root_in",
+        "kepler_universal",
         "complex_mul",
         "complex_div",
         "complex_exp",
@@ -114,6 +121,9 @@ mod tests {
         "complex_erf",
         "complex_e1",
         "complex_gamma_upper",
+        "complex_ln",
+        "complex_pow",
+        "complex_exprel_weighted",
         "erf",
         "erfc",
         "fresnel",
@@ -220,10 +230,7 @@ mod tests {
             "expm1" => one(expm1(x)),
             "exprel" => one(exprel(x)),
             "exprel2" => one(exprel2(x)),
-            "exp_moments" => {
-                let [e1, e2, e3, decay] = exp_moments(x);
-                [Some(e1.saturating_add(e2)), Some(e3.saturating_add(decay))]
-            }
+            "exp_moments" => moments(x),
             "log1p" => res(log1p(x)),
             "log1p_ratio" => res(log1p_ratio(x)),
             "log1p_residual" => res(log1p_residual(x)),
@@ -247,6 +254,9 @@ mod tests {
             "div_by_tau" => one(div_by_tau(x)),
             "wrap_radians" => one(wrap_radians(x)),
             "wrap_principal" => one(wrap_principal(x)),
+            "mul_by_tau" | "sin_cos_range_turns" | "root_in" | "kepler_universal" => {
+                solving(name, x, y)
+            }
             "erf" => one(erf(x)),
             "erfc" => one(erfc(x)),
             "fresnel" => pair(fresnel(x)),
@@ -254,6 +264,36 @@ mod tests {
             n if n.starts_with("complex") => complex(n, x, y),
             _ => elliptic(name, x, y),
         }
+    }
+
+    fn solving<T: CordicNumber>(name: &str, x: T, y: T) -> [Option<T>; 2] {
+        let one = |v: T| [Some(v), None];
+        let res = |v: fixed_analytics::Result<T>| [v.ok(), None];
+        match name {
+            "mul_by_tau" => one(mul_by_tau(x)),
+            "sin_cos_range_turns" => {
+                let ((s_lo, s_hi), (c_lo, c_hi)) = sin_cos_range_turns(x, y);
+                [
+                    Some(s_lo.saturating_add(s_hi)),
+                    Some(c_lo.saturating_add(c_hi)),
+                ]
+            }
+            "root_in" => {
+                let top = x.abs().saturating_add(T::one());
+                let rise = |t: T| exp(t).saturating_sub(top);
+                root_in(rise, T::zero(), top, 64).map_or([None, None], pair)
+            }
+            "kepler_universal" => res(kepler_universal(T::one(), T::zero(), y, x)),
+            _ => [None, None],
+        }
+    }
+
+    fn moments<T: CordicNumber>(x: T) -> [Option<T>; 2] {
+        let [e1, e2, e3, e4, e5, decay] = exp_moments(x);
+        [
+            Some(e1.saturating_add(e2).saturating_add(e4)),
+            Some(e3.saturating_add(e5).saturating_add(decay)),
+        ]
     }
 
     /// The complex functions of `x + iy`, both parts.
@@ -271,6 +311,17 @@ mod tests {
             "complex_erf" => parts(z.erf()),
             "complex_e1" => z.e1().map_or([None, None], parts),
             "complex_gamma_upper" => z.gamma_upper(T::two()).map_or([None, None], parts),
+            "complex_ln" => z.ln().map_or([None, None], parts),
+            "complex_pow" => z.pow(T::two() + T::half()).map_or([None, None], parts),
+            "complex_exprel_weighted" => {
+                let eps = if x.abs() < T::one() {
+                    x.abs()
+                } else {
+                    T::half()
+                };
+                z.exprel_weighted(eps, y.abs())
+                    .map_or([None, None], |(k1, k2)| parts(k1 + k2))
+            }
             _ => [None, None],
         }
     }

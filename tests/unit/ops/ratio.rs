@@ -12,7 +12,10 @@ mod tests {
         let z = I32F32::ZERO;
         assert_eq!(exprel(z), I32F32::ONE);
         assert_eq!(exprel2(z), I32F32::from_num(0.5));
-        assert_eq!(exp_moments(z)[..2], [I32F32::ONE, I32F32::from_num(0.5)]);
+        assert_eq!(
+            exp_moments(z),
+            [1.0, 0.5, 1.0 / 3.0, 0.25, 0.2, 1.0].map(I32F32::from_num)
+        );
         assert_eq!(log1p_ratio(z)?, I32F32::ONE);
         assert_eq!(log1p_residual_ratio(z)?, I32F32::from_num(-0.5));
         assert_eq!(
@@ -56,12 +59,14 @@ mod tests {
     #[test]
     fn moments_and_relatives_agree() {
         let x = I32F32::from_num(2);
-        let [e1, e2, e3, decay] = exp_moments(x);
+        let [e1, e2, e3, e4, e5, decay] = exp_moments(x);
         let ex = core::f64::consts::E.powi(-2);
         let close = |a: I32F32, b: f64| (a.to_num::<f64>() - b).abs() < 1e-9;
         assert!(close(e1, (1.0 - ex) / 2.0));
         assert!(close(e2, ex.mul_add(-3.0, 1.0) / 4.0));
         assert!(close(e3, ex.mul_add(-10.0, 2.0) / 8.0));
+        assert!(close(e4, ex.mul_add(-38.0, 6.0) / 16.0));
+        assert!(close(e5, ex.mul_add(-168.0, 24.0) / 32.0));
         assert!(close(decay, ex));
         assert!(close(
             exprel(x),
@@ -78,6 +83,6 @@ mod tests {
         assert_eq!(tan_ratio(I16F16::FRAC_PI_2).0, I16F16::MAX);
         assert_eq!(tan_ratio(I16F16::FRAC_PI_2 + I16F16::DELTA).0, I16F16::MIN);
         assert_eq!(exprel(I16F16::from_num(30)), I16F16::MAX);
-        assert_eq!(exp_moments(I16F16::from_num(-40))[3], I16F16::MAX);
+        assert_eq!(exp_moments(I16F16::from_num(-40)), [I16F16::MAX; 6]);
     }
 }

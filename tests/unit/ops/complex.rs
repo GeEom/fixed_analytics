@@ -33,6 +33,103 @@ mod tests {
     }
 
     #[test]
+    fn named_methods_are_the_operators() {
+        let (a, b) = (z(1.5, -2.25), z(-0.75, 0.5));
+        assert_eq!(a.saturating_add(b), a + b);
+        assert_eq!(a.saturating_sub(b), a - b);
+        assert_eq!(a.saturating_mul(b), a * b);
+        assert_eq!(a.saturating_div(b), a / b);
+        assert_eq!(a.saturating_neg(), -a);
+    }
+
+    #[test]
+    fn ln_and_pow_match_mpmath() -> TestResult {
+        let w = z(-3.0, 4.0);
+        assert!(near(
+            w.ln()?,
+            1.609_437_912_434_100_4,
+            2.214_297_435_588_181
+        ));
+        assert!(near(w.pow(I64F64::from_num(0.5))?, 1.0, 2.0));
+        assert!(near(
+            w.pow(I64F64::from_num(-1.25))?,
+            -0.124_516_151_201_356_84,
+            -0.048_829_006_850_428_146
+        ));
+        assert!(z(0.0, 0.0).ln().is_err());
+        assert!(z(0.0, 0.0).pow(-I64F64::ONE).is_err());
+        assert_eq!(z(0.0, 0.0).pow(I64F64::ZERO)?, z(1.0, 0.0));
+        assert_eq!(z(0.0, 2.0).pow(I64F64::from_num(3))?, z(0.0, -8.0));
+        assert_eq!(z(-1.0, 1.0).pow(I64F64::from_num(4))?, z(-4.0, 0.0));
+        let big = Complex::new(I16F0::from_num(0), I16F0::from_num(30));
+        assert_eq!(big.pow(I16F0::from_num(7))?.re, I16F0::ZERO);
+        Ok(())
+    }
+
+    #[test]
+    fn weighted_exprel_matches_mpmath() -> TestResult {
+        let t = |x: f64| I64F64::from_num(x);
+        let check = |w: Complex<I64F64>, eps: f64, p: f64, k: [f64; 4]| -> TestResult {
+            let (k1, k2) = w.exprel_weighted(t(eps), t(p))?;
+            assert!(near(k1, k[0], k[1]), "{w:?} {eps} {p}: {k1:?}");
+            assert!(near(k2, k[2], k[3]), "{w:?} {eps} {p}: {k2:?}");
+            Ok(())
+        };
+        check(
+            z(0.3, 2.0),
+            0.25,
+            1.5,
+            [
+                0.359_227_728_201_932_8,
+                0.870_528_713_966_726_7,
+                0.345_972_961_403_165_2,
+                0.321_314_056_573_191_9,
+            ],
+        )?;
+        check(
+            z(0.0, 40.0),
+            0.062_5,
+            3.0,
+            [
+                0.019_621_287_045_008_31,
+                0.038_514_840_070_235_416,
+                0.000_931_489_629_153_719_7,
+                0.022_263_155_901_843_38,
+            ],
+        )?;
+        check(
+            z(-1.0, 0.5),
+            0.875,
+            0.0,
+            [
+                1.210_862_569_552_848,
+                0.359_836_283_700_871,
+                0.526_759_808_612_434_7,
+                0.096_898_276_774_117,
+            ],
+        )?;
+        check(
+            z(0.0, 1.0),
+            2f64.powi(-40),
+            2f64.powi(30),
+            [
+                0.841_022_212_426_340_8,
+                0.459_542_919_068_431_9,
+                0.459_542_919_068_287_8,
+                0.158_489_665_230_998_7,
+            ],
+        )?;
+        let w = z(0.75, -1.5);
+        assert_eq!(
+            w.exprel_weighted(t(0.0), t(4.0))?,
+            (w.exprel(), w.exprel2())
+        );
+        assert!(w.exprel_weighted(t(1.0), t(0.0)).is_err());
+        assert!(w.exprel_weighted(t(0.5), t(-1.0)).is_err());
+        Ok(())
+    }
+
+    #[test]
     fn exponentials_match_mpmath() {
         let one = z(1.0, 0.0);
         assert!(near(one.exp(), core::f64::consts::E, 0.0));

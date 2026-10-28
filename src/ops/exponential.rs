@@ -5,7 +5,7 @@ use crate::error::{Error, Result};
 use crate::eval::{
     HUGE, W, exp as exp_work, exp_wide, expm1 as expm1_work, fixed, ln as ln_work,
     log1p as log1p_work, log1p_minus, log1p_minus_ratio, log1p_ratio as log1p_ratio_work,
-    log2 as log2_work, phi, work,
+    log2 as log2_work, phi, phis, work,
 };
 use crate::real::Work;
 use crate::traits::CordicNumber;
@@ -164,39 +164,35 @@ pub fn exprel2<T: CordicNumber>(x: T) -> T {
     fixed(phi(2, work(x)))
 }
 
-/// `[E₁, E₂, E₃, e^(−x)]`, with `Eₖ(x) = ∫₀¹ s^(k−1)·e^(−xs) ds`.
+/// `[E₁, E₂, E₃, E₄, E₅, e^(−x)]`, with `Eₖ(x) = ∫₀¹ s^(k−1)·e^(−xs) ds`.
 #[must_use]
 #[cfg_attr(
     all(feature = "verify-no-panic", not(debug_assertions)),
     no_panic::no_panic
 )]
-pub fn exp_moments<T: CordicNumber>(x: T) -> [T; 4] {
+pub fn exp_moments<T: CordicNumber>(x: T) -> [T; 6] {
     let v = work(x);
-    if v > W::<T>::from_int(HUGE) {
-        let one = W::<T>::one();
-        let e1 = one / v;
-        return [
-            fixed(e1),
-            fixed(e1 / v),
-            fixed((e1 / v.square()).ldexp(1)),
-            T::zero(),
-        ];
-    }
     if v < W::<T>::from_int(-HUGE) {
-        return [
-            T::max_value(),
-            T::max_value(),
-            T::max_value(),
-            T::max_value(),
-        ];
+        return [T::max_value(); 6];
     }
-    let decay = exp_work(-v);
-    [
-        fixed(decay * phi(1, v)),
-        fixed(decay * phi(2, v)),
-        fixed((decay * phi(3, v)).ldexp(1)),
-        fixed(decay),
-    ]
+    let (decay, parts) = if v > W::<T>::from_int(HUGE) {
+        let mut power = W::<T>::one();
+        (
+            W::<T>::zero(),
+            [0; 5].map(|_| {
+                power = power / v;
+                power
+            }),
+        )
+    } else {
+        let decay = exp_work(-v);
+        (decay, phis(v).map(|p| decay * p))
+    };
+    let mut out = [fixed(decay); 6];
+    for ((slot, part), factorial) in out.iter_mut().zip(parts).zip([1, 1, 2, 6, 24]) {
+        *slot = fixed(part.mul_int(factorial));
+    }
+    out
 }
 
 /// `ln(1 + v)`, to full relative precision near 0. Domain: `v > −1`.

@@ -4,8 +4,20 @@ mod tests {
     use fixed::types::extra::U64;
     use fixed::types::{I16F16, I32F32, I64F64};
     use fixed_analytics::{
-        atan2_turns, div_by_tau, sin_cos, sin_cos_turns, wrap_principal, wrap_radians,
+        atan2_turns, div_by_tau, mul_by_tau, sin_cos, sin_cos_turns, wrap_principal, wrap_radians,
     };
+
+    #[test]
+    fn mul_by_tau_rounds_once() {
+        // fixed's PI and FRAC_PI_2 truncate; these round to nearest.
+        let pi = I32F32::from_num(core::f64::consts::PI);
+        assert_eq!(mul_by_tau(I32F32::from_num(0.5)), pi);
+        let quarter = fixed_analytics::atan2(I64F64::ONE, I64F64::ZERO);
+        assert_eq!(mul_by_tau(I64F64::from_num(-0.25)), -quarter);
+        assert_eq!(mul_by_tau(I16F16::from_num(10_000)), I16F16::MAX);
+        let t = I64F64::from_num(0.123_456_789);
+        assert_eq!(div_by_tau(mul_by_tau(t)), t);
+    }
 
     #[test]
     fn quarter_turns_are_exact() {

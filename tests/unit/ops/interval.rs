@@ -2,7 +2,9 @@
 mod tests {
     use crate::unit::support::Lcg;
     use fixed::types::{I16F16, I32F32};
-    use fixed_analytics::{atan_range, enclose, exp, exp_range, sin, sin_cos_range, tanh_range};
+    use fixed_analytics::{
+        atan_range, enclose, exp, exp_range, sin, sin_cos_range, sin_cos_range_turns, tanh_range,
+    };
 
     #[test]
     fn enclose_spans_an_ulp_each_way() {
@@ -27,6 +29,45 @@ mod tests {
         let (s, _) = sin_cos_range(I32F32::from_num(0.25), I32F32::from_num(0.5));
         assert!(s.0 <= sin(I32F32::from_num(0.25)) && sin(I32F32::from_num(0.5)) <= s.1);
         assert!(s.1 < I32F32::ONE);
+    }
+
+    #[test]
+    fn turn_ranges_hold_every_sampled_value() {
+        let quarter = I32F32::from_num(0.25);
+        let below = -I32F32::DELTA;
+        assert_eq!(
+            sin_cos_range_turns(I32F32::ZERO, quarter),
+            ((below, I32F32::ONE), (below, I32F32::ONE))
+        );
+        assert_eq!(
+            sin_cos_range_turns(I32F32::from_num(-3), I32F32::from_num(-2)),
+            ((-I32F32::ONE, I32F32::ONE), (-I32F32::ONE, I32F32::ONE))
+        );
+        let mut rng = Lcg(0x7E57);
+        for _ in 0..2000 {
+            let a = rng.range(-8.0, 8.0);
+            let b = a + rng.range(0.0, 0.6);
+            let (lo, hi) = (I32F32::from_num(a), I32F32::from_num(b));
+            let ((smin, smax), (cmin, cmax)) = sin_cos_range_turns(hi, lo);
+            for k in 0..=16 {
+                let t = lo.to_num::<f64>().mul_add(
+                    1.0 - f64::from(k) / 16.0,
+                    hi.to_num::<f64>() * f64::from(k) / 16.0,
+                );
+                let x = t * core::f64::consts::TAU;
+                let inside = |v: f64, l: I32F32, h: I32F32| {
+                    l.to_num::<f64>() - 1e-12 <= v && v <= h.to_num::<f64>() + 1e-12
+                };
+                assert!(
+                    inside(x.sin(), smin, smax),
+                    "sin at {t} turns outside [{smin}, {smax}]"
+                );
+                assert!(
+                    inside(x.cos(), cmin, cmax),
+                    "cos at {t} turns outside [{cmin}, {cmax}]"
+                );
+            }
+        }
     }
 
     #[test]

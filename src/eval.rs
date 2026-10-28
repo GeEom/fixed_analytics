@@ -2,7 +2,8 @@
 //! which convert in exactly and round once on the way out.
 
 use crate::consts::{
-    ATAN_SIXTEENTHS, COS_PI_128THS, EXP2_32NDS, FRAC_1_LN_2, LN_2, LN_SIXTEENTHS, PI, SIN_PI_128THS,
+    ATAN_SIXTEENTHS, COS_PI_128THS, EXP2_32NDS, FRAC_1_LN_2, INV_FACT, LN_2, LN_SIXTEENTHS, PI,
+    SIN_PI_128THS,
 };
 use crate::real::Work;
 use crate::series::{FACT, ODD};
@@ -202,6 +203,34 @@ pub fn phi<V: Work>(k: u32, z: V) -> V {
         den = den * z;
     }
     num / den
+}
+
+/// `φ₁` to `φ₅`: near 0 `φ₅`'s series and `φₖ = 1/k! + z·φₖ₊₁`, past it `φ₁` from `expm1`
+/// and `φₖ₊₁ = (φₖ − 1/k!)/z`, losing at most 11 bits, at `|z| = ½`.
+pub fn phis<V: Work>(z: V) -> [V; 5] {
+    let inv_fact = |k: usize| INV_FACT.get(k).map_or_else(V::zero, V::constant);
+    let mut out = [V::zero(); 5];
+    if z.abs() <= V::one().ldexp(-1) {
+        let mut next = V::horner(z, &FACT, 5, 1, by_width::<V>([18, 30, 39]), false);
+        for (k, slot) in out.iter_mut().enumerate().rev() {
+            *slot = next;
+            next = inv_fact(k) + z * next;
+        }
+        return out;
+    }
+    if z > V::from_int(HUGE) {
+        return [beyond(); 5];
+    }
+    let mut cur = if z < V::from_int(-HUGE) {
+        -V::one()
+    } else {
+        expm1(z)
+    } / z;
+    for (k, slot) in out.iter_mut().enumerate() {
+        *slot = cur;
+        cur = (cur - inv_fact(k + 1)) / z;
+    }
+    out
 }
 
 /// `ln(1 + v) − v`, `v > −1`; near 0 `2s³·Σ s^{2k}/(2k + 3) − v²/(2 + v)`, `s = v/(2 + v)`,
