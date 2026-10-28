@@ -163,14 +163,13 @@ fn rf<V: Work>(x0: V, y0: V, z0: V, roots: Option<[V; 3]>) -> V {
     series / mean.sqrt()
 }
 
-/// The closing series of `R_J` and `R_D`, Carlson (1995).
+/// The closing series of `R_J` and `R_D` through degree 7, DLMF 19.36.2.
 fn rj_series<V: Work>(e2: V, e3: V, e4: V, e5: V) -> V {
     let low =
         V::one() - e2.mul_int(3).div_int(14) + e3.div_int(6) + e2.square().mul_int(9).div_int(88)
             - e4.mul_int(3).div_int(22)
             - (e2 * e3).mul_int(9).div_int(52)
             + e5.mul_int(3).div_int(26);
-    // DLMF 19.36.2's terms of degrees 6 and 7.
     let high = -(e2.square() * e2).div_int(16)
         + e3.square().mul_int(3).div_int(40)
         + (e2 * e4).mul_int(3).div_int(20)
