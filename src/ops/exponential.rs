@@ -2,7 +2,11 @@
 
 use crate::consts::{FRAC_1_LN_10, LN_2};
 use crate::error::{Error, Result};
-use crate::eval::{HUGE, W, exp as exp_work, fixed, ln as ln_work, log2 as log2_work, work};
+use crate::eval::{
+    HUGE, W, beyond, exp as exp_work, expm1 as expm1_work, fixed, ln as ln_work,
+    log1p as log1p_work, log1p_minus, log1p_minus_ratio, log1p_ratio as log1p_ratio_work,
+    log2 as log2_work, phi, work,
+};
 use crate::real::Work;
 use crate::traits::CordicNumber;
 
@@ -10,8 +14,7 @@ use crate::traits::CordicNumber;
 /// to zero from.
 fn exp_wide<T: CordicNumber>(v: W<T>) -> W<T> {
     if v.abs() > W::<T>::from_int(HUGE) {
-        let edge = W::<T>::one().ldexp(256);
-        return if v.is_neg() { W::<T>::zero() } else { edge };
+        return if v.is_neg() { W::<T>::zero() } else { beyond() };
     }
     exp_work(v)
 }
@@ -132,4 +135,131 @@ pub fn pow2<T: CordicNumber>(x: T) -> T {
     let r = W::<T>::from_raw(x.raw_i128() - (k << T::frac_bits()), T::frac_bits());
     let k = i32::try_from(k).unwrap_or(0);
     fixed(exp_work(r * W::<T>::constant(&LN_2)).ldexp(k))
+}
+
+/// `e^x − 1`, to full relative precision near 0, saturating like [`exp`].
+#[must_use]
+#[cfg_attr(
+    all(feature = "verify-no-panic", not(debug_assertions)),
+    no_panic::no_panic
+)]
+pub fn expm1<T: CordicNumber>(x: T) -> T {
+    let v = work(x);
+    if v > W::<T>::from_int(HUGE) {
+        return T::max_value();
+    }
+    if v < W::<T>::from_int(-HUGE) {
+        return -T::one();
+    }
+    fixed(expm1_work(v))
+}
+
+/// `(e^x − 1)/x`, which is 1 at 0, saturating for large `x`.
+#[must_use]
+#[cfg_attr(
+    all(feature = "verify-no-panic", not(debug_assertions)),
+    no_panic::no_panic
+)]
+pub fn exprel<T: CordicNumber>(x: T) -> T {
+    fixed(phi(1, work(x)))
+}
+
+/// `(e^x − 1 − x)/x²`, which is ½ at 0, saturating for large `x`.
+#[must_use]
+#[cfg_attr(
+    all(feature = "verify-no-panic", not(debug_assertions)),
+    no_panic::no_panic
+)]
+pub fn exprel2<T: CordicNumber>(x: T) -> T {
+    fixed(phi(2, work(x)))
+}
+
+/// `[E₁, E₂, E₃, e^(−x)]`, with `Eₖ(x) = ∫₀¹ s^(k−1)·e^(−xs) ds`.
+#[must_use]
+#[cfg_attr(
+    all(feature = "verify-no-panic", not(debug_assertions)),
+    no_panic::no_panic
+)]
+pub fn exp_moments<T: CordicNumber>(x: T) -> [T; 4] {
+    let v = work(x);
+    if v > W::<T>::from_int(HUGE) {
+        let one = W::<T>::one();
+        let e1 = one / v;
+        return [
+            fixed(e1),
+            fixed(e1 / v),
+            fixed((e1 / v.square()).ldexp(1)),
+            T::zero(),
+        ];
+    }
+    if v < W::<T>::from_int(-HUGE) {
+        return [
+            T::max_value(),
+            T::max_value(),
+            T::max_value(),
+            T::max_value(),
+        ];
+    }
+    let decay = exp_work(-v);
+    [
+        fixed(decay * phi(1, v)),
+        fixed(decay * phi(2, v)),
+        fixed((decay * phi(3, v)).ldexp(1)),
+        fixed(decay),
+    ]
+}
+
+/// `ln(1 + v)`, to full relative precision near 0. Domain: `v > −1`.
+/// # Errors
+/// Returns `DomainError` if `v ≤ −1`.
+#[must_use = "returns the logarithm which should be handled"]
+#[cfg_attr(
+    all(feature = "verify-no-panic", not(debug_assertions)),
+    no_panic::no_panic
+)]
+pub fn log1p<T: CordicNumber>(v: T) -> Result<T> {
+    above_minus_one(v, "log1p").map(|w| fixed(log1p_work(w)))
+}
+
+/// `ln(1 + z)/z`, which is 1 at 0. Domain: `z > −1`.
+/// # Errors
+/// Returns `DomainError` if `z ≤ −1`.
+#[must_use = "returns the ratio which should be handled"]
+#[cfg_attr(
+    all(feature = "verify-no-panic", not(debug_assertions)),
+    no_panic::no_panic
+)]
+pub fn log1p_ratio<T: CordicNumber>(z: T) -> Result<T> {
+    above_minus_one(z, "log1p_ratio").map(|w| fixed(log1p_ratio_work(w)))
+}
+
+/// `ln(1 + v) − v`, without cancelling near 0. Domain: `v > −1`.
+/// # Errors
+/// Returns `DomainError` if `v ≤ −1`.
+#[must_use = "returns the residual which should be handled"]
+#[cfg_attr(
+    all(feature = "verify-no-panic", not(debug_assertions)),
+    no_panic::no_panic
+)]
+pub fn log1p_residual<T: CordicNumber>(v: T) -> Result<T> {
+    above_minus_one(v, "log1p_residual").map(|w| fixed(log1p_minus(w)))
+}
+
+/// `(ln(1 + u) − u)/u²`, which is −½ at 0. Domain: `u > −1`.
+/// # Errors
+/// Returns `DomainError` if `u ≤ −1`.
+#[must_use = "returns the ratio which should be handled"]
+#[cfg_attr(
+    all(feature = "verify-no-panic", not(debug_assertions)),
+    no_panic::no_panic
+)]
+pub fn log1p_residual_ratio<T: CordicNumber>(u: T) -> Result<T> {
+    above_minus_one(u, "log1p_residual_ratio").map(|w| fixed(log1p_minus_ratio(w)))
+}
+
+fn above_minus_one<T: CordicNumber>(v: T, name: &'static str) -> Result<W<T>> {
+    if v <= -T::one() {
+        return Err(Error::domain(name, "value > -1"));
+    }
+    Ok(work(v))
 }

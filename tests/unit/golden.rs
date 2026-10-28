@@ -14,6 +14,10 @@ mod tests {
         sin_cos, sin_cos_range, sinh, sinh_cosh, sqrt, sqrt_or_zero, sqrt_product, tan, tanh,
         tanh_range,
     };
+    use fixed_analytics::{
+        atan_ratio, atanh_ratio, exp_moments, expm1, exprel, exprel2, log1p, log1p_ratio,
+        log1p_residual, log1p_residual_ratio, stumpff, tan_ratio, tanh_ratio,
+    };
     use std::collections::BTreeMap;
     use std::fmt::Write;
 
@@ -63,6 +67,19 @@ mod tests {
         "exp_range",
         "atan_range",
         "tanh_range",
+        "expm1",
+        "exprel",
+        "exprel2",
+        "exp_moments",
+        "log1p",
+        "log1p_ratio",
+        "log1p_residual",
+        "log1p_residual_ratio",
+        "stumpff",
+        "tan_ratio",
+        "atan_ratio",
+        "atanh_ratio",
+        "tanh_ratio",
     ];
 
     trait Raw: CordicNumber {
@@ -154,11 +171,33 @@ mod tests {
             "asin_from_gap" => res(asin_from_gap(x)),
             "sin_cos_range" => {
                 let ((s_lo, s_hi), (c_lo, c_hi)) = sin_cos_range(x, y);
-                [Some(s_lo + s_hi), Some(c_lo + c_hi)]
+                [
+                    Some(s_lo.saturating_add(s_hi)),
+                    Some(c_lo.saturating_add(c_hi)),
+                ]
             }
             "exp_range" => pair(exp_range(x, y)),
             "atan_range" => pair(atan_range(x, y)),
             "tanh_range" => pair(tanh_range(x, y)),
+            "expm1" => one(expm1(x)),
+            "exprel" => one(exprel(x)),
+            "exprel2" => one(exprel2(x)),
+            "exp_moments" => {
+                let [e1, e2, e3, decay] = exp_moments(x);
+                [Some(e1.saturating_add(e2)), Some(e3.saturating_add(decay))]
+            }
+            "log1p" => res(log1p(x)),
+            "log1p_ratio" => res(log1p_ratio(x)),
+            "log1p_residual" => res(log1p_residual(x)),
+            "log1p_residual_ratio" => res(log1p_residual_ratio(x)),
+            "stumpff" => {
+                let [c0, c1, c2, c3] = stumpff(x);
+                [Some(c0.saturating_add(c2)), Some(c1.saturating_add(c3))]
+            }
+            "tan_ratio" => pair(tan_ratio(x)),
+            "atan_ratio" => one(atan_ratio(x)),
+            "atanh_ratio" => res(atanh_ratio(x)),
+            "tanh_ratio" => one(tanh_ratio(x)),
             _ => [None, None],
         }
     }

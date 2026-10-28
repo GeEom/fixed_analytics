@@ -260,6 +260,9 @@ pub trait Work:
     /// `⌊8·frac(t)⌋` and the fraction of it, measured from the octant's near
     /// end to π/4's multiple, so odd octants count back from their top.
     fn octant(mag: u128, frac: u32, radians: bool) -> (u32, Self);
+    /// [`octant`](Self::octant) of `|self|` radians, which must be below
+    /// `2^PREC`.
+    fn octant_of(self) -> (u32, Self);
     /// `Σ ±table[first + step·k]·u^k` for k from 0 to `n` by Horner's rule,
     /// the signs alternating when `alternate`, for `|u| < 1` and terms whose
     /// sum stays near 1, in fixed point with 62, 126 or 190 fractional bits.
@@ -430,6 +433,51 @@ impl<const N: usize> Real<N> {
             half && (rest || q & 1 == 1)
         };
         q.saturating_add(u128::from(up))
+    }
+
+    /// The octant and remainder of `mag · 2^−point` turns, or radians when
+    /// `radians`, for `mag` of at most three limbs.
+    fn octant_limbs(mag: &[u64], point: u32, radians: bool) -> (u32, Self) {
+        let width = 64 * u32_of(N + 1);
+        let mut z = [0; SCRATCH];
+        let point = if radians {
+            let skip = 6usize.saturating_sub(N + 3);
+            for (i, &cv) in FRAC_1_2PI.2.iter().skip(skip).enumerate() {
+                let mut carry: u128 = 0;
+                for (j, &mv) in mag.iter().enumerate() {
+                    let cur = u128::from(limb(&z, i + j)) + u128::from(cv) * u128::from(mv) + carry;
+                    set(&mut z, i + j, lo64(cur));
+                    carry = cur >> 64;
+                }
+                set(&mut z, i + mag.len(), lo64(carry));
+            }
+            386 + point - 64 * u32_of(skip)
+        } else {
+            for (i, &mv) in mag.iter().enumerate() {
+                set(&mut z, i, mv);
+            }
+            point
+        };
+        let need = width + 3;
+        if point < need {
+            shl(&mut z, SCRATCH, need - point);
+        } else {
+            shr(&mut z, SCRATCH, point - need);
+        }
+        let oct = u32::try_from(limb(&z, N + 1) & 7).unwrap_or(0);
+        let mut v = [0; SCRATCH];
+        for i in 0..=N {
+            set(&mut v, i, limb(&z, i));
+        }
+        if oct & 1 == 1 {
+            if v.iter().all(|&x| x == 0) {
+                return (oct, <Self as Work>::one());
+            }
+            let mut full = [0; SCRATCH];
+            sub_into(&mut full, &v, N + 1);
+            v = full;
+        }
+        (oct, Self::normalize(false, 0, &mut v, N + 1, false))
     }
 
     fn mag_cmp(&self, o: &Self) -> Ordering {
@@ -817,45 +865,16 @@ impl<const N: usize> Work for Real<N> {
     }
 
     fn octant(mag: u128, frac: u32, radians: bool) -> (u32, Self) {
-        let width = 64 * u32_of(N + 1);
-        let mut z = [0; SCRATCH];
-        let point = if radians {
-            let skip = 6usize.saturating_sub(N + 3);
-            for (i, &cv) in FRAC_1_2PI.2.iter().skip(skip).enumerate() {
-                let mut carry: u128 = 0;
-                for (j, mv) in [lo64(mag), hi64(mag)].into_iter().enumerate() {
-                    let cur = u128::from(limb(&z, i + j)) + u128::from(cv) * u128::from(mv) + carry;
-                    set(&mut z, i + j, lo64(cur));
-                    carry = cur >> 64;
-                }
-                set(&mut z, i + 2, lo64(carry));
-            }
-            386 + frac - 64 * u32_of(skip)
-        } else {
-            set(&mut z, 0, lo64(mag));
-            set(&mut z, 1, hi64(mag));
-            frac
-        };
-        let need = width + 3;
-        if point < need {
-            shl(&mut z, SCRATCH, need - point);
-        } else {
-            shr(&mut z, SCRATCH, point - need);
-        }
-        let oct = u32::try_from(limb(&z, N + 1) & 7).unwrap_or(0);
-        let mut v = [0; SCRATCH];
-        for i in 0..=N {
-            set(&mut v, i, limb(&z, i));
-        }
-        if oct & 1 == 1 {
-            if v.iter().all(|&x| x == 0) {
-                return (oct, Self::one());
-            }
-            let mut full = [0; SCRATCH];
-            sub_into(&mut full, &v, N + 1);
-            v = full;
-        }
-        (oct, Self::normalize(false, 0, &mut v, N + 1, false))
+        Self::octant_limbs(&[lo64(mag), hi64(mag)], frac, radians)
+    }
+
+    fn octant_of(self) -> (u32, Self) {
+        let point = Self::PREC
+            .cast_signed()
+            .saturating_sub(self.e)
+            .max(0)
+            .cast_unsigned();
+        Self::octant_limbs(&self.m, point, true)
     }
 
     fn horner(u: Self, table: &Series, first: u32, step: u32, n: u32, alternate: bool) -> Self {

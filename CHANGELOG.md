@@ -38,6 +38,13 @@ which form their squares without underflow; `scale_exponent` and `scale_by`
 for exact power-of-two scaling; `sqrt_product`, `rsqrt`, and `asin_from_gap`,
 which takes the gap to 1 in place of a value that would round.
 
+New, each to full relative precision near 0: `expm1`; `exprel` and
+`exprel2`, `(e^x − 1)/x` and `(e^x − 1 − x)/x²`; `exp_moments`, the
+integrals `∫₀¹ s^(k−1)·e^(−xs) ds` for k up to 3 with `e^(−x)`; `log1p`,
+`log1p_ratio`, `log1p_residual` and `log1p_residual_ratio`; `stumpff`, the
+Stumpff functions `c₀` to `c₃` of either sign; and `tan_ratio`, `atan_ratio`,
+`atanh_ratio` and `tanh_ratio`.
+
 Slower: on the benchmarks I16F16 functions take 2.4 to 11 times as long as
 in 3.1.1, and I64F64 ones 1.3 to 9 times; `sqrt` is as fast or faster.
 

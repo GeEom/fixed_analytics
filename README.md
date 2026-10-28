@@ -51,7 +51,8 @@ fixed_analytics = { version = "4.0.0", default-features = false }
 |----------|-----------------|-------------------|
 | Trigonometric | `sin`, `cos`, `tan`, `sin_cos`, `atan`, `atan2` | `asin`, `acos`, `asin_from_gap` |
 | Hyperbolic | `sinh`, `cosh`, `tanh`, `sinh_cosh`, `asinh` | `acosh`, `atanh`, `acoth`, `coth` |
-| Exponential | `exp`, `pow2` | `ln`, `log2`, `log10`, `pow` |
+| Exponential | `exp`, `pow2`, `expm1`, `exprel`, `exprel2`, `exp_moments` | `ln`, `log2`, `log10`, `pow`, `log1p`, `log1p_ratio`, `log1p_residual`, `log1p_residual_ratio` |
+| Ratios | `stumpff`, `tan_ratio`, `atan_ratio`, `tanh_ratio` | `atanh_ratio` |
 | Algebraic | `sqrt_or_zero`, `hypot`, `norm`, `scale_exponent`, `scale_by` | `sqrt`, `sqrt_product`, `rsqrt`, `normalize` |
 | Arithmetic | `mul_add`, `mul_div`, `div_or_saturate`, `dot` | — |
 | Enclosures | `enclose`, `sin_cos_range`, `exp_range`, `atan_range`, `tanh_range` | — |
@@ -145,4 +146,22 @@ The largest error seen, in ulps of the type, against MPFR on exact inputs. The s
 | sqrt_product | 0.50 | 0.50 | 0.50 |
 | asin_from_gap | 0.50 | 0.50 | 0.50 |
 | rsqrt | 0.50 | 0.50 | 0.50 |
+| expm1 | 0.50 | 0.50 | 0.50 |
+| exprel | 0.50 | 0.50 | 0.50 |
+| exprel2 | 0.50 | 0.50 | 0.50 |
+| exp_moments_e1 | 0.50 | 0.50 | 0.50 |
+| exp_moments_e2 | 0.50 | 0.50 | 0.50 |
+| exp_moments_e3 | 0.50 | 0.50 | 0.50 |
+| log1p | 0.50 | 0.50 | 0.50 |
+| log1p_ratio | 0.50 | 0.50 | 0.50 |
+| log1p_residual | 0.50 | 0.50 | 0.50 |
+| log1p_residual_ratio | 0.50 | 0.50 | 0.50 |
+| stumpff_c0 | 0.50 | 0.50 | 0.50 |
+| stumpff_c1 | 0.50 | 0.50 | 0.50 |
+| stumpff_c2 | 0.50 | 0.50 | 0.50 |
+| stumpff_c3 | 0.50 | 0.50 | 0.50 |
+| tan_ratio | 0.50 | 0.50 | 0.50 |
+| atan_ratio | 0.50 | 0.50 | 0.50 |
+| atanh_ratio | 0.50 | 0.50 | 0.50 |
+| tanh_ratio | 0.50 | 0.50 | 0.50 |
 <!-- WORST_END -->
