@@ -10,6 +10,15 @@ function in backticks.
 Releases before 3.1.1 are described on the
 [releases page](https://github.com/GeEom/fixed_analytics/releases).
 
+## 4.7.1
+
+No output changes that the golden table pins. Faster again on I64F64:
+`atan2` 1.4× (259 → 185 ns), `sin_cos` 1.2×, `carlson_rj_roots` 1.15×, and
+complex division back to 4.6.0's speed. Two-limb sums take a 192-bit path,
+two-limb division seeds from the exact 128/64 quotient, the rounding to a
+type and `sin_cos`'s two series run without the generic limb arrays, and the
+arctangent reduces `y/x` by sixteenths with one division.
+
 ## 4.7.0
 
 Faster, most of all for the elliptic functions: on I64F64 `carlson_rj_roots`
