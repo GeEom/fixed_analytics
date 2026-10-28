@@ -10,6 +10,14 @@ function in backticks.
 Releases before 3.1.1 are described on the
 [releases page](https://github.com/GeEom/fixed_analytics/releases).
 
+## 4.7.2
+
+No output changes that the golden table pins. On 128-bit types with at most
+96 fractional bits, `sin`, `cos`, `sin_cos`, `sin_cos_turns` and `exp` run in
+126-bit fixed point after their exact reductions, to within 2^−120 before
+the one rounding: on I64F64 `sin_cos` takes 69 ns (142 in 4.7.1, 255 in
+4.5.0) and `exp` 66 ns (114, 163).
+
 ## 4.7.1
 
 No output changes that the golden table pins. Faster again on I64F64:

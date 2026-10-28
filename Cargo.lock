@@ -222,7 +222,7 @@ dependencies = [
 
 [[package]]
 name = "fixed_analytics"
-version = "4.7.1"
+version = "4.7.2"
 dependencies = [
  "criterion",
  "fixed",

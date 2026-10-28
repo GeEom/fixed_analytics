@@ -30,14 +30,14 @@ Requires Rust 1.95 or later.
 
 ```toml
 [dependencies]
-fixed_analytics = "4.7.1"
+fixed_analytics = "4.7.2"
 ```
 
 For `no_std` environments:
 
 ```toml
 [dependencies]
-fixed_analytics = { version = "4.7.1", default-features = false }
+fixed_analytics = { version = "4.7.2", default-features = false }
 ```
 
 ## Available Functions
