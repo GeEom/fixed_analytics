@@ -177,5 +177,11 @@ fn atan_work<V: Work>(x: V) -> V {
     no_panic::no_panic
 )]
 pub fn atan2<T: CordicNumber>(y: T, x: T) -> T {
+    let (ry, rx) = (y.raw_i128(), x.raw_i128());
+    if crate::fast::applies::<T>() && ry != 0 && rx != 0 {
+        let angle = crate::fast::atan2(ry, rx);
+        let raw = crate::fast::shift_round(angle, 125 - T::frac_bits());
+        return T::from_raw_i128(if angle < 0 { -raw } else { raw });
+    }
     tiered!(T, |v| crate::cx::atan2(v(y), v(x)))
 }

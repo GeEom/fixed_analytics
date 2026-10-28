@@ -245,7 +245,7 @@ const fn low64(x: u128) -> u64 {
 }
 
 /// `2^128/t` to about 2^−57, `t` in `[2^63, 2^64)`: a seed, then four steps of `g ← g(2 − fg)`.
-fn recip_seed(t: u64) -> u128 {
+pub fn recip_seed(t: u64) -> u128 {
     let index = usize::try_from(t >> 57).unwrap_or(64).saturating_sub(64);
     let mut g = RECIP_SEEDS.get(index).copied().unwrap_or(1 << 62);
     for _ in 0..4 {

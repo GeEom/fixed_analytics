@@ -81,6 +81,11 @@ pub fn ln<T: CordicNumber>(x: T) -> Result<T> {
     if x <= T::zero() {
         return Err(Error::domain("ln", "positive value"));
     }
+    if crate::fast::applies::<T>() {
+        let v = crate::fast::ln(x.raw_i128(), T::frac_bits());
+        let raw = crate::fast::shift_round(v, 119 - T::frac_bits());
+        return Ok(T::from_raw_i128(if v < 0 { -raw } else { raw }));
+    }
     Ok(tiered!(T, |v| ln_work(v(x))))
 }
 
