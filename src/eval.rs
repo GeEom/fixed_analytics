@@ -203,11 +203,11 @@ pub fn log1p<V: Work>(u: V) -> V {
     }
 }
 
-/// `atan z` on `[0, 1]`: `atan c`, `c = j/16` nearest, plus that of `(z − c)/(1 + z·c)`.
-pub fn atan_unit<V: Work>(z: V) -> V {
-    let j = z.ldexp(4).round_int().clamp(0, 16);
-    let c = V::from_int(j).ldexp(-4);
-    let t = (z - c) / (V::one() + z * c);
+/// `atan(num/den)` for `0 ≤ num ≤ den`: `atan c`, `c = j/16` nearest, plus that of
+/// `(16num − j·den)/(16den + j·num)`, one division in all.
+fn atan_unit<V: Work>(num: V, den: V) -> V {
+    let j = V::sixteenths(num, den).clamp(0, 16);
+    let t = (num.ldexp(4) - den.mul_int(j)) / (den.ldexp(4) + num.mul_int(j));
     let series = V::horner(t.square(), &ODD, 0, 1, by_width::<V>([8, 14, 21]), true);
     entry::<V>(&ATAN_SIXTEENTHS, j) + t * series
 }
@@ -215,9 +215,9 @@ pub fn atan_unit<V: Work>(z: V) -> V {
 /// `atan(num/den)` for `0 ≤ num` and `0 < den`, never forming a ratio above 1.
 pub fn atan_ratio<V: Work>(num: V, den: V) -> V {
     if num <= den {
-        atan_unit(num / den)
+        atan_unit(num, den)
     } else {
-        half_pi::<V>() - atan_unit(den / num)
+        half_pi::<V>() - atan_unit(den, num)
     }
 }
 
@@ -228,8 +228,8 @@ pub fn sin_cos_octant<V: Work>(oct: u32, frac: V) -> (V, V) {
     let rest = (frac - V::from_int(index).ldexp(-5)) * pi::<V>().ldexp(-2);
     let rest2 = rest.square();
     let terms = by_width::<V>([4, 7, 11]);
-    let sd = rest * V::horner(rest2, &FACT, 1, 2, terms, true);
-    let cd = V::horner(rest2, &FACT, 0, 2, terms, true);
+    let (sd, cd) = V::horner2(rest2, &FACT, [1, 0], 2, terms, true);
+    let sd = rest * sd;
     let (sj, cj) = (
         entry::<V>(&SIN_PI_128THS, index),
         entry::<V>(&COS_PI_128THS, index),

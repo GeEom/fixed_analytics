@@ -2,9 +2,7 @@
 
 use crate::bounded::UnitInterval;
 use crate::error::{Error, Result};
-use crate::eval::{
-    W, atan_ratio, atan_unit, beyond, fixed, half_pi, pi, sin_cos_octant, tiered, work,
-};
+use crate::eval::{W, atan_ratio, beyond, fixed, pi, sin_cos_octant, tiered, work};
 use crate::real::Work;
 use crate::traits::CordicNumber;
 
@@ -162,12 +160,7 @@ pub fn atan<T: CordicNumber>(x: T) -> T {
 
 fn atan_work<V: Work>(x: V) -> V {
     let (a, one) = (x.abs(), V::one());
-    let angle = if a <= one {
-        atan_unit(a)
-    } else {
-        half_pi::<V>() - atan_unit(one / a)
-    };
-    angle.with_sign(x.is_neg())
+    atan_ratio(a, one).with_sign(x.is_neg())
 }
 
 /// Four-quadrant arctangent. Returns an angle in `[-π, π]`: `π` along the

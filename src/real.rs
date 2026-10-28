@@ -119,16 +119,6 @@ fn sub_into(a: &mut Scratch, b: &Scratch, len: usize) {
     }
 }
 
-fn bit(a: &Scratch, k: u32) -> bool {
-    (limb(a, (k / 64) as usize) >> (k % 64)) & 1 == 1
-}
-
-fn any_below(a: &Scratch, k: u32) -> bool {
-    let w = (k / 64) as usize;
-    let b = k % 64;
-    (0..w).any(|i| limb(a, i) != 0) || (b > 0 && limb(a, w) << (64 - b) != 0)
-}
-
 /// `|v|·2^62` for a mantissa top limb whose value is `top · 2^(e − 64)`, `|v| < 2`.
 fn q62(neg: bool, e: i32, top: u64) -> i64 {
     let sh = 2 - i64::from(e);
@@ -388,6 +378,23 @@ pub trait Work:
     /// the signs alternating when `alternate`, for `|u| < 1` and terms whose
     /// sum stays near 1, in fixed point with 62, 126 or 190 fractional bits.
     fn horner(u: Self, table: &Series, first: u32, step: u32, n: u32, alternate: bool) -> Self;
+    /// `round(16·num/den)` from the top bits, for `0 ≤ num ≤ den`, `den > 0`.
+    fn sixteenths(num: Self, den: Self) -> i64;
+    /// Two [`horner`](Self::horner) sums of one `u`, from `firsts`, side by side.
+    fn horner2(
+        u: Self,
+        table: &Series,
+        firsts: [u32; 2],
+        step: u32,
+        n: u32,
+        alternate: bool,
+    ) -> (Self, Self) {
+        let [a, b] = firsts;
+        (
+            Self::horner(u, table, a, step, n, alternate),
+            Self::horner(u, table, b, step, n, alternate),
+        )
+    }
 
     fn round_int(self) -> i64 {
         let r = self.to_raw(0, i128::from(i64::MIN), i128::from(i64::MAX), false);
@@ -538,31 +545,6 @@ impl<const N: usize> Real<N> {
         }
     }
 
-    /// `|m · 2^sh|` rounded to nearest even, or away from zero for a negative
-    /// value when `floor`, for `sh ≤ 128 − 64N`.
-    fn mag_scaled(&self, sh: i64, floor: bool) -> u128 {
-        let mut ext = [0; SCRATCH];
-        for (i, &v) in self.m.iter().enumerate() {
-            set(&mut ext, i, v);
-        }
-        let len = N + 2;
-        if sh >= 0 {
-            shl(&mut ext, len, u32::try_from(sh).unwrap_or(0));
-            return u128::from(limb(&ext, 0)) | (u128::from(limb(&ext, 1)) << 64);
-        }
-        let s = u32::try_from(-sh).unwrap_or(u32::MAX).min(64 * u32_of(len));
-        let half = bit(&ext, s - 1);
-        let rest = any_below(&ext, s - 1);
-        shr(&mut ext, len, s);
-        let q = u128::from(limb(&ext, 0)) | (u128::from(limb(&ext, 1)) << 64);
-        let up = if floor {
-            self.neg && (half || rest)
-        } else {
-            half && (rest || q & 1 == 1)
-        };
-        q.saturating_add(u128::from(up))
-    }
-
     /// The exact product of the mantissas, in `2N` limbs.
     fn product(&self, o: &Self) -> Scratch {
         let mut p = [0; SCRATCH];
@@ -676,6 +658,57 @@ impl<const N: usize> Real<N> {
         Self { neg, e, m }
     }
 
+    /// The correctly rounded sum for two limbs in 192 bits, `|big| ≥ |small|`, both non-zero.
+    fn add_two(big: Self, small: Self) -> Self {
+        let (bm, sm) = (big.wide().0, small.wide().0);
+        let gap = big.e.abs_diff(small.e);
+        // small·2^64 >> gap as its high 128 and low 64 bits, and whether bits fell off.
+        let (ah, al, sticky) = match gap {
+            0 => (sm, 0, false),
+            1..=63 => (sm >> gap, lo64(sm << (64 - gap)), false),
+            64 => (sm >> 64, lo64(sm), false),
+            65..=127 => (sm >> gap, lo64(sm >> (gap - 64)), sm << (192 - gap) != 0),
+            128..=191 => (0, lo64(sm >> (gap - 64)), sm << (192 - gap) != 0),
+            _ => (0, 0, true),
+        };
+        let (mut hi, lo, mut e, sticky) = if big.neg == small.neg {
+            let (sum, carry) = bm.overflowing_add(ah);
+            if carry {
+                let lo = (al >> 1) | (lo64(sum) << 63);
+                (
+                    (sum >> 1) | 1 << 127,
+                    lo,
+                    big.e.saturating_add(1),
+                    sticky || al & 1 == 1,
+                )
+            } else {
+                (sum, al, big.e, sticky)
+            }
+        } else {
+            let (low, b1) = 0u64.overflowing_sub(al);
+            let (low, b2) = low.overflowing_sub(u64::from(sticky));
+            let high = bm.wrapping_sub(ah).wrapping_sub(u128::from(b1 || b2));
+            if high == 0 && low == 0 {
+                return <Self as Work>::zero();
+            }
+            let full = (high, u128::from(low) << 64);
+            let z = wide_leading_zeros(full);
+            let (h, l) = wide_shl(full, z);
+            (h, hi64(l), big.e.saturating_sub(z.cast_signed()), sticky)
+        };
+        if lo >> 63 == 1 && (lo << 1 != 0 || sticky || hi & 1 == 1) {
+            hi = hi.wrapping_add(1);
+            if hi == 0 {
+                hi = 1 << 127;
+                e = e.saturating_add(1);
+            }
+        }
+        let mut m = [0u64; N];
+        set(&mut m, 0, lo64(hi));
+        set(&mut m, 1, hi64(hi));
+        Self { neg: big.neg, e, m }
+    }
+
     /// The correctly rounded sum for two or three limbs, `|big| ≥ |small|`, both non-zero.
     fn add_wide(big: Self, small: Self) -> Self {
         let gap = big.e.abs_diff(small.e);
@@ -786,7 +819,13 @@ impl<const N: usize> Real<N> {
             return one / self;
         }
         let b = self.abs();
-        let mut y = Self::from_u128(false, recip_seed(top), 64i32.saturating_sub(self.e));
+        // At two limbs the exact 128/64 quotient beats the seed's chain of products.
+        let seed = if N == 2 {
+            u128::MAX / u128::from(top)
+        } else {
+            recip_seed(top)
+        };
+        let mut y = Self::from_u128(false, seed, 64i32.saturating_sub(self.e));
         for _ in 0..2 {
             y = y + y * (one - b * y);
         }
@@ -862,7 +901,10 @@ impl<const N: usize> Add for Real<N> {
         } else {
             (self, other)
         };
-        if N <= 3 {
+        if N == 2 {
+            return Self::add_two(big, small);
+        }
+        if N == 3 {
             return Self::add_wide(big, small);
         }
         let len = N + 1;
@@ -1031,7 +1073,17 @@ impl<const N: usize> Work for Real<N> {
                 }
             }
         } else {
-            self.mag_scaled(sh, floor)
+            // |m·2^sh| from the mantissa at the top of 256 bits, shifted down
+            // to keep the half bit, the bits below it as `rest`.
+            let down = u32::try_from(256 - 64 * i64::from(u32_of(N)) - sh).unwrap_or(u32::MAX);
+            let ((high, low), rest) = wide_shr(self.wide(), down.saturating_sub(1));
+            let (half, q) = (low & 1 == 1, (high << 127) | (low >> 1));
+            let up = if floor {
+                self.neg && (half || rest)
+            } else {
+                half && (rest || q & 1 == 1)
+            };
+            q.saturating_add(u128::from(up))
         };
         if self.neg {
             0i128.checked_sub_unsigned(mag).map_or(lo, |v| v.max(lo))
@@ -1230,6 +1282,49 @@ impl<const N: usize> Work for Real<N> {
         Self::normalize(first.0, top, &mut first.2, SCRATCH, sticky)
     }
 
+    fn sixteenths(num: Self, den: Self) -> i64 {
+        if num.is_zero() {
+            return 0;
+        }
+        let gap = den.e.saturating_sub(num.e).clamp(0, 127).cast_unsigned();
+        let ratio = ((u128::from(num.top()) << 5) >> gap) / u128::from(den.top().max(1));
+        i64::try_from((ratio + 1) >> 1).unwrap_or(16)
+    }
+
+    fn horner2(
+        u: Self,
+        table: &Series,
+        firsts: [u32; 2],
+        step: u32,
+        n: u32,
+        alternate: bool,
+    ) -> (Self, Self) {
+        if N != 2 {
+            let [a, b] = firsts;
+            return (
+                Self::horner(u, table, a, step, n, alternate),
+                Self::horner(u, table, b, step, n, alternate),
+            );
+        }
+        // Both chains in one loop, each hiding the other's latency.
+        let top = (u128::from(u.top()) << 64) | u128::from(limb(&u.m, 0));
+        let uq = q126(u.neg, u.e, top);
+        let coef = |first: u32, k: u32| {
+            let c = table
+                .q126
+                .get((first + step * k) as usize)
+                .copied()
+                .unwrap_or(0);
+            if alternate && k % 2 == 1 { -c } else { c }
+        };
+        let (mut p, mut r): (i128, i128) = (0, 0);
+        for k in (0..=n).rev() {
+            p = coef(firsts[0], k) + mul_q126(uq, p);
+            r = coef(firsts[1], k) + mul_q126(uq, r);
+        }
+        (Self::from_raw(p, 126), Self::from_raw(r, 126))
+    }
+
     fn horner(u: Self, table: &Series, first: u32, step: u32, n: u32, alternate: bool) -> Self {
         let sign = |k: u32| alternate && k % 2 == 1;
         let at = |k: u32| (first + step * k) as usize;
@@ -1289,6 +1384,83 @@ mod tests {
             assert!(recip_seed(t).abs_diff(inverse) < inverse >> 55, "{t}");
             let root = u128::MAX / x.isqrt();
             assert!(rsqrt_seed(x).abs_diff(root) < root >> 55, "{x}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod two_limbs {
+    use super::*;
+
+    /// The generic sum, `len = N + 1` limbs, as `add` did before `add_two`.
+    fn generic(big: Real<2>, small: Real<2>) -> Real<2> {
+        let len = 3;
+        let (mut acc, mut addend) = ([0; SCRATCH], [0; SCRATCH]);
+        for i in 0..2 {
+            set(&mut acc, i + 1, limb(&big.m, i));
+            set(&mut addend, i + 1, limb(&small.m, i));
+        }
+        let gap = big.e.abs_diff(small.e);
+        let sticky = if gap >= 192 {
+            addend = [0; SCRATCH];
+            true
+        } else {
+            shr(&mut addend, len, gap)
+        };
+        if big.neg == small.neg {
+            if add_into(&mut acc, &addend, len) {
+                let lost = shr(&mut acc, len, 1);
+                let top = limb(&acc, len - 1) | 1 << 63;
+                set(&mut acc, len - 1, top);
+                return Real::pack(big.neg, big.e.saturating_add(1), &acc, len, sticky || lost);
+            }
+            return Real::pack(big.neg, big.e, &acc, len, sticky);
+        }
+        sub_into(&mut acc, &addend, len);
+        if sticky {
+            let mut one = [0; SCRATCH];
+            set(&mut one, 0, 1);
+            sub_into(&mut acc, &one, len);
+        }
+        Real::normalize(big.neg, big.e, &mut acc, len, sticky)
+    }
+
+    #[test]
+    fn add_two_matches_the_generic_sum() {
+        let mut state = 0x2545_F491_4F6C_DD1Du64;
+        let mut next = move || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+        for _ in 0..1_000_000 {
+            let limbs = |n: &mut dyn FnMut() -> u64| match n() % 4 {
+                0 => u64::MAX,
+                1 => 0,
+                _ => n(),
+            };
+            let a = Real::<2> {
+                neg: next() % 2 == 1,
+                e: 0,
+                m: [limbs(&mut next), limbs(&mut next) | 1 << 63],
+            };
+            let gap = i32::try_from(next() % 200).unwrap_or(0);
+            let b = Real::<2> {
+                neg: next() % 2 == 1,
+                e: -gap,
+                m: [limbs(&mut next), limbs(&mut next) | 1 << 63],
+            };
+            let (big, small) = if a.mag_cmp(&b) == Ordering::Less {
+                (b, a)
+            } else {
+                (a, b)
+            };
+            let (x, y) = (Real::add_two(big, small), generic(big, small));
+            assert!(
+                x.neg == y.neg && x.e == y.e && x.m == y.m,
+                "{a:?} {b:?}: {x:?} {y:?}"
+            );
         }
     }
 }
