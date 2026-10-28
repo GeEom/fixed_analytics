@@ -31,6 +31,13 @@ working arithmetic.
 New: `mul_add`, `mul_div`, `div_or_saturate` and `dot`, which round an exact
 result once, `sqrt_or_zero`, and `ERROR_ULPS`, the bound every function meets.
 
+New: `enclose`, the interval of one ulp each way that holds a result's exact
+value, and outward-rounded ranges over an interval, `sin_cos_range`,
+`exp_range`, `atan_range` and `tanh_range`; `hypot`, `norm` and `normalize`,
+which form their squares without underflow; `scale_exponent` and `scale_by`
+for exact power-of-two scaling; `sqrt_product`, `rsqrt`, and `asin_from_gap`,
+which takes the gap to 1 in place of a value that would round.
+
 Slower: on the benchmarks I16F16 functions take 2.4 to 11 times as long as
 in 3.1.1, and I64F64 ones 1.3 to 9 times; `sqrt` is as fast or faster.
 

@@ -171,6 +171,20 @@ pub fn sin_cos_octant<V: Work>(oct: u32, frac: V) -> (V, V) {
     }
 }
 
+/// `frac(x/2π)`, the angle as a fraction of a turn in `[0, 1)`, from the
+/// same exact reduction as `sin` and `cos`.
+pub fn turn_fraction<T: CordicNumber>(x: T) -> W<T> {
+    let raw = x.raw_i128();
+    let (oct, w) = W::<T>::octant(raw.unsigned_abs(), T::frac_bits(), true);
+    let within = if oct & 1 == 1 { W::<T>::one() - w } else { w };
+    let u = (W::<T>::from_int(i64::from(oct)) + within).ldexp(-3);
+    if raw < 0 && !u.is_zero() {
+        W::<T>::one() - u
+    } else {
+        u
+    }
+}
+
 /// `(sinh x, cosh x)` for `0 ≤ x < HUGE`, from `u = expm1(x)` so neither
 /// cancels: `sinh = (u + u/(1 + u))/2` and `cosh = 1 + u²/(2(1 + u))`.
 pub fn sinh_cosh<V: Work>(x: V) -> (V, V) {
