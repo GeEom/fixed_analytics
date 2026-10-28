@@ -52,6 +52,7 @@ fixed_analytics = { version = "4.0.0", default-features = false }
 | Trigonometric | `sin`, `cos`, `tan`, `sin_cos`, `atan`, `atan2` | `asin`, `acos`, `asin_from_gap` |
 | Hyperbolic | `sinh`, `cosh`, `tanh`, `sinh_cosh`, `asinh` | `acosh`, `atanh`, `acoth`, `coth` |
 | Exponential | `exp`, `pow2`, `expm1`, `exprel`, `exprel2`, `exp_moments` | `ln`, `log2`, `log10`, `pow`, `log1p`, `log1p_ratio`, `log1p_residual`, `log1p_residual_ratio` |
+| Turns | `sin_cos_turns`, `atan2_turns`, `div_by_tau`, `wrap_radians`, `wrap_principal` | — |
 | Ratios | `stumpff`, `tan_ratio`, `atan_ratio`, `tanh_ratio` | `atanh_ratio` |
 | Algebraic | `sqrt_or_zero`, `hypot`, `norm`, `scale_exponent`, `scale_by` | `sqrt`, `sqrt_product`, `rsqrt`, `normalize` |
 | Elliptic | `ellip_e`, `jacobi_sn_cn_dn`, `jacobi_am` | `ellip_k`, `ellip_pi`, `ellip_pi_complete`, `jacobi_inverse`, `carlson_rf`, `carlson_rf_roots`, `carlson_rj`, `carlson_rj_roots`, `carlson_rc`, `carlson_rd` |
@@ -180,4 +181,10 @@ The largest error seen, in ulps of the type, against MPFR on exact inputs. The s
 | carlson_rd | 0.50 | 0.50 | 0.50 |
 | ellip_pi | 0.50 | 0.50 | 0.50 |
 | ellip_pi_complete | 0.50 | 0.50 | 0.50 |
+| sin_turns | 0.50 | 0.50 | 0.50 |
+| cos_turns | 0.50 | 0.50 | 0.50 |
+| atan2_turns | 0.50 | 0.50 | 0.50 |
+| div_by_tau | 0.50 | 0.50 | 0.50 |
+| wrap_radians | 0.50 | 0.50 | 0.50 |
+| wrap_principal | 0.50 | 0.50 | 0.50 |
 <!-- WORST_END -->

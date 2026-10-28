@@ -38,3 +38,4 @@ pub use ops::exponential::{
 pub use ops::hyperbolic::{acosh, acoth, asinh, atanh, cosh, coth, sinh, sinh_cosh, tanh};
 pub use ops::interval::{atan_range, enclose, exp_range, sin_cos_range, tanh_range};
 pub use ops::ratio::{atan_ratio, atanh_ratio, stumpff, tan_ratio, tanh_ratio};
+pub use ops::turns::{atan2_turns, div_by_tau, sin_cos_turns, wrap_principal, wrap_radians};

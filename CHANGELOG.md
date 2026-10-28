@@ -53,6 +53,11 @@ complete integrals, `ellip_pi` the incomplete third kind from `(sn, cn, dn)`,
 `carlson_rd` are Carlson's integrals, with `carlson_rf_roots` and
 `carlson_rj_roots` taking square roots for arguments too small to hold.
 
+New: angles in turns. `sin_cos_turns` takes a fraction of a turn, whose
+reduction is its own bits with no rounded π, and `atan2_turns` returns one.
+`div_by_tau` is `x/τ` rounded once, and `wrap_radians` and `wrap_principal`
+reduce to `[0, 2π)` and `(−π, π]` by exact multiples of 2π.
+
 Slower: on the benchmarks I16F16 functions take 2.4 to 11 times as long as
 in 3.1.1, and I64F64 ones 1.3 to 9 times; `sqrt` is as fast or faster.
 

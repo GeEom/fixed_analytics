@@ -28,6 +28,7 @@ assert!((log.to_num::<f32>() - 1.0).abs() < 0.01);
 | Trigonometric | [`sin`], [`cos`], [`tan`], [`sin_cos`], [`atan`], [`atan2`] | [`asin`], [`acos`], [`asin_from_gap`] |
 | Hyperbolic | [`sinh`], [`cosh`], [`tanh`], [`sinh_cosh`], [`asinh`] | [`acosh`], [`atanh`], [`acoth`], [`coth`] |
 | Exponential | [`exp`], [`pow2`], [`expm1`], [`exprel`], [`exprel2`], [`exp_moments`] | [`ln`], [`log2`], [`log10`], [`pow`], [`log1p`], [`log1p_ratio`], [`log1p_residual`], [`log1p_residual_ratio`] |
+| Turns | [`sin_cos_turns`], [`atan2_turns`], [`div_by_tau`], [`wrap_radians`], [`wrap_principal`] | — |
 | Ratios | [`stumpff`], [`tan_ratio`], [`atan_ratio`], [`tanh_ratio`] | [`atanh_ratio`] |
 | Algebraic | [`sqrt_or_zero`], [`hypot`], [`norm`], [`scale_exponent`], [`scale_by`] | [`sqrt`], [`sqrt_product`], [`rsqrt`], [`normalize`] |
 | Elliptic | [`ellip_e`], [`jacobi_sn_cn_dn`], [`jacobi_am`] | [`ellip_k`], [`ellip_pi`], [`ellip_pi_complete`], [`jacobi_inverse`], [`carlson_rf`], [`carlson_rf_roots`], [`carlson_rj`], [`carlson_rj_roots`], [`carlson_rc`], [`carlson_rd`] |

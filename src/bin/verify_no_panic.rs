@@ -24,6 +24,7 @@ use fixed_analytics::{
     atan_ratio, atanh_ratio, exp_moments, expm1, exprel, exprel2, log1p, log1p_ratio,
     log1p_residual, log1p_residual_ratio, stumpff, tan_ratio, tanh_ratio,
 };
+use fixed_analytics::{atan2_turns, div_by_tau, sin_cos_turns, wrap_principal, wrap_radians};
 
 /// Hands `v` to `black_box`, so the optimizer must compute it in full.
 fn keep<V>(v: V) {
@@ -106,6 +107,11 @@ fn exercise<T: CordicNumber>(x: T, y: T, two: T) {
     keep(carlson_rj_roots(x, y, two, x));
     keep(carlson_rc(x, y));
     keep(carlson_rd(x, y, two));
+    keep(sin_cos_turns(x));
+    keep(atan2_turns(y, x));
+    keep(div_by_tau(x));
+    keep(wrap_radians(x));
+    keep(wrap_principal(x));
 
     if let Some(nn) = NonNegative::new(x) {
         keep(sqrt_nonneg(nn));
