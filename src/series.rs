@@ -10,7 +10,7 @@ pub struct Series {
 }
 
 /// `c · 2^126` rounded, for `|c| ≤ 1`.
-const fn q126(entry: &C) -> i128 {
+pub const fn q126(entry: &C) -> i128 {
     let (neg, exp, mant) = *entry;
     let top = ((mant[5] as u128) << 64) | mant[4] as u128;
     let shift = 2 - exp;

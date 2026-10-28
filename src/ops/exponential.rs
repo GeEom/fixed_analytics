@@ -19,6 +19,15 @@ use crate::traits::CordicNumber;
     no_panic::no_panic
 )]
 pub fn exp<T: CordicNumber>(x: T) -> T {
+    if crate::fast::applies::<T>()
+        && let Some((v, q)) = crate::fast::exp(x.raw_i128(), T::frac_bits())
+    {
+        // v·2^(q − 126) to 2^−121, keeping 24 guard bits below 2^(97 − frac).
+        let s = 126 - T::frac_bits().cast_signed() - q;
+        if s >= 30 {
+            return T::from_raw_i128(crate::fast::shift_round(v, s.cast_unsigned()));
+        }
+    }
     tiered!(T, |v| exp_wide(v(x)))
 }
 

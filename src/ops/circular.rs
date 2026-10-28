@@ -28,6 +28,12 @@ fn cofactor<V: Work>(a: V) -> V {
     no_panic::no_panic
 )]
 pub fn sin_cos<T: CordicNumber>(angle: T) -> (T, T) {
+    if crate::fast::applies::<T>() {
+        let raw = angle.raw_i128();
+        let (s, c) = crate::fast::sin_cos(raw.unsigned_abs(), T::frac_bits(), true);
+        let s = if raw < 0 { -s } else { s };
+        return (crate::fast::round(s), crate::fast::round(c));
+    }
     tiered!(T, |v| sin_cos_work(angle, v))
 }
 
@@ -39,7 +45,7 @@ pub fn sin_cos<T: CordicNumber>(angle: T) -> (T, T) {
     no_panic::no_panic
 )]
 pub fn sin<T: CordicNumber>(angle: T) -> T {
-    tiered!(T, |v| sin_cos_work(angle, v).0)
+    sin_cos(angle).0
 }
 
 /// Cosine of any angle.
@@ -50,7 +56,7 @@ pub fn sin<T: CordicNumber>(angle: T) -> T {
     no_panic::no_panic
 )]
 pub fn cos<T: CordicNumber>(angle: T) -> T {
-    tiered!(T, |v| sin_cos_work(angle, v).1)
+    sin_cos(angle).1
 }
 
 /// Tangent, as `sin(angle) / cos(angle)` divided before rounding.

@@ -139,7 +139,7 @@ fn q126(neg: bool, e: i32, top: u128) -> i128 {
 }
 
 /// `a·b·2^−126` truncated, for values below 2 in magnitude.
-fn mul_q126(a: i128, b: i128) -> i128 {
+pub fn mul_q126(a: i128, b: i128) -> i128 {
     let (ua, ub) = (a.unsigned_abs(), b.unsigned_abs());
     let (ah, al) = (ua >> 64, ua & u128::from(u64::MAX));
     let (bh, bl) = (ub >> 64, ub & u128::from(u64::MAX));
@@ -591,6 +591,42 @@ impl<const N: usize> Real<N> {
             shr(&mut z, SCRATCH, point - need);
         }
         Self::octant_from(&z)
+    }
+
+    /// [`Work::octant`] in two limbs, the fraction as a Q127 integer, 1 as `2^127`.
+    pub fn octant_q127(mag: u128, point: u32, radians: bool) -> (u32, u128) {
+        let mut z = [0; SCRATCH];
+        let point = if radians {
+            let skip = 6usize.saturating_sub(N + 3);
+            for (i, &cv) in FRAC_1_2PI.2.iter().skip(skip).enumerate() {
+                let mut carry: u128 = 0;
+                for (j, mv) in [lo64(mag), hi64(mag)].into_iter().enumerate() {
+                    let cur = u128::from(limb(&z, i + j)) + u128::from(cv) * u128::from(mv) + carry;
+                    set(&mut z, i + j, lo64(cur));
+                    carry = cur >> 64;
+                }
+                set(&mut z, i + 2, lo64(carry));
+            }
+            386 + point - 64 * u32_of(skip)
+        } else {
+            set(&mut z, 0, lo64(mag));
+            set(&mut z, 1, hi64(mag));
+            point
+        };
+        let need = 64 * u32_of(N + 1) + 3;
+        if point < need {
+            shl(&mut z, SCRATCH, need - point);
+        } else {
+            shr(&mut z, SCRATCH, point - need);
+        }
+        let oct = u32::try_from(limb(&z, N + 1) & 7).unwrap_or(0);
+        let top = (u128::from(limb(&z, N)) << 64) | u128::from(limb(&z, N - 1));
+        let frac = if oct & 1 == 1 {
+            (1 << 127) - (top >> 1)
+        } else {
+            top >> 1
+        };
+        (oct, frac)
     }
 
     /// The octant and remainder of turns shifted to put the octant at bit `64(N + 1)`.

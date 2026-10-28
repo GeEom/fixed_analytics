@@ -12,6 +12,12 @@ use crate::traits::CordicNumber;
     no_panic::no_panic
 )]
 pub fn sin_cos_turns<T: CordicNumber>(t: T) -> (T, T) {
+    if crate::fast::applies::<T>() {
+        let raw = t.raw_i128();
+        let (s, c) = crate::fast::sin_cos(raw.unsigned_abs(), T::frac_bits(), false);
+        let s = if raw < 0 { -s } else { s };
+        return (crate::fast::round(s), crate::fast::round(c));
+    }
     tiered!(T, |v| turns_work(t, v))
 }
 
