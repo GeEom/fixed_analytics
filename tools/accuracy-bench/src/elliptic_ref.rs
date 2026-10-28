@@ -165,3 +165,42 @@ pub fn inverse(sn: &Float, cn: &Float, dn: &Float, kc: &Float) -> Float {
     let u = if cn.is_sign_negative() && !cn.is_zero() { k(kc) * 2u32 - part } else { part };
     if sn.is_sign_negative() { -u } else { u }
 }
+
+/// `u` less the nearest multiple of `2K`, or `u` itself on the separatrix.
+fn reduced(u: &Float, kc: &Float) -> Float {
+    if kc.is_zero() {
+        return big(u);
+    }
+    let period = k(kc) * 2u32;
+    let turns = Float::with_val(P, u / &period).round();
+    Float::with_val(P, u - turns * period)
+}
+
+/// `Π(n; am v|m)` for `v` within a period of 0, continued on the separatrix past 10⁴
+/// by `1/(1 − n)`, below which `sech²` has vanished.
+fn pi_of_u(n: &Float, v: &Float, kc: &Float) -> Float {
+    let cap = f(1e4);
+    if kc.is_zero() && Float::with_val(P, v.clone().abs()) > cap {
+        let edge = if v.is_sign_negative() { -cap } else { cap };
+        let rest = Float::with_val(P, v - &edge) / (f(1.0) - n);
+        return pi_of_u(n, &edge, kc) + rest;
+    }
+    if kc.is_zero() {
+        let (sn, cn, dn, _) = jacobi(v, kc);
+        return pi(n, &sn, &cn, &dn, kc);
+    }
+    // Π(v) = 2Π(n|m)·round(v/2K) + Π of the rest, within (−K, K].
+    let period = k(kc) * 2u32;
+    let turns = Float::with_val(P, v / &period).round();
+    let rest = Float::with_val(P, v - Float::with_val(P, &turns * &period));
+    let (sr, cr, dr, _) = jacobi(&rest, kc);
+    let local = pi(n, &sr, &cr, &dr, kc);
+    if turns.is_zero() { local } else { local + turns * pi_complete(n, kc) * 2u32 }
+}
+
+/// `∫ dv/(1 − n·sn²v)` from `u` to `u + s`.
+pub fn pi_increment(n: &Float, u: &Float, s: &Float, kc: &Float) -> Float {
+    let from = reduced(u, kc);
+    let to = Float::with_val(P, &from + s);
+    pi_of_u(n, &to, kc) - pi_of_u(n, &from, kc)
+}

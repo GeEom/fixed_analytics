@@ -122,6 +122,17 @@ pub enum Fun {
     FresnelC,
     FresnelS,
     Gamma,
+    MulDown,
+    MulUp,
+    MulDivDown,
+    MulDivUp,
+    MulAddDown,
+    MulAddUp,
+    DivDown,
+    DivUp,
+    Dot3Down,
+    Dot3Up,
+    EllipPiIncrement,
 }
 
 use Fun::*;
@@ -134,6 +145,7 @@ pub const ALL: &[Fun] = &[
     EllipK, EllipKm, EllipE, JacobiSn, JacobiCn, JacobiDn, JacobiAm, JacobiInverse, CarlsonRf, CarlsonRfRoots, CarlsonRj, CarlsonRc, CarlsonRd, EllipPi, EllipPiComplete,
     SinTurns, CosTurns, Atan2Turns, DivByTau, WrapRadians, WrapPrincipal, MulByTau,
     CMulRe, CMulIm, CDivRe, CDivIm, CExpRe, CExpIm, CExprelRe, CExprelIm, CExprel2Re, CExprel2Im, FaddeevaRe, FaddeevaIm, CErfRe, CErfIm, E1Re, E1Im, GammaUpperRe, GammaUpperIm, CLnRe, CLnIm, CPowRe, CPowIm, WeightedK1Re, WeightedK1Im, WeightedK2Re, WeightedK2Im, KeplerUniversal, Erf, Erfc, FresnelC, FresnelS, Gamma,
+    MulDown, MulUp, MulDivDown, MulDivUp, MulAddDown, MulAddUp, DivDown, DivUp, Dot3Down, Dot3Up, EllipPiIncrement,
 ];
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -195,6 +207,7 @@ fn elliptic(fun: Fun, a: &[Float]) -> Float {
         CarlsonRc => er::rc(&up(&a[0]), &up(&a[1])),
         CarlsonRd => er::rd(&a[0], &a[1], &a[2]),
         EllipPi => er::pi(&up(&a[0]), &a[1], &a[2], &a[3], &a[4]),
+        EllipPiIncrement => er::pi_increment(&up(&a[0]), &up(&a[1]), &up(&a[2]), &up(&a[3])),
         _ => er::pi_complete(&up(&a[0]), &a[1]),
     }
 }
@@ -218,6 +231,14 @@ fn elliptic_points<T: Sut>(fun: Fun, rng: &mut Rng) -> Vec<Vec<T>> {
             CarlsonRj => (0..4).map(|_| pick(rng, &pos)).collect(),
             CarlsonRc => vec![pick(rng, &pos), pick(rng, &pos)],
             EllipPiComplete => vec![pick(rng, &any), pick(rng, &unit)],
+            EllipPiIncrement => {
+                // Characteristics mostly within (−1, 1), and a third of the steps tiny.
+                let n = if rng.below(4) == 0 { pick(rng, &any) } else if rng.below(2) == 0 { pick(rng, &unit) } else { -pick(rng, &unit) };
+                let n = if n >= one { n - one - one } else { n };
+                let step = pick(rng, &any);
+                let step = match rng.below(3) { 0 => T::from_rb(step.rb() >> rng.below(T::bits() as usize)), 1 => T::from_rb(step.rb() % (one.rb() << 3).max(1)), _ => step };
+                vec![n, pick(rng, &any), step, pick(rng, &unit)]
+            }
             FaddeevaRe | FaddeevaIm | CErfRe | CErfIm | E1Re | E1Im => vec![pick(rng, &any), pick(rng, &any)],
             GammaUpperRe | GammaUpperIm => vec![pick(rng, &pos), pick(rng, &any), pick(rng, &any)],
             FresnelC | FresnelS => vec![pick(rng, &any)],
@@ -548,6 +569,17 @@ impl Fun {
             FresnelC => "fresnel_c",
             FresnelS => "fresnel_s",
             Gamma => "gamma",
+            MulDown => "mul_down",
+            MulUp => "mul_up",
+            MulDivDown => "mul_div_down",
+            MulDivUp => "mul_div_up",
+            MulAddDown => "mul_add_down",
+            MulAddUp => "mul_add_up",
+            DivDown => "div_down",
+            DivUp => "div_up",
+            Dot3Down => "dot3_down",
+            Dot3Up => "dot3_up",
+            EllipPiIncrement => "ellip_pi_increment",
         }
     }
 
@@ -563,7 +595,10 @@ impl Fun {
             CLnRe | CLnIm => 2,
             WeightedK1Re | WeightedK1Im | WeightedK2Re | WeightedK2Im | KeplerUniversal => 4,
             EllipPi => 5,
-            Dot3 => 6,
+            Dot3 | Dot3Down | Dot3Up => 6,
+            MulDown | MulUp | DivDown | DivUp => 2,
+            MulDivDown | MulDivUp | MulAddDown | MulAddUp => 3,
+            EllipPiIncrement => 4,
             _ => 1,
         }
     }
@@ -691,6 +726,27 @@ impl Fun {
             FresnelC => Some(fa::fresnel(x).0),
             FresnelS => Some(fa::fresnel(x).1),
             Gamma => fa::gamma(x).ok(),
+            MulDown | MulUp | MulDivDown | MulDivUp | MulAddDown | MulAddUp | DivDown | DivUp
+            | Dot3Down | Dot3Up => {
+                let m = if self.direction() == Some(true) { fa::Rounding::Up } else { fa::Rounding::Down };
+                Some(match self {
+                    MulDown | MulUp => fa::mul_rounded(x, a[1], m),
+                    MulDivDown | MulDivUp => fa::mul_div_rounded(x, a[1], a[2], m),
+                    MulAddDown | MulAddUp => fa::mul_add_rounded(x, a[1], a[2], m),
+                    DivDown | DivUp => fa::div_rounded(x, a[1], m),
+                    _ => fa::dot_rounded(&a[0..3], &a[3..6], m),
+                })
+            }
+            EllipPiIncrement => fa::ellip_pi_increment(x, a[1], a[2], fa::Modulus::from_complement(a[3])?).ok(),
+        }
+    }
+
+    /// For the directed forms, whether they round up rather than down.
+    pub fn direction(self) -> Option<bool> {
+        match self {
+            MulDown | MulDivDown | MulAddDown | DivDown | Dot3Down => Some(false),
+            MulUp | MulDivUp | MulAddUp | DivUp | Dot3Up => Some(true),
+            _ => None,
         }
     }
 
@@ -724,6 +780,7 @@ impl Fun {
                 a[4] >= zero && a[4] <= one && pole.is_sign_positive() && !pole.is_zero() && reachable && (a[2] != zero || a[3] != zero)
             }
             EllipPiComplete => x < one && a[1] > zero && a[1] <= one,
+            EllipPiIncrement => x < one && a[3] >= zero && a[3] <= one,
             E1Re | E1Im => x != zero || a[1] != zero,
             GammaUpperRe | GammaUpperIm => x > zero && x.to_float() <= 128,
             CLnRe | CLnIm => x != zero || a[1] != zero,
@@ -797,10 +854,11 @@ impl Fun {
                     f(0.0)
                 }
             }
-            MulAdd => Float::with_val(PREC * 3, &x * &a[1]) + &a[2],
-            MulDiv => ratio(Float::with_val(PREC * 3, &x * &a[1]), &a[2]),
-            DivOrSaturate => ratio(x, &a[1]),
-            Dot3 => {
+            MulAdd | MulAddDown | MulAddUp => Float::with_val(PREC * 3, &x * &a[1]) + &a[2],
+            MulDiv | MulDivDown | MulDivUp => ratio(Float::with_val(PREC * 3, &x * &a[1]), &a[2]),
+            DivOrSaturate | DivDown | DivUp => ratio(x, &a[1]),
+            MulDown | MulUp => Float::with_val(PREC * 3, &x * &a[1]),
+            Dot3 | Dot3Down | Dot3Up => {
                 let mut acc = Float::with_val(PREC * 3, 0);
                 for i in 0..3 {
                     acc += Float::with_val(PREC * 3, &a[i] * &a[i + 3]);
@@ -824,7 +882,7 @@ impl Fun {
             Rsqrt => one / x.sqrt(),
             EllipK | EllipKm | EllipE | JacobiSn | JacobiCn | JacobiDn | JacobiAm | JacobiInverse
             | CarlsonRf | CarlsonRfRoots | CarlsonRj | CarlsonRc | CarlsonRd | EllipPi
-            | EllipPiComplete => elliptic(self, a),
+            | EllipPiComplete | EllipPiIncrement => elliptic(self, a),
             SinTurns | CosTurns | DivByTau | WrapRadians | WrapPrincipal => {
                 let p = PREC * 3;
                 let tau = Float::with_val(p, Constant::Pi) * 2u32;
@@ -938,7 +996,7 @@ impl Fun {
                 | WeightedK2Im |
             EllipK | EllipKm | EllipE | JacobiSn | JacobiCn | JacobiDn | JacobiAm | JacobiInverse
                 | CarlsonRf | CarlsonRfRoots | CarlsonRj | CarlsonRc | CarlsonRd | EllipPi
-                | EllipPiComplete
+                | EllipPiComplete | EllipPiIncrement
         )
     }
 
@@ -1265,6 +1323,17 @@ pub fn run<T: Sut>(fun: Fun) -> FunStats {
                 diff -= &period;
             } else if diff < -half.clone() {
                 diff += &period;
+            }
+        }
+        if let Some(up) = fun.direction() {
+            // Exactly: the wrong way, or an ulp or more off, is a failure.
+            let exact = Float::with_val(PREC * 4, c.to_float() - &expected);
+            let wrong = !exact.is_zero() && exact.is_sign_negative() == up;
+            if wrong || (Float::with_val(PREC * 4, exact.abs()) << T::frac_n()) >= 1 {
+                s.errors += 1;
+                if s.example.is_empty() {
+                    s.example = format!("not rounded {} at {}", if up { "up" } else { "down" }, show(p));
+                }
             }
         }
         let err = diff.abs() << T::frac_n();

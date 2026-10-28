@@ -33,10 +33,10 @@ assert!((log.to_num::<f32>() - 1.0).abs() < 0.01);
 | Algebraic | [`sqrt_or_zero`], [`hypot`], [`norm`], [`scale_exponent`], [`scale_by`] | [`sqrt`], [`sqrt_product`], [`rsqrt`], [`normalize`] |
 | Special | [`erf`], [`erfc`], [`fresnel`] | [`gamma`] |
 | Complex ([`Complex`]) | [`exp`](Complex::exp), [`exprel`](Complex::exprel), [`exprel2`](Complex::exprel2), [`faddeeva`](Complex::faddeeva), [`erf`](Complex::erf) | [`ln`](Complex::ln), [`pow`](Complex::pow), [`exprel_weighted`](Complex::exprel_weighted), [`e1`](Complex::e1), [`gamma_upper`](Complex::gamma_upper) |
-| Elliptic | [`ellip_e`], [`jacobi_sn_cn_dn`], [`jacobi_am`] | [`ellip_k`], [`ellip_pi`], [`ellip_pi_complete`], [`jacobi_inverse`], [`carlson_rf`], [`carlson_rf_roots`], [`carlson_rj`], [`carlson_rj_roots`], [`carlson_rc`], [`carlson_rd`] |
-| Arithmetic | [`mul_add`], [`mul_div`], [`div_or_saturate`], [`dot`] | — |
+| Elliptic | [`ellip_e`], [`jacobi_sn_cn_dn`], [`jacobi_am`] | [`ellip_k`], [`ellip_pi`], [`ellip_pi_complete`], [`ellip_pi_increment`], [`jacobi_inverse`], [`carlson_rf`], [`carlson_rf_roots`], [`carlson_rj`], [`carlson_rj_roots`], [`carlson_rc`], [`carlson_rd`] |
+| Arithmetic | [`mul_add`], [`mul_div`], [`div_or_saturate`], [`dot`], and by [`Rounding`] [`mul_rounded`], [`div_rounded`], [`mul_div_rounded`], [`mul_add_rounded`], [`dot_rounded`] | — |
 | Solvers | — | [`root_in`], [`kepler_universal`] |
-| Enclosures | [`enclose`], [`sin_cos_range`], [`sin_cos_range_turns`], [`exp_range`], [`atan_range`], [`tanh_range`] | — |
+| Enclosures | [`enclose`], [`sin_cos_range`], [`sin_cos_range_turns`], [`exp_range`], [`atan_range`], [`tanh_range`], [`exprel_range`], [`exprel2_range`], [`exp_moments_range`], [`tanh_ratio_range`], [`atan_ratio_range`], [`tan_ratio_range`], [`stumpff_range`], [`sqrt_range`], [`hypot_range`], [`atan2_range`] | [`log1p_range`], [`log1p_ratio_range`], [`log1p_residual_ratio_range`], [`atanh_ratio_range`] |
 
 Each function works in binary floating point at twice its type's width or
 more, from its arguments converted exactly, and rounds once. Complete absence
@@ -47,7 +47,8 @@ of panic is verified at the linker level via the
 
 Every function is within [`ERROR_ULPS`], one ulp, of the exact result on
 every type, from `I8F0` to `I3F125`, and the arithmetic functions within half
-an ulp; results out of range saturate to the nearer end. Odd and even
+an ulp, or rounded by [`Rounding`] to the nearest value below or above; results
+out of range saturate to the nearer end. Odd and even
 functions are exactly odd and even, except that an odd one saturating at
 `MAX` meets `MIN` on the other side, and functions that are monotone stay
 monotone.

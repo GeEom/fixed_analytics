@@ -28,56 +28,55 @@ range, and an odd function's result past `MIN` saturates to `MIN` rather than
 Breaking: `CordicNumber` is sealed, as its implementations now carry the
 working arithmetic.
 
-New: `mul_add`, `mul_div`, `div_or_saturate` and `dot`, which round an exact
-result once, `sqrt_or_zero`, and `ERROR_ULPS`, the bound every function meets.
+New, every one generic over the types:
 
-New: `enclose`, the interval of one ulp each way that holds a result's exact
-value, and outward-rounded ranges over an interval, `sin_cos_range`,
-`exp_range`, `atan_range` and `tanh_range`; `hypot`, `norm` and `normalize`,
-which form their squares without underflow; `scale_exponent` and `scale_by`
-for exact power-of-two scaling; `sqrt_product`, `rsqrt`, and `asin_from_gap`,
-which takes the gap to 1 in place of a value that would round.
-
-New, each to full relative precision near 0: `expm1`; `exprel` and
-`exprel2`, `(e^x − 1)/x` and `(e^x − 1 − x)/x²`; `exp_moments`, the
-integrals `∫₀¹ s^(k−1)·e^(−xs) ds` for k up to 3 with `e^(−x)`; `log1p`,
-`log1p_ratio`, `log1p_residual` and `log1p_residual_ratio`; `stumpff`, the
-Stumpff functions `c₀` to `c₃` of either sign; and `tan_ratio`, `atan_ratio`,
-`atanh_ratio` and `tanh_ratio`.
-
-New: elliptic integrals and functions. `Modulus` holds `m` or its
-complement `k'` exact. `ellip_k`, `ellip_e` and `ellip_pi_complete` are the
-complete integrals, `ellip_pi` the incomplete third kind from `(sn, cn, dn)`,
-`jacobi_sn_cn_dn` and `jacobi_am` the Jacobi functions of any argument, and
-`jacobi_inverse` their inverse. `carlson_rf`, `carlson_rj`, `carlson_rc` and
-`carlson_rd` are Carlson's integrals, with `carlson_rf_roots` and
-`carlson_rj_roots` taking square roots for arguments too small to hold.
-
-New: angles in turns. `sin_cos_turns` takes a fraction of a turn, whose
-reduction is its own bits with no rounded π, and `atan2_turns` returns one.
-`div_by_tau` is `x/τ` rounded once, and `wrap_radians` and `wrap_principal`
-reduce to `[0, 2π)` and `(−π, π]` by exact multiples of 2π.
-
-New: `Complex`, a complex number over any of the types, whose arithmetic
-rounds each part once and whose division cannot overflow for a non-zero
-divisor, with `exp`, `exprel` and `exprel2`. The Faddeeva function
-`faddeeva`, the complex `erf`, the exponential integral `e1` and the upper
-incomplete gamma function `gamma_upper`, for `a` in `(0, 128]`, work on any
-complex argument, on the principal branch. `erf`, `erfc`, `fresnel` and
-`gamma` take a real one.
-
-`exp_moments` returns `[E₁, …, E₅, e^(−x)]`, the moments up to `k = 5` all
-from one exponential.
-
-New: `Complex::exprel_weighted`, `exprel` and `exprel2` under the weight
-`((1 − εt)/(1 − εs))^p/(1 − εs)` for complex `z`, `ε` in `[0, 1)` and `p ≥ 0`,
-which keep their precision as `ε → 0`; the complex logarithm `Complex::ln`
-and real power `Complex::pow`, exact in phase on the axes and diagonals;
-`Complex::saturating_add`, `saturating_sub`, `saturating_mul`,
-`saturating_div` and `saturating_neg`, the operators by name; `mul_by_tau`,
-turns to radians rounded once, and `sin_cos_range_turns`; `root_in`, a
-bracketed root finder by the ITP method with a fixed budget; and
-`kepler_universal`, the universal anomaly of a two-body orbit.
+- Arithmetic from the exact result, rounded once: `mul_add`, `mul_div`,
+  `div_or_saturate`, `dot` and `sqrt_or_zero`, and the same rounded toward
+  −∞ or +∞ by a `Rounding`, `mul_rounded`, `div_rounded`, `mul_div_rounded`,
+  `mul_add_rounded` and `dot_rounded`. `ERROR_ULPS` is the bound every
+  function meets.
+- Scale-aware algebra: `hypot`, `norm` and `normalize`, which form their
+  squares without underflow; `scale_exponent` and `scale_by` for exact
+  power-of-two scaling; `sqrt_product`, `rsqrt`, and `asin_from_gap`, which
+  takes the gap to 1 in place of a value that would round.
+- Exponential and logarithm relatives, each to full relative precision near
+  0: `expm1`; `exprel` and `exprel2`, `(e^x − 1)/x` and `(e^x − 1 − x)/x²`;
+  `exp_moments`, `[E₁, …, E₅, e^(−x)]` with `Eₖ = ∫₀¹ s^(k−1)·e^(−xs) ds`,
+  all from one exponential; `log1p`, `log1p_ratio`, `log1p_residual` and
+  `log1p_residual_ratio`; `stumpff`, the Stumpff functions `c₀` to `c₃` of
+  either sign; and `tan_ratio`, `atan_ratio`, `atanh_ratio` and `tanh_ratio`.
+- Elliptic integrals and functions of a `Modulus`, which holds `m` or its
+  complement `k'` exact: `ellip_k`, `ellip_e` and `ellip_pi_complete`;
+  `ellip_pi`, the incomplete third kind from `(sn, cn, dn)`, and
+  `ellip_pi_increment`, its change from `u` to `u + step` for `n < 1`, which
+  keeps its bits as the step shrinks; `jacobi_sn_cn_dn` and `jacobi_am` of
+  any argument, and `jacobi_inverse`; and Carlson's `carlson_rf`,
+  `carlson_rj`, `carlson_rc` and `carlson_rd`, with `carlson_rf_roots` and
+  `carlson_rj_roots` taking square roots for arguments too small to hold.
+- Angles in turns: `sin_cos_turns`, whose reduction is its own bits with no
+  rounded π, `atan2_turns`, `div_by_tau` and `mul_by_tau`, each rounded
+  once, and `wrap_radians` and `wrap_principal`, which reduce to `[0, 2π)`
+  and `(−π, π]` by exact multiples of 2π.
+- `Complex`, whose arithmetic rounds each part once and whose division
+  cannot overflow for a non-zero divisor, the operators also by name as
+  `saturating_add`, `saturating_sub`, `saturating_mul`, `saturating_div` and
+  `saturating_neg`; its `exp`, `exprel`, `exprel2`, `ln` and real power
+  `pow`; `exprel_weighted`, `exprel` and `exprel2` under the weight
+  `((1 − εt)/(1 − εs))^p/(1 − εs)`, precise as `ε → 0`; and the Faddeeva
+  function `faddeeva`, `erf`, the exponential integral `e1` and the upper
+  incomplete gamma function `gamma_upper` for `a` in `(0, 128]`, on the
+  principal branch. `erf`, `erfc`, `fresnel` and `gamma` take a real
+  argument.
+- Solvers: `root_in`, a bracketed root finder by the ITP method with a fixed
+  budget, and `kepler_universal`, the universal anomaly of a two-body orbit.
+- Enclosures that hold the exact value: `enclose`, one ulp each way, and
+  ranges over an interval rounded outward, `sin_cos_range`,
+  `sin_cos_range_turns`, `exp_range`, `atan_range` and `tanh_range`, and for
+  the kernels `exprel_range`, `exprel2_range`, `exp_moments_range`,
+  `log1p_range`, `log1p_ratio_range`, `log1p_residual_ratio_range`,
+  `tanh_ratio_range`, `atan_ratio_range`, `atanh_ratio_range`,
+  `tan_ratio_range`, `stumpff_range`, `sqrt_range`, `hypot_range` and
+  `atan2_range`. The Stumpff ranges bound any extreme between the ends.
 
 Speed against 3.1.1, per call: I16F16's elementary functions take 3.4 to 9
 times as long and I32F32's 1.6 to 6 times, while I64F64's run 0.65 to 2.4

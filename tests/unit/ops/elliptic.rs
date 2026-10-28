@@ -4,7 +4,8 @@ mod tests {
     use fixed::types::{I32F32, I64F64};
     use fixed_analytics::{
         Error, Modulus, carlson_rc, carlson_rd, carlson_rf, carlson_rf_roots, carlson_rj, ellip_e,
-        ellip_k, ellip_pi, ellip_pi_complete, jacobi_am, jacobi_inverse, jacobi_sn_cn_dn,
+        ellip_k, ellip_pi, ellip_pi_complete, ellip_pi_increment, jacobi_am, jacobi_inverse,
+        jacobi_sn_cn_dn,
     };
 
     fn half() -> Result<Modulus<I64F64>, Error> {
@@ -144,6 +145,90 @@ mod tests {
             )
             .is_err()
         );
+        Ok(())
+    }
+
+    #[test]
+    fn pi_increments_match_mpmath() -> TestResult {
+        let t = |x: f64| I64F64::from_num(x);
+        let rise = |n: f64, u: f64, s: I64F64| ellip_pi_increment(t(n), t(u), s, half()?);
+        assert!(near(rise(-0.5, 0.3, t(0.2))?, 0.186_114_348_208_225, 1e-15));
+        assert!(near(
+            rise(-0.5, 1.8, t(0.5))?,
+            0.336_687_301_019_070_5,
+            1e-15
+        ));
+        assert!(near(rise(-0.5, 5.0, t(3.0))?, 2.425_522_980_217_884, 4e-15));
+        assert!(near(
+            rise(-0.5, -2.0, t(7.5))?,
+            6.007_295_236_841_554,
+            8e-15
+        ));
+        assert!(near(
+            rise(-0.5, 1.854, t(0.001))?,
+            6.666_666_960_258_615e-4,
+            1e-17
+        ));
+        assert!(near(
+            rise(0.75, 100.0, t(0.25))?,
+            0.250_983_515_421_914_3,
+            1e-14
+        ));
+        assert!(near(
+            rise(0.75, -3.5, t(-20.0))?,
+            -41.369_096_674_879_01,
+            4e-14
+        ));
+        let tiny = rise(-0.5, 1.0, I64F64::from_bits(1 << 34))?;
+        assert!(near(
+            tiny,
+            7.042_637_426_469_899e-10,
+            I64F64::DELTA.to_num()
+        ));
+        assert_eq!(rise(-0.5, 1.0, I64F64::ZERO)?, I64F64::ZERO);
+        Ok(())
+    }
+
+    #[test]
+    fn pi_increments_add_and_agree_with_pi() -> TestResult {
+        let modulus =
+            Modulus::from_parameter(I32F32::from_num(0.8)).ok_or(Error::domain("test", "m"))?;
+        let n = I32F32::from_num(0.3);
+        let ulp = I32F32::DELTA;
+        let mut rng = Lcg(0x91);
+        for _ in 0..300 {
+            let u = I32F32::from_num(rng.range(-6.0, 6.0));
+            let (first, second) = (
+                I32F32::from_num(rng.range(-3.0, 3.0)),
+                I32F32::from_num(rng.range(-3.0, 3.0)),
+            );
+            let whole = ellip_pi_increment(n, u, first + second, modulus)?;
+            let parts = ellip_pi_increment(n, u, first, modulus)?
+                + ellip_pi_increment(n, u + first, second, modulus)?;
+            assert!(
+                (whole - parts).abs() <= ulp * 2,
+                "{u} {first} {second}: {whole} {parts}"
+            );
+        }
+        let u = I32F32::from_num(0.9);
+        let (sn, cn, dn) = jacobi_sn_cn_dn(u, modulus);
+        let from_zero = ellip_pi_increment(n, I32F32::ZERO, u, modulus)?;
+        assert!((from_zero - ellip_pi(n, sn, cn, dn, modulus)?).abs() <= ulp * 4);
+        Ok(())
+    }
+
+    #[test]
+    fn pi_increments_on_the_separatrix_and_past_n_of_1() -> TestResult {
+        let t = |x: f64| I64F64::from_num(x);
+        let sep = Modulus::from_complement(I64F64::ZERO).ok_or(Error::domain("test", "m"))?;
+        let ahead = ellip_pi_increment(t(-0.5), t(3.0), t(2.0), sep)?;
+        assert!(near(ahead, 1.334_413_912_023_380_5, 1e-15));
+        let across = ellip_pi_increment(t(-0.5), t(-1.0), t(1.5), sep)?;
+        assert!(near(across, 1.381_753_614_509_052_7, 1e-15));
+        let far = ellip_pi_increment(t(-0.5), t(5000.0), t(3.0), sep)?;
+        assert_eq!(far, t(2.0));
+        assert!(ellip_pi_increment(t(1.0), t(0.2), t(0.3), half()?).is_err());
+        assert!(ellip_pi_increment(t(1.5), t(0.2), t(0.3), sep).is_err());
         Ok(())
     }
 }

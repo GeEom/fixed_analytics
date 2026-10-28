@@ -4,6 +4,28 @@ use crate::traits::CordicNumber;
 
 const LOW: u128 = u64::MAX as u128;
 
+/// The way a result rounds, for bounds that must each round their own way.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Rounding {
+    /// To the nearest value, ties to even.
+    Nearest,
+    /// Toward −∞.
+    Down,
+    /// Toward +∞.
+    Up,
+}
+
+impl Rounding {
+    /// Whether a magnitude steps from 0, given its sign, its parity and its dropped half and rest.
+    const fn away(self, neg: bool, odd: bool, (half, rest): (bool, bool)) -> bool {
+        match self {
+            Self::Nearest => half && (rest || odd),
+            Self::Down => neg && (half || rest),
+            Self::Up => !neg && (half || rest),
+        }
+    }
+}
+
 /// `a · b` as `(high, low)` halves of 256 bits.
 const fn wide(a: u128, b: u128) -> (u128, u128) {
     let (ah, al) = (a >> 64, a & LOW);
@@ -64,8 +86,8 @@ fn saturate<T: CordicNumber>(neg: bool, mag: u128) -> T {
     T::from_raw_i128(raw)
 }
 
-/// `(hi, lo) / 2^s` rounded to nearest even, saturating past 128 bits, `s < 128`.
-const fn shift_round(hi: u128, lo: u128, s: u32) -> u128 {
+/// `|(hi, lo)| / 2^s` of sign `neg` rounded by `mode`, saturating past 128 bits, `s < 128`.
+const fn shift_round(hi: u128, lo: u128, s: u32, neg: bool, mode: Rounding) -> u128 {
     if s == 0 {
         return if hi == 0 { lo } else { u128::MAX };
     }
@@ -75,7 +97,7 @@ const fn shift_round(hi: u128, lo: u128, s: u32) -> u128 {
     let q = (hi << (128 - s)) | (lo >> s);
     let half = (lo >> (s - 1)) & 1 == 1;
     let rest = s > 1 && lo << (129 - s) != 0;
-    if half && (rest || q & 1 == 1) {
+    if mode.away(neg, q & 1 == 1, (half, rest)) {
         q.saturating_add(1)
     } else {
         q
@@ -89,6 +111,16 @@ const fn shift_round(hi: u128, lo: u128, s: u32) -> u128 {
     no_panic::no_panic
 )]
 pub fn mul_add<T: CordicNumber>(a: T, b: T, c: T) -> T {
+    mul_add_rounded(a, b, c, Rounding::Nearest)
+}
+
+/// [`mul_add`] rounded by `mode`.
+#[must_use]
+#[cfg_attr(
+    all(feature = "verify-no-panic", not(debug_assertions)),
+    no_panic::no_panic
+)]
+pub fn mul_add_rounded<T: CordicNumber>(a: T, b: T, c: T, mode: Rounding) -> T {
     let (ra, rb, rc) = (a.raw_i128(), b.raw_i128(), c.raw_i128());
     let (p_hi, p_lo) = wide(ra.unsigned_abs(), rb.unsigned_abs());
     let p_neg = (ra < 0) != (rb < 0);
@@ -100,7 +132,17 @@ pub fn mul_add<T: CordicNumber>(a: T, b: T, c: T) -> T {
         (cm >> (128 - f), cm << f)
     };
     let (neg, hi, lo) = signed_add(p_neg, p_hi, p_lo, rc < 0, c_hi, c_lo);
-    saturate(neg, shift_round(hi, lo, f))
+    saturate(neg, shift_round(hi, lo, f, neg, mode))
+}
+
+/// `a · b` rounded by `mode`.
+#[must_use]
+#[cfg_attr(
+    all(feature = "verify-no-panic", not(debug_assertions)),
+    no_panic::no_panic
+)]
+pub fn mul_rounded<T: CordicNumber>(a: T, b: T, mode: Rounding) -> T {
+    mul_add_rounded(a, b, T::zero(), mode)
 }
 
 /// `±(ah, al) ± (bh, bl)` as a sign and magnitude.
@@ -132,6 +174,16 @@ const fn signed_add(
     no_panic::no_panic
 )]
 pub fn mul_div<T: CordicNumber>(a: T, b: T, c: T) -> T {
+    mul_div_rounded(a, b, c, Rounding::Nearest)
+}
+
+/// [`mul_div`] rounded by `mode`.
+#[must_use]
+#[cfg_attr(
+    all(feature = "verify-no-panic", not(debug_assertions)),
+    no_panic::no_panic
+)]
+pub fn mul_div_rounded<T: CordicNumber>(a: T, b: T, c: T, mode: Rounding) -> T {
     let (ra, rb, rc) = (a.raw_i128(), b.raw_i128(), c.raw_i128());
     let neg = ((ra < 0) != (rb < 0)) != (rc < 0);
     let (hi, lo) = wide(ra.unsigned_abs(), rb.unsigned_abs());
@@ -144,8 +196,9 @@ pub fn mul_div<T: CordicNumber>(a: T, b: T, c: T) -> T {
     }
     let (quotient, rem) = div_wide(hi, lo, divisor);
     let twice = rem << 1;
-    let up = twice > divisor || (twice == divisor && quotient & 1 == 1);
-    saturate(neg, quotient.saturating_add(u128::from(up)))
+    let dropped = (twice >= divisor, twice != divisor && rem != 0);
+    let away = mode.away(neg, quotient & 1 == 1, dropped);
+    saturate(neg, quotient.saturating_add(u128::from(away)))
 }
 
 /// `a / b` rounded to nearest; a zero `b` saturates by sign, 0/0 is 0, and it never panics.
@@ -156,6 +209,16 @@ pub fn mul_div<T: CordicNumber>(a: T, b: T, c: T) -> T {
 )]
 pub fn div_or_saturate<T: CordicNumber>(a: T, b: T) -> T {
     mul_div(a, T::one(), b)
+}
+
+/// [`div_or_saturate`] rounded by `mode`.
+#[must_use]
+#[cfg_attr(
+    all(feature = "verify-no-panic", not(debug_assertions)),
+    no_panic::no_panic
+)]
+pub fn div_rounded<T: CordicNumber>(a: T, b: T, mode: Rounding) -> T {
+    mul_div_rounded(a, T::one(), b, mode)
 }
 
 /// `x += (hi, lo)` for a 384-bit `x`, most significant word first.
@@ -175,6 +238,16 @@ const fn accumulate(x: &mut (u128, u128, u128), hi: u128, lo: u128) {
     no_panic::no_panic
 )]
 pub fn dot<T: CordicNumber>(a: &[T], b: &[T]) -> T {
+    dot_rounded(a, b, Rounding::Nearest)
+}
+
+/// [`dot`] rounded by `mode`.
+#[must_use]
+#[cfg_attr(
+    all(feature = "verify-no-panic", not(debug_assertions)),
+    no_panic::no_panic
+)]
+pub fn dot_rounded<T: CordicNumber>(a: &[T], b: &[T], mode: Rounding) -> T {
     let mut pos = (0, 0, 0);
     let mut neg = (0, 0, 0);
     for (&x, &y) in a.iter().zip(b) {
@@ -202,7 +275,10 @@ pub fn dot<T: CordicNumber>(a: &[T], b: &[T]) -> T {
     if top != 0 {
         return saturate(negative, u128::MAX);
     }
-    saturate(negative, shift_round(mid, lo, T::frac_bits()))
+    saturate(
+        negative,
+        shift_round(mid, lo, T::frac_bits(), negative, mode),
+    )
 }
 
 /// Square root, 0 for `x ≤ 0`, rounded to nearest like [`sqrt`](crate::sqrt).

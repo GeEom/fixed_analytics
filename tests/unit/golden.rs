@@ -21,6 +21,12 @@ mod tests {
         jacobi_sn_cn_dn,
     };
     use fixed_analytics::{
+        Rounding, atan_ratio_range, atan2_range, atanh_ratio_range, div_rounded, dot_rounded,
+        ellip_pi_increment, exp_moments_range, exprel_range, exprel2_range, hypot_range,
+        log1p_range, log1p_ratio_range, log1p_residual_ratio_range, mul_add_rounded,
+        mul_div_rounded, mul_rounded, sqrt_range, stumpff_range, tan_ratio_range, tanh_ratio_range,
+    };
+    use fixed_analytics::{
         atan_ratio, atanh_ratio, exp_moments, expm1, exprel, exprel2, log1p, log1p_ratio,
         log1p_residual, log1p_residual_ratio, stumpff, tan_ratio, tanh_ratio,
     };
@@ -128,6 +134,26 @@ mod tests {
         "erfc",
         "fresnel",
         "gamma",
+        "mul_rounded",
+        "div_rounded",
+        "mul_div_rounded",
+        "mul_add_rounded",
+        "dot_rounded",
+        "exprel_range",
+        "exprel2_range",
+        "exp_moments_range",
+        "log1p_range",
+        "log1p_ratio_range",
+        "log1p_residual_ratio_range",
+        "tanh_ratio_range",
+        "atan_ratio_range",
+        "atanh_ratio_range",
+        "tan_ratio_range",
+        "sqrt_range",
+        "stumpff_range",
+        "hypot_range",
+        "atan2_range",
+        "ellip_pi_increment",
     ];
 
     trait Raw: CordicNumber {
@@ -262,6 +288,7 @@ mod tests {
             "fresnel" => pair(fresnel(x)),
             "gamma" => res(gamma(x)),
             n if n.starts_with("complex") => complex(n, x, y),
+            n if n.ends_with("_rounded") || n.ends_with("_range") => bounding(n, x, y),
             _ => elliptic(name, x, y),
         }
     }
@@ -285,6 +312,42 @@ mod tests {
             }
             "kepler_universal" => res(kepler_universal(T::one(), T::zero(), y, x)),
             _ => [None, None],
+        }
+    }
+
+    /// The directed forms, down then up, and the ranges' ends, several summed.
+    fn bounding<T: CordicNumber>(name: &str, x: T, y: T) -> [Option<T>; 2] {
+        let directed = |f: &dyn Fn(Rounding) -> T| [Some(f(Rounding::Down)), Some(f(Rounding::Up))];
+        let res = |v: fixed_analytics::Result<(T, T)>| v.map_or([None, None], pair);
+        let sums = |ends: &[(T, T)]| {
+            let add = |a: T, b: T| a.saturating_add(b);
+            let low = ends.iter().map(|e| e.0).fold(T::zero(), add);
+            [
+                Some(low),
+                Some(ends.iter().map(|e| e.1).fold(T::zero(), add)),
+            ]
+        };
+        let unit = |v: T| div_or_saturate(v.abs(), v.abs().saturating_add(T::one()));
+        match name {
+            "mul_rounded" => directed(&|m| mul_rounded(x, y, m)),
+            "div_rounded" => directed(&|m| div_rounded(x, y, m)),
+            "mul_div_rounded" => directed(&|m| mul_div_rounded(x, y, y.div_int(3), m)),
+            "mul_add_rounded" => directed(&|m| mul_add_rounded(x, y, x, m)),
+            "dot_rounded" => directed(&|m| dot_rounded(&[x, y, x], &[y, y, x], m)),
+            "exprel_range" => pair(exprel_range(x, y)),
+            "exprel2_range" => pair(exprel2_range(x, y)),
+            "exp_moments_range" => sums(&exp_moments_range(x, y)),
+            "log1p_range" => res(log1p_range(x.abs(), y.abs())),
+            "log1p_ratio_range" => res(log1p_ratio_range(x.abs(), y.abs())),
+            "log1p_residual_ratio_range" => res(log1p_residual_ratio_range(x.abs(), y.abs())),
+            "tanh_ratio_range" => pair(tanh_ratio_range(x, y)),
+            "atan_ratio_range" => pair(atan_ratio_range(x, y)),
+            "atanh_ratio_range" => res(atanh_ratio_range(unit(x), -unit(y))),
+            "tan_ratio_range" => pair(tan_ratio_range(x, y)),
+            "sqrt_range" => pair(sqrt_range(x, y)),
+            "stumpff_range" => sums(&stumpff_range(x, y)),
+            "hypot_range" => pair(hypot_range((x, y), (y, x.div_int(2)))),
+            _ => pair(atan2_range((x, y), (y, x.div_int(2)))),
         }
     }
 
@@ -355,6 +418,7 @@ mod tests {
                 let (sn, cn, dn) = jacobi_sn_cn_dn(x, m);
                 res(jacobi_inverse(sn, cn, dn, m))
             }
+            "ellip_pi_increment" => res(ellip_pi_increment(T::half(), x, y, m)),
             _ => [None, None],
         }
     }

@@ -370,6 +370,25 @@ fn sn_cn_dn_core<V: Work>(arg: V, means: &Means<V>) -> (V, V, V) {
     (sn, cot * sn, dn)
 }
 
+/// `u = (2^124·c₀ + 2^62·c₁ + c₂)·period + rest`, the count in parts so a 128-bit `u` fits.
+fn reduce<V: Work>(u: V, period: V) -> ([i64; 3], V) {
+    let cycles = u / period;
+    let top = cycles.ldexp(-124).round_int();
+    let cycles = cycles - V::from_int(top).ldexp(124);
+    let high = cycles.ldexp(-62).round_int();
+    let count = [
+        top,
+        high,
+        (cycles - V::from_int(high).ldexp(62)).round_int(),
+    ];
+    (count, u - times(count, period))
+}
+
+/// `count·unit` for a count in [`reduce`]'s parts.
+fn times<V: Work>([top, high, low]: [i64; 3], unit: V) -> V {
+    unit.mul_int(top).ldexp(124) + unit.mul_int(high).ldexp(62) + unit.mul_int(low)
+}
+
 /// `(sn, cn, dn, am)` of `u` for the modulus parts.
 fn jacobi_work<V: Work>(u: V, parts_: &Parts<V>) -> (V, V, V, V) {
     let one = V::one();
@@ -391,16 +410,7 @@ fn jacobi_work<V: Work>(u: V, parts_: &Parts<V>) -> (V, V, V, V) {
     }
     let levels = means(parts_.kc);
     let quarter = half_pi::<V>() / levels.mean;
-    let period = quarter.ldexp(1);
-    // u = (2^124·top + 2^62·high + low)·2K + rest, in parts so a 128-bit u fits.
-    let cycles = u / period;
-    let top = cycles.ldexp(-124).round_int();
-    let cycles = cycles - V::from_int(top).ldexp(124);
-    let high = cycles.ldexp(-62).round_int();
-    let low = (cycles - V::from_int(high).ldexp(62)).round_int();
-    let whole =
-        |unit: V| unit.mul_int(top).ldexp(124) + unit.mul_int(high).ldexp(62) + unit.mul_int(low);
-    let rest = u - whole(period);
+    let (count, rest) = reduce(u, quarter.ldexp(1));
     let dist = rest.abs();
     let (sn, cn, dn) = if dist <= quarter.ldexp(-1) {
         sn_cn_dn_core(dist, &levels)
@@ -411,9 +421,9 @@ fn jacobi_work<V: Work>(u: V, parts_: &Parts<V>) -> (V, V, V, V) {
     };
     let am = atan_ratio(sn, cn.abs());
     let am = if cn.is_neg() { pi::<V>() - am } else { am };
-    let flip = low % 2 != 0;
+    let flip = count[2] % 2 != 0;
     let sign = |x: V, neg: bool| if neg { -x } else { x };
-    let winding = whole(pi::<V>());
+    let winding = times(count, pi::<V>());
     (
         sign(sign(sn, rest.is_neg()), flip),
         sign(cn, flip),
@@ -549,14 +559,16 @@ pub fn ellip_pi<T: CordicNumber>(n: T, sn: T, cn: T, dn: T, modulus: Modulus<T>)
         ));
     }
     Ok(tiered!(T, |v| {
-        pi_work(v(n), v(sn), v(cn), v(dn), &parts_in(modulus, v))
+        let (s_v, n_v) = (v(sn), v(n));
+        let gap = v(T::one()) - n_v * s_v.square();
+        pi_work(n_v, s_v, v(cn), v(dn), gap, &parts_in(modulus, v))
     }))
 }
 
-fn pi_work<V: Work>(nw: V, sw: V, cw: V, dw: V, parts_: &Parts<V>) -> V {
+/// `Π(n; φ|m)` from `φ`'s `(sn, cn, dn)` and `1 − n·sn²`.
+fn pi_work<V: Work>(nw: V, sw: V, cw: V, dw: V, pole: V, parts_: &Parts<V>) -> V {
     let one = V::one();
     let s2 = sw.square();
-    let pole = one - nw * s2;
     let rf_value = rf_sq(cw, dw).unwrap_or_else(V::zero);
     let rj_value = rj(
         cw.square(),
@@ -583,6 +595,107 @@ fn complete_pi<V: Work>(n: V, p: &Parts<V>) -> V {
     let f = rf(zero, p.kc2, one, Some([zero, p.kc, one]));
     let pole = one - n;
     f + (n * rj(zero, p.kc2, one, pole, Some([zero, p.kc, one, pole.sqrt()]))).div_int(3)
+}
+
+/// `∫ dv/(1 − n·sn²v)` from `u` to `u + step`, the change in `Π(n; am v|m)`, from the ends
+/// reduced to `[−K, K]` with `2Π(n|m)` a period, so a small step keeps its bits.
+/// # Errors
+/// Returns `DomainError` unless `n < 1`.
+#[must_use = "returns the integral which should be handled"]
+#[cfg_attr(
+    all(feature = "verify-no-panic", not(debug_assertions)),
+    no_panic::no_panic
+)]
+pub fn ellip_pi_increment<T: CordicNumber>(n: T, u: T, step: T, modulus: Modulus<T>) -> Result<T> {
+    if n >= T::one() {
+        return Err(Error::domain("ellip_pi_increment", "n below 1"));
+    }
+    let (rise, _) = tiered!(T, |v| increment_work(
+        v(n),
+        v(u),
+        v(step),
+        &parts_in(modulus, v)
+    ));
+    Ok(rise)
+}
+
+/// The increment, and the size its error scales with: the ends' integrals, `u`, and `K/(1 − n·sn²)`.
+fn increment_work<V: Work>(n: V, u: V, s: V, p: &Parts<V>) -> (V, V) {
+    let one = V::one();
+    let local = |v: V| {
+        let (sn, cn, dn, _) = jacobi_work(v, p);
+        let gap = cn.square() + (one - n) * sn.square();
+        (pi_work(n, sn, cn, dn, gap, p), one / gap)
+    };
+    let reach = u.abs().max((u + s).abs());
+    let ((from, near), (to, far), whole, scale) = if p.kc.is_zero() {
+        // Past the cap sech² v is below the working precision and the integrand 1/(1 − n).
+        let cap = V::from_int(i64::from(by_width::<V>([29, 59, 88])));
+        if let Some(rise) = gauss(n, u, s, p) {
+            return (rise, rise.abs().max(reach));
+        }
+        let capped = |v: V| {
+            let edge = cap.with_sign(v.is_neg());
+            if v.abs() > cap {
+                let (at, steep) = local(edge);
+                (at + (v - edge) / (one - n), steep)
+            } else {
+                local(v)
+            }
+        };
+        (capped(u), capped(u + s), V::zero(), V::zero())
+    } else {
+        let quarter = complete_k(p.kc);
+        let period = quarter.ldexp(1);
+        let (_, start) = reduce(u, period);
+        if let Some(rise) = gauss(n, start, s, p) {
+            return (rise, rise.abs().max(reach));
+        }
+        let (count, end) = reduce(start + s, period);
+        let whole = if count == [0; 3] {
+            V::zero()
+        } else {
+            times(count, complete_pi(n, p).ldexp(1))
+        };
+        (local(start), local(end), whole, quarter)
+    };
+    let size = from.abs().max(to.abs()).max(whole.abs()).max(reach);
+    (to - from + whole, size.max(scale * near.max(far)))
+}
+
+/// The increment by five-point Gauss–Legendre where the step is too short for a difference not to
+/// cancel, so far inside the nearest zero of `1 − n·sn²`, by two derivatives, that it is exact.
+fn gauss<V: Work>(n: V, from: V, step: V, p: &Parts<V>) -> Option<V> {
+    let one = V::one();
+    let half = step.ldexp(-1);
+    let mid = from + half;
+    let (sn, cn, dn, _) = jacobi_work(mid, p);
+    let gap = cn.square() + (one - n) * sn.square();
+    let slope = (n * sn * cn * dn).ldexp(1);
+    let bend = (n * ((cn * dn).square() - (sn * dn).square() - p.m * (sn * cn).square())).ldexp(1);
+    let room = (gap / slope).abs().min((gap / bend).abs().sqrt()).min(one);
+    if step
+        .abs()
+        .ldexp(i32::try_from(by_width::<V>([7, 14, 20])).unwrap_or(0))
+        > room
+    {
+        return None;
+    }
+    let at = |v: V| {
+        let (sine, cosine, _, _) = jacobi_work(v, p);
+        one / (cosine.square() + (one - n) * sine.square())
+    };
+    let root = V::from_int(10).div_int(7).sqrt().ldexp(1);
+    let (inner, outer) = (
+        (V::from_int(5) - root).sqrt().div_int(3),
+        (V::from_int(5) + root).sqrt().div_int(3),
+    );
+    let lean = V::from_int(70).sqrt().mul_int(13);
+    let pair = |x: V| at(mid - half * x) + at(mid + half * x);
+    let sum = V::from_int(128).div_int(225) / gap
+        + (V::from_int(322) + lean).div_int(900) * pair(inner)
+        + (V::from_int(322) - lean).div_int(900) * pair(outer);
+    Some(half * sum)
 }
 
 /// The complete elliptic integral of the third kind `Π(n|m)`.

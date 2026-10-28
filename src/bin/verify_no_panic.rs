@@ -16,6 +16,12 @@ use fixed_analytics::{
     ellip_e, ellip_k, ellip_pi, ellip_pi_complete, jacobi_am, jacobi_inverse, jacobi_sn_cn_dn,
 };
 use fixed_analytics::{
+    Rounding, atan_ratio_range, atan2_range, atanh_ratio_range, div_rounded, dot_rounded,
+    ellip_pi_increment, exp_moments_range, exprel_range, exprel2_range, hypot_range, log1p_range,
+    log1p_ratio_range, log1p_residual_ratio_range, mul_add_rounded, mul_div_rounded, mul_rounded,
+    sqrt_range, stumpff_range, tan_ratio_range, tanh_ratio_range,
+};
+use fixed_analytics::{
     acos, acosh, acoth, asin, asin_from_gap, asinh, atan, atan_range, atan2, atanh, cos, cosh,
     coth, div_or_saturate, dot, enclose, exp, exp_range, hypot, ln, log2, log10, mul_add, mul_div,
     norm, normalize, pow, pow2, rsqrt, scale_by, scale_exponent, sin, sin_cos, sin_cos_range, sinh,
@@ -112,6 +118,35 @@ fn exercise<T: CordicNumber>(x: T, y: T, two: T) {
     keep(carlson_rc(x, y));
     keep(carlson_rd(x, y, two));
     exercise_more(x, y, two);
+    exercise_bounds(x, y, two);
+}
+
+/// The range forms and directed arithmetic, which bound what the rest compute.
+fn exercise_bounds<T: CordicNumber>(x: T, y: T, two: T) {
+    for mode in [Rounding::Down, Rounding::Nearest, Rounding::Up] {
+        keep(mul_rounded(x, y, mode));
+        keep(div_rounded(x, y, mode));
+        keep(mul_div_rounded(x, y, two, mode));
+        keep(mul_add_rounded(x, y, two, mode));
+        keep(dot_rounded(&[x, y], &[two, x], mode));
+    }
+    keep(exprel_range(x, two));
+    keep(exprel2_range(x, two));
+    keep(exp_moments_range(x, two));
+    keep(log1p_range(x, two));
+    keep(log1p_ratio_range(x, two));
+    keep(log1p_residual_ratio_range(x, two));
+    keep(tanh_ratio_range(x, two));
+    keep(atan_ratio_range(x, two));
+    keep(atanh_ratio_range(y, x));
+    keep(tan_ratio_range(x, two));
+    keep(sqrt_range(x, two));
+    keep(stumpff_range(x, two));
+    keep(hypot_range((x, y), (y, two)));
+    keep(atan2_range((x, y), (y, two)));
+    if let Some(m) = Modulus::from_complement(y) {
+        keep(ellip_pi_increment(x, y, two, m));
+    }
 }
 
 /// The turns and complex functions, kept apart so neither list grows too long.

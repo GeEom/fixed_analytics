@@ -89,12 +89,12 @@ pub fn check_bounds(stats: &[FunStats]) -> bool {
     let limit = f64::from(fixed_analytics::ERROR_ULPS);
     let mut ok = true;
     for s in stats {
-        let exact = crate::sweep::ALL
-            .iter()
-            .find(|f| f.name() == s.fun)
-            .is_some_and(|f| f.rounds_once());
+        let fun = crate::sweep::ALL.iter().find(|f| f.name() == s.fun);
+        let exact = fun.is_some_and(|f| f.rounds_once());
+        // A directed form's error reaches toward a whole ulp, which the sweep checks exactly.
+        let directed = fun.is_some_and(|f| f.direction().is_some());
         let bound = if exact { 0.5 } else { limit };
-        let over = if exact { s.max_ulps > bound } else { s.max_ulps >= bound };
+        let over = if exact || directed { s.max_ulps > bound } else { s.max_ulps >= bound };
         if over || s.parity_bad > 0 || s.mono_bad > 0 || s.errors > 0 {
             ok = false;
             println!(
