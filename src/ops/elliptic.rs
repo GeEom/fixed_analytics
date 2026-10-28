@@ -165,10 +165,18 @@ fn rf<V: Work>(x0: V, y0: V, z0: V, roots: Option<[V; 3]>) -> V {
 
 /// The closing series of `R_J` and `R_D`, Carlson (1995).
 fn rj_series<V: Work>(e2: V, e3: V, e4: V, e5: V) -> V {
-    V::one() - e2.mul_int(3).div_int(14) + e3.div_int(6) + e2.square().mul_int(9).div_int(88)
-        - e4.mul_int(3).div_int(22)
-        - (e2 * e3).mul_int(9).div_int(52)
-        + e5.mul_int(3).div_int(26)
+    let low =
+        V::one() - e2.mul_int(3).div_int(14) + e3.div_int(6) + e2.square().mul_int(9).div_int(88)
+            - e4.mul_int(3).div_int(22)
+            - (e2 * e3).mul_int(9).div_int(52)
+            + e5.mul_int(3).div_int(26);
+    // DLMF 19.36.2's terms of degrees 6 and 7.
+    let high = -(e2.square() * e2).div_int(16)
+        + e3.square().mul_int(3).div_int(40)
+        + (e2 * e4).mul_int(3).div_int(20)
+        + (e2.square() * e3).mul_int(45).div_int(272)
+        - (e3 * e4 + e2 * e5).mul_int(9).div_int(68);
+    low + high
 }
 
 /// `R_J(x, y, z, p)` for `p > 0`. A `p` far above the rest, which duplication
@@ -210,7 +218,7 @@ fn rj_duplicate<V: Work>(x0: V, y0: V, z0: V, p0: V, roots: Option<[V; 4]>) -> V
         .iter()
         .fold(V::zero(), |m, &v| m.max((a0 - v).abs()));
     for step in 0..by_width::<V>([15, 21, 28]) {
-        if converged(spread, scale, mean, 6) {
+        if converged(spread, scale, mean, 8) {
             break;
         }
         let [sx, sy, sz, sp] = match roots {
@@ -253,7 +261,7 @@ fn rd<V: Work>(x0: V, y0: V, z0: V) -> V {
         .iter()
         .fold(V::zero(), |m, &v| m.max((a0 - v).abs()));
     for _ in 0..by_width::<V>([15, 21, 28]) {
-        if converged(spread, scale, mean, 6) {
+        if converged(spread, scale, mean, 8) {
             break;
         }
         let (sx, sy, sz) = (vx.sqrt(), vy.sqrt(), vz.sqrt());
