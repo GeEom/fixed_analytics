@@ -1,8 +1,9 @@
 //! Complex arithmetic in the working type, and the functions built on it.
 
-use crate::consts::{EULER_GAMMA, FRAC_2_SQRT_PI};
+use crate::consts::{EULER_GAMMA, FRAC_2_SQRT_PI, INV_FACT};
 use crate::eval::{
-    HUGE, atan_ratio, beyond, exp, exp_wide, expm1, half_pi, ln, log1p, pi, sin_cos, sin_cos_octant,
+    HUGE, atan_ratio, beyond, by_width, exp, exp_wide, expm1, half_pi, ln, log1p, log1p_ratio,
+    phi as phi_real, pi, sin_cos, sin_cos_octant,
 };
 use crate::real::Work;
 use crate::stirling::{LN_GAMMA_1P, LN_SQRT_2PI, STIRLING};
@@ -477,7 +478,7 @@ fn gamma_1p_ratio<V: Work>(a: V) -> V {
 
 /// `z^a` for real `a`; left of the imaginary axis `e^(±iπa)`, reduced exactly,
 /// turned by `∓a·atan|y/x|`, so parts near the negative axis keep precision.
-fn power<V: Work>(z: Cx<V>, a: V) -> Cx<V> {
+pub fn power<V: Work>(z: Cx<V>, a: V) -> Cx<V> {
     let log = z.ln();
     if !z.re.is_neg() {
         return log.scale(a).exp();
@@ -560,4 +561,222 @@ pub fn gamma_upper<V: Work>(a: V, z: Cx<V>) -> Cx<V> {
         )
     });
     lead / f
+}
+
+/// `φₖ(z) = (e^z − Σ_{n<k} zⁿ/n!)/z^k` for `k` of 1 or 2: the series near 0.
+pub fn phi<V: Work>(k: u32, z: Cx<V>) -> Cx<V> {
+    if z.abs() <= V::one().ldexp(-1) {
+        let n = by_width::<V>([18, 30, 39]);
+        let mut p = Cx::zero();
+        for j in (0..=n).rev() {
+            let coef = INV_FACT
+                .get((k + j) as usize)
+                .map_or_else(V::zero, V::constant);
+            p = Cx::real(coef) + z * p;
+        }
+        return p;
+    }
+    let mut num = z.exp_m1();
+    let mut den = z;
+    if k >= 2 {
+        num = num - z;
+        den = den * z;
+    }
+    num / den
+}
+
+const TERMS: usize = 320;
+
+/// `Σ cₙ·Jₙ(w)`, `Jₙ(w) = ∫₀¹ sⁿ·e^(ws) ds`, `Re w ≤ 0`: forward to `|w|` by `Jₙ = (e^w − nJₙ₋₁)/w`,
+/// past it backward from `J_M = e^w·Σ (−w)^k·M!/(M + k + 1)!`, `M ≥ 2|w|`, each way damping.
+fn moment_sum<V: Work>(w: Cx<V>, coefs: &[V]) -> Cx<V> {
+    let n = coefs.len().saturating_sub(1);
+    let reach = usize::try_from(w.abs().floor_int().max(0)).unwrap_or(usize::MAX);
+    let ew = w.exp();
+    let coef = |k: usize| coefs.get(k).copied().unwrap_or_else(V::zero);
+    let mut cur = phi(1, w);
+    let mut sum = cur.scale(coef(0));
+    let forward = reach.min(n);
+    if forward > 0 {
+        let inv = w.recip();
+        for k in 1..=forward {
+            cur = (ew - cur.scale(V::from_int(i64::try_from(k).unwrap_or(0)))) * inv;
+            sum = sum + cur.scale(coef(k));
+        }
+    }
+    if forward == n {
+        return sum;
+    }
+    let top = n.max(reach.saturating_mul(2).saturating_add(1));
+    let top_v = V::from_int(i64::try_from(top).unwrap_or(0));
+    let mut term = Cx::real(V::one() / (top_v + V::one()));
+    let mut series = term;
+    for k in 2..TERMS {
+        let kv = V::from_int(i64::try_from(k).unwrap_or(0));
+        term = -(term * w).scale(V::one() / (top_v + kv));
+        series = series + term;
+        if settled(term, series) {
+            break;
+        }
+    }
+    let mut down = ew * series;
+    for k in (forward + 1..=top).rev() {
+        if k <= n {
+            sum = sum + down.scale(coef(k));
+        }
+        down = (ew - w * down).div_int(u64::try_from(k).unwrap_or(1));
+    }
+    sum
+}
+
+/// `W(u) = (1 + δu)^(−a)` and `V(u) = (1 − W(u))/(aδ)`, `a = p + 1`, `δ = ε/(1 − ε)`.
+struct Weight<V> {
+    power: V,
+    delta: V,
+}
+
+impl<V: Work> Weight<V> {
+    fn log_at(&self, u: V) -> V {
+        -(self.power * log1p(self.delta * u))
+    }
+
+    fn complement_at(&self, u: V) -> V {
+        u * log1p_ratio(self.delta * u) * phi_real(1, self.log_at(u))
+    }
+}
+
+/// `∫₀¹ e^(z(1 − u))·W(u) du`, or of `V` with `second`, from each end toward the least of the
+/// log-convex `|e^(−zu)·W(u)|`: each step's `e^(ct)` whole by [`moment_sum`], `W`'s curve as series.
+fn weighted_passes<V: Work>(z: Cx<V>, wt: &Weight<V>, second: bool) -> Cx<V> {
+    let one = V::one();
+    let (power, delta) = (wt.power, wt.delta);
+    let meet = if z.re.is_neg() {
+        (-(power / z.re) - one / delta).max(V::zero()).min(one)
+    } else {
+        one
+    };
+    let tiny = V::one().ldexp(-(V::PREC.cast_signed() + 8));
+    let most = wt.complement_at(one);
+    let curve = one.ldexp(-1) / power.sqrt();
+    let (mut ahead, mut behind) = (Cx::zero(), Cx::zero());
+    for forward in [true, false] {
+        let pass = if forward { &mut ahead } else { &mut behind };
+        let sign = if forward { one } else { -one };
+        let mut u = if forward { V::zero() } else { one };
+        for _ in 0..1024 {
+            let rest = if forward { meet - u } else { u - meet };
+            if rest <= V::zero() {
+                break;
+            }
+            let log_w = wt.log_at(u);
+            // Forward the integrand is e^(−zu)·W, e^z applied at the end.
+            let from = if forward { -u } else { one - u };
+            let lead = Cx::new(z.re * from + log_w, z.im * from).exp();
+            let base = Cx::new(z.re * from, z.im * from).exp();
+            // Its size falls toward the meeting point, so this bounds what is left.
+            let left = if second {
+                base.abs() * most
+            } else {
+                lead.abs()
+            } * rest;
+            if left < tiny.ldexp(-8) * pass.abs() {
+                break;
+            }
+            let ratio = delta / (one + delta * u);
+            let h = rest.min(curve / ratio).min(one.ldexp(-1) / ratio);
+            let (rh, mut coefs) = (ratio * h, [V::zero(); TERMS]);
+            let used = if second {
+                // 1 − (1 ± rt)^(∓a) over aδ: rt/(δuⱼ + 1)·…, ratio ∓(a + k)rt/(k + 1).
+                let mut c = h * h / (one + delta * u);
+                let mut used = 1;
+                for (k, slot) in coefs.iter_mut().enumerate().skip(1) {
+                    *slot = c;
+                    used = k;
+                    if c.abs() < tiny * h {
+                        break;
+                    }
+                    let kv = V::from_int(i64::try_from(k).unwrap_or(0));
+                    c = -(sign * c * (power + kv) * rh).div_int(u64::try_from(k + 1).unwrap_or(1));
+                }
+                used
+            } else {
+                // e^(aρ(±rt)): b₀ = 1, b₁ = 0, bₖ₊₁ = (a·r²·bₖ₋₁ ∓ r·k·bₖ)/(k + 1), times h^(k+1).
+                let curvature = power * rh.square();
+                let (mut prev, mut cur) = (h, V::zero());
+                let mut used = 1;
+                if let Some(slot) = coefs.first_mut() {
+                    *slot = h;
+                }
+                for (k, slot) in coefs.iter_mut().enumerate().skip(1) {
+                    *slot = cur;
+                    used = k;
+                    if cur.abs() < tiny * h && prev.abs() < tiny * h {
+                        break;
+                    }
+                    let kv = V::from_int(i64::try_from(k).unwrap_or(0));
+                    let next = (curvature * prev - sign * rh * kv * cur)
+                        .div_int(u64::try_from(k + 1).unwrap_or(1));
+                    (prev, cur) = (cur, next);
+                }
+                used
+            };
+            let series = coefs.get(..=used).unwrap_or(&coefs);
+            if second {
+                let rate = (-z).scale(sign).scale(h);
+                let flat = phi(1, rate).scale(h * wt.complement_at(u));
+                let bend = moment_sum(rate, series).scale(sign * exp_wide(log_w));
+                *pass = *pass + base * (flat + bend);
+            } else {
+                let rate = (-(z + Cx::real(power * ratio))).scale(sign * h);
+                *pass = *pass + lead * moment_sum(rate, series);
+            }
+            u = if forward { u + h } else { u - h };
+        }
+    }
+    z.exp() * ahead + behind
+}
+
+fn parts_sum<V: Work>(z: Cx<V>, a: V, q: V, first: Cx<V>) -> Cx<V> {
+    let step = z.recip().scale(q);
+    let mut term = first;
+    let mut sum = term;
+    for k in 0..TERMS {
+        term = -(term * step).scale(a + V::from_int(i64::try_from(k).unwrap_or(0)));
+        sum = sum + term;
+        if settled(term, sum) {
+            break;
+        }
+    }
+    sum
+}
+
+/// `(K₁, K₂)` of `Complex::exprel_weighted`, `ε > 0`: `e^z/(1 − ε)·∫₀¹ e^(−zu)·{W, V}(u) du`, by
+/// parts past `|z| = 4(a + PREC)δ` and 1, else stepped, `K₂ = (φ₁ − (1 − ε)K₁)/(εa)` for `εa ≥ ¼`.
+pub fn exprel_weighted<V: Work>(z: Cx<V>, eps: V, p: V) -> (Cx<V>, Cx<V>) {
+    let one = V::one();
+    let a = p + one;
+    let keep = one - eps;
+    let delta = eps / keep;
+    let log_keep = log1p(-eps);
+    let ez = z.exp();
+    let far = V::from_int(4) * (a + V::from_int(i64::from(V::PREC))) * delta;
+    if z.abs() >= far.max(one) {
+        let inv2 = z.square().recip();
+        let k1 = (ez * parts_sum(z, a, delta, z.recip())).scale(one / keep)
+            - parts_sum(z, a, eps, z.recip()).scale(exp_wide(p * log_keep));
+        // V(1)/(1 − ε) = (1 − (1 − ε)^a)/(aε) = (Λ/ε)·φ₁(−aΛ), Λ = −log1p(−ε).
+        let tail = log1p_ratio(-eps) * phi_real(1, a * log_keep);
+        let k2 = -(z.recip().scale(tail))
+            + (ez * parts_sum(z, a + one, delta, inv2)).scale(one / keep)
+            - parts_sum(z, a + one, eps, inv2).scale(exp_wide(a * log_keep));
+        return (k1, k2);
+    }
+    let wt = Weight { power: a, delta };
+    let k1 = weighted_passes(z, &wt, false).scale(one / keep);
+    let k2 = if eps * a >= one.ldexp(-2) {
+        (phi(1, z) - k1.scale(keep)).scale(one / (eps * a))
+    } else {
+        weighted_passes(z, &wt, true).scale(one / keep)
+    };
+    (k1, k2)
 }

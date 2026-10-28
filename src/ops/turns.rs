@@ -53,6 +53,16 @@ pub fn div_by_tau<T: CordicNumber>(x: T) -> T {
     fixed(work(x) * W::<T>::constant(&FRAC_1_2PI))
 }
 
+/// `x·τ`, turns to radians, rounded once.
+#[must_use]
+#[cfg_attr(
+    all(feature = "verify-no-panic", not(debug_assertions)),
+    no_panic::no_panic
+)]
+pub fn mul_by_tau<T: CordicNumber>(x: T) -> T {
+    fixed(work(x) * pi::<W<T>>().ldexp(1))
+}
+
 /// `r` rounded into `[low, high]`, else to the end nearer it modulo 2π.
 fn round_into<T: CordicNumber>(r: W<T>, low: W<T>, high: W<T>) -> T {
     let t = fixed::<T>(r);

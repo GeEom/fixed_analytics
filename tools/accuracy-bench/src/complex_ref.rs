@@ -254,3 +254,189 @@ pub fn gamma_upper(a: &Float, re: &Float, im: &Float) -> Complex {
     });
     lead / f
 }
+
+/// `z^a` for real `a`: on the axes and diagonals, `|z|^a` turned by an exact
+/// `a·k·π/4`, else `e^(a·ln z)`, both capped like [`exp_capped`].
+pub fn pow(re: &Float, im: &Float, a: &Float) -> Complex {
+    let p = 960;
+    let z = cx(re, im, p);
+    if z.is_zero() {
+        return Complex::with_val(p, (u32::from(a.is_zero()), 0));
+    }
+    let eighths = if im.is_zero() {
+        Some(if re.is_sign_negative() { 4 } else { 0 })
+    } else if re.is_zero() || re.clone().abs() == im.clone().abs() {
+        let k = if re.is_zero() { 2 } else if re.is_sign_positive() { 1 } else { 3 };
+        Some(if im.is_sign_negative() { -k } else { k })
+    } else {
+        None
+    };
+    let Some(k) = eighths else {
+        return exp_capped(&(Complex::with_val(p, z.ln_ref()) * a));
+    };
+    let ln_abs = Float::with_val(p, z.abs_ref()).ln();
+    let size = (ln_abs * a).min(&Float::with_val(p, 10_000)).exp();
+    let phase = Float::with_val(p, a * k) / 4u32;
+    Complex::with_val(p, (phase.cos_pi_ref(), phase.sin_pi_ref())) * size
+}
+
+/// Bits for [`exprel_weighted`]'s quadrature.
+const WP: u32 = 320;
+
+/// Gauss–Legendre nodes and weights on `[0, 1]`, 40 of them, by Newton's method.
+fn legendre() -> &'static [(Float, Float)] {
+    static NODES: std::sync::OnceLock<Vec<(Float, Float)>> = std::sync::OnceLock::new();
+    NODES.get_or_init(|| {
+        let n = 40u32;
+        let p = WP + 64;
+        let pi = Float::with_val(p, Constant::Pi);
+        (1..=n)
+            .map(|i| {
+                let mut x = Float::with_val(p, (Float::with_val(p, i) - 0.25) * &pi / (f64::from(n) + 0.5)).cos();
+                let mut deriv = Float::with_val(p, 0);
+                for _ in 0..100 {
+                    let (mut p0, mut p1) = (Float::with_val(p, 1), x.clone());
+                    for k in 2..=n {
+                        let p2 = (Float::with_val(p, &x * &p1) * (2 * k - 1) - Float::with_val(p, &p0 * (k - 1))) / k;
+                        p0 = p1;
+                        p1 = p2;
+                    }
+                    deriv = Float::with_val(p, Float::with_val(p, &x * &p1) - &p0) * n / (Float::with_val(p, &x * &x) - 1u32);
+                    let dx = Float::with_val(p, &p1 / &deriv);
+                    x -= &dx;
+                    if dx.is_zero() || dx.get_exp().unwrap_or(0) < -(p as i32) {
+                        break;
+                    }
+                }
+                let w = Float::with_val(p, 2) / ((Float::with_val(p, 1) - Float::with_val(p, &x * &x)) * deriv.square());
+                ((x + 1u32) / 2u32, w / 2u32)
+            })
+            .collect()
+    })
+}
+
+/// `(K₁, K₂)` of `Complex::exprel_weighted`: past `|z| = 8(a + 170)·δ` by
+/// parts, else Gauss–Legendre panels on `e^(z(1 − u))·{W, V}(u)/(1 − ε)` from
+/// each end toward the least of the integrand; NaN where that would take more
+/// than 800 panels.
+pub fn exprel_weighted(re: &Float, im: &Float, eps: &Float, pw: &Float) -> (Complex, Complex) {
+    let p = WP;
+    let z = cx(re, im, p);
+    let one = Float::with_val(p, 1);
+    if eps.is_zero() {
+        // exprel and exprel2, at the bits their cancellation near 0 needs.
+        let p = 1024;
+        let z = cx(re, im, p);
+        if z.is_zero() {
+            return (Complex::with_val(p, (1, 0)), Complex::with_val(p, (0.5, 0)));
+        }
+        let em1 = exp_capped(&z) - Complex::with_val(p, (1, 0));
+        let k1 = Complex::with_val(p, &em1 / &z);
+        let k2 = (em1 - &z) / Complex::with_val(p, &z * &z);
+        return (k1, k2);
+    }
+    let a = Float::with_val(p, pw + 1u32);
+    let keep = Float::with_val(p, &one - eps);
+    let delta = Float::with_val(p, eps / &keep);
+    let log_keep = Float::with_val(p, -eps).ln_1p();
+    let r = Float::with_val(64, z.abs_ref()).to_f64();
+    let nan = || (Complex::with_val(p, (f64::NAN, f64::NAN)), Complex::with_val(p, (f64::NAN, f64::NAN)));
+    let a64 = a.to_f64();
+    let d64 = delta.to_f64();
+    if r >= (8.0 * (a64 + 170.0) * d64).max(1.0) {
+        let ez = exp_capped(&z);
+        let sum = |shift: &Float, q: &Float, first: Complex| {
+            let step = Complex::with_val(p, z.recip_ref()) * q;
+            let mut term = first;
+            let mut total = term.clone();
+            for k in 0..2000u32 {
+                term = -(term * &step) * Float::with_val(p, shift + k);
+                total += &term;
+                if settled(&term, &total, p as i32 + 20) {
+                    break;
+                }
+            }
+            total
+        };
+        let inv = Complex::with_val(p, z.recip_ref());
+        let inv2 = Complex::with_val(p, &inv * &inv);
+        let pow_p = (Float::with_val(p, pw * &log_keep)).exp();
+        let pow_a = (Float::with_val(p, &a * &log_keep)).exp();
+        let k1 = Complex::with_val(p, &ez * sum(&a, &delta, inv.clone())) / &keep - sum(&a, eps, inv.clone()) * pow_p;
+        let a1 = Float::with_val(p, &a + 1u32);
+        let tail = -(Float::with_val(p, &a * &log_keep)).exp_m1() / Float::with_val(p, &a * eps);
+        let k2 = -(inv * tail) + Complex::with_val(p, &ez * sum(&a1, &delta, inv2.clone())) / &keep
+            - sum(&a1, eps, inv2) * pow_a;
+        return (k1, k2);
+    }
+    // Integrand parts at u: e^(z(from))·W(u) and e^(z(from))·V(u), from = −u
+    // forward and 1 − u backward, so neither grows; e^z multiplies the first.
+    let at = |u: &Float, forward: bool| {
+        let l = Float::with_val(p, Float::with_val(p, &delta * u).ln_1p() * &a);
+        let from = if forward { Float::with_val(p, -u) } else { Float::with_val(p, &one - u) };
+        let lead = Complex::with_val(p, (Float::with_val(p, &from * re), Float::with_val(p, &from * im)));
+        let base = lead.exp();
+        let w = Float::with_val(p, -&l).exp();
+        let v = -Float::with_val(p, -&l).exp_m1() / Float::with_val(p, &a * &delta);
+        (Complex::with_val(p, &base * &w), base * v, Float::with_val(p, &l + Float::with_val(p, re * u)))
+    };
+    let meet = if re.is_sign_negative() && !re.is_zero() {
+        Float::with_val(p, -(Float::with_val(p, &a / re)) - Float::with_val(p, &one / &delta)).clamp(&0, &1)
+    } else {
+        one.clone()
+    };
+    let nodes = legendre();
+    let (mut k1, mut k2) = (Complex::with_val(p, (0, 0)), Complex::with_val(p, (0, 0)));
+    let (mut k1f, mut k2f) = (k1.clone(), k2.clone());
+    let mut panels = 0;
+    for forward in [true, false] {
+        let mut u = if forward { Float::with_val(p, 0) } else { one.clone() };
+        loop {
+            let rest = if forward { Float::with_val(p, &meet - &u) } else { Float::with_val(p, &u - &meet) };
+            if rest <= 0 {
+                break;
+            }
+            // The integrand's size only falls toward the meeting point, so its
+            // size here times what is left bounds the rest.
+            let (f1, f2, _) = at(&u, forward);
+            let sum = if forward { (&k1f, &k2f) } else { (&k1, &k2) };
+            let small = |f: &Complex, s: &Complex| {
+                let left = Float::with_val(64, f.abs_ref()) * rest.to_f64();
+                let got = Float::with_val(64, s.abs_ref());
+                !got.is_zero() && left < got * Float::with_val(64, Float::i_exp(1, -(p as i32) - 20))
+            };
+            if small(&f1, sum.0) && small(&f2, sum.1) {
+                break;
+            }
+            let rr = d64 / (1.0 + d64 * u.to_f64());
+            let slope = (-re.to_f64() - a64 * rr).abs();
+            let h = (5.0 / (im.to_f64().abs() + slope + 1.0)).min(0.25 / rr).min(1.5 / (rr * a64.sqrt()));
+            let h = Float::with_val(p, h).min(&rest);
+            panels += 1;
+            if panels > 800 {
+                return nan();
+            }
+            let lo = if forward { u.clone() } else { Float::with_val(p, &u - &h) };
+            for (x, w) in nodes {
+                let (f1, f2, _) = at(&Float::with_val(p, &lo + Float::with_val(p, x * &h)), forward);
+                let wh = Float::with_val(p, w * &h);
+                let (s1, s2) = if forward { (&mut k1f, &mut k2f) } else { (&mut k1, &mut k2) };
+                *s1 += f1 * &wh;
+                *s2 += f2 * &wh;
+            }
+            if forward { u += &h } else { u -= &h }
+        }
+    }
+    let ez = exp_capped(&z);
+    let k1 = (Complex::with_val(p, &ez * &k1f) + k1) / &keep;
+    // V's quadrature stops where W's does, so past a small aδ, K₂ from the
+    // identity K₂ = (φ₁(z) − (1 − ε)K₁)/(aε) at this precision.
+    let ad = Float::with_val(p, &a * &delta);
+    let k2 = if ad > Float::with_val(p, Float::i_exp(1, -8)) {
+        let phi1 = if z.is_zero() { Complex::with_val(p, (1, 0)) } else { (Complex::with_val(p, &ez - 1u32)) / &z };
+        (phi1 - Complex::with_val(p, &k1 * &keep)) / Float::with_val(p, &a * eps)
+    } else {
+        (ez * k2f + k2) / &keep
+    };
+    (k1, k2)
+}

@@ -39,7 +39,12 @@ pub use ops::exponential::{
     log1p_residual_ratio, log2, log10, pow, pow2,
 };
 pub use ops::hyperbolic::{acosh, acoth, asinh, atanh, cosh, coth, sinh, sinh_cosh, tanh};
-pub use ops::interval::{atan_range, enclose, exp_range, sin_cos_range, tanh_range};
+pub use ops::interval::{
+    atan_range, enclose, exp_range, sin_cos_range, sin_cos_range_turns, tanh_range,
+};
 pub use ops::ratio::{atan_ratio, atanh_ratio, stumpff, tan_ratio, tanh_ratio};
+pub use ops::solve::{kepler_universal, root_in};
 pub use ops::special::{erf, erfc, fresnel, gamma};
-pub use ops::turns::{atan2_turns, div_by_tau, sin_cos_turns, wrap_principal, wrap_radians};
+pub use ops::turns::{
+    atan2_turns, div_by_tau, mul_by_tau, sin_cos_turns, wrap_principal, wrap_radians,
+};

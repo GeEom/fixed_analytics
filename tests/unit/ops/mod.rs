@@ -7,4 +7,5 @@ mod exponential;
 mod hyperbolic;
 mod interval;
 mod ratio;
+mod solve;
 mod turns;

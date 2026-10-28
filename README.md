@@ -52,14 +52,15 @@ fixed_analytics = { version = "4.5.0", default-features = false }
 | Trigonometric | `sin`, `cos`, `tan`, `sin_cos`, `atan`, `atan2` | `asin`, `acos`, `asin_from_gap` |
 | Hyperbolic | `sinh`, `cosh`, `tanh`, `sinh_cosh`, `asinh` | `acosh`, `atanh`, `acoth`, `coth` |
 | Exponential | `exp`, `pow2`, `expm1`, `exprel`, `exprel2`, `exp_moments` | `ln`, `log2`, `log10`, `pow`, `log1p`, `log1p_ratio`, `log1p_residual`, `log1p_residual_ratio` |
-| Turns | `sin_cos_turns`, `atan2_turns`, `div_by_tau`, `wrap_radians`, `wrap_principal` | — |
+| Turns | `sin_cos_turns`, `atan2_turns`, `div_by_tau`, `mul_by_tau`, `wrap_radians`, `wrap_principal` | — |
 | Ratios | `stumpff`, `tan_ratio`, `atan_ratio`, `tanh_ratio` | `atanh_ratio` |
 | Algebraic | `sqrt_or_zero`, `hypot`, `norm`, `scale_exponent`, `scale_by` | `sqrt`, `sqrt_product`, `rsqrt`, `normalize` |
 | Special | `erf`, `erfc`, `fresnel` | `gamma` |
-| Complex (`Complex`) | `exp`, `exprel`, `exprel2`, `faddeeva`, `erf` | `e1`, `gamma_upper` |
+| Complex (`Complex`) | `exp`, `exprel`, `exprel2`, `faddeeva`, `erf` | `ln`, `pow`, `exprel_weighted`, `e1`, `gamma_upper` |
 | Elliptic | `ellip_e`, `jacobi_sn_cn_dn`, `jacobi_am` | `ellip_k`, `ellip_pi`, `ellip_pi_complete`, `jacobi_inverse`, `carlson_rf`, `carlson_rf_roots`, `carlson_rj`, `carlson_rj_roots`, `carlson_rc`, `carlson_rd` |
 | Arithmetic | `mul_add`, `mul_div`, `div_or_saturate`, `dot` | — |
-| Enclosures | `enclose`, `sin_cos_range`, `exp_range`, `atan_range`, `tanh_range` | — |
+| Solvers | — | `root_in`, `kepler_universal` |
+| Enclosures | `enclose`, `sin_cos_range`, `sin_cos_range_turns`, `exp_range`, `atan_range`, `tanh_range` | — |
 
 Each function works in binary floating point at twice its type's width or more, from its arguments converted exactly, and rounds once to the type. Every one is within one ulp of the exact result on every type, `ERROR_ULPS`, and the arithmetic functions within half an ulp. Odd and even functions are exactly so and monotone functions stay monotone. Complete absence of panic is verified at the linker level via the [`no-panic`](https://github.com/dtolnay/no-panic) crate.
 

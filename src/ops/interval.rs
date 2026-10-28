@@ -5,6 +5,7 @@ use crate::eval::{W, pi, turn_fraction, work};
 use crate::ops::circular::{atan, sin_cos};
 use crate::ops::exponential::exp;
 use crate::ops::hyperbolic::tanh;
+use crate::ops::turns::sin_cos_turns;
 use crate::real::Work;
 use crate::traits::CordicNumber;
 
@@ -80,13 +81,35 @@ pub fn tanh_range<T: CordicNumber>(lo: T, hi: T) -> (T, T) {
 )]
 pub fn sin_cos_range<T: CordicNumber>(lo: T, hi: T) -> ((T, T), (T, T)) {
     let (lo, hi) = ordered(lo, hi);
-    let one = T::one();
-    let full = ((-one, one), (-one, one));
     let span = (work(hi) - work(lo)) / pi::<W<T>>().ldexp(1);
+    range_in_turns(span, turn_fraction(lo), sin_cos(lo), sin_cos(hi))
+}
+
+/// [`sin_cos_range`] over `[lo, hi]` in turns, each end reduced exactly.
+#[must_use]
+#[cfg_attr(
+    all(feature = "verify-no-panic", not(debug_assertions)),
+    no_panic::no_panic
+)]
+pub fn sin_cos_range_turns<T: CordicNumber>(lo: T, hi: T) -> ((T, T), (T, T)) {
+    let (lo, hi) = ordered(lo, hi);
+    let span = work(hi) - work(lo);
+    let start = lo.raw_i128().rem_euclid(T::one().raw_i128());
+    let start = W::<T>::from_raw(start, T::frac_bits());
+    range_in_turns(span, start, sin_cos_turns(lo), sin_cos_turns(hi))
+}
+
+/// The ranges over `span` turns from `start` past a whole one, given the ends' sines and cosines.
+fn range_in_turns<T: CordicNumber>(
+    span: W<T>,
+    start: W<T>,
+    (sl, cl): (T, T),
+    (sh, ch): (T, T),
+) -> ((T, T), (T, T)) {
+    let one = T::one();
     if span >= W::<T>::one() {
-        return full;
+        return ((-one, one), (-one, one));
     }
-    let start = turn_fraction(lo);
     let slack = W::<T>::one().ldexp(16 - W::<T>::PREC.cast_signed());
     let reaches = |quarter: i64| {
         let at = W::<T>::from_int(quarter).ldexp(-2);
@@ -98,8 +121,6 @@ pub fn sin_cos_range<T: CordicNumber>(lo: T, hi: T) -> ((T, T), (T, T)) {
         };
         ahead <= span + slack || ahead >= W::<T>::one() - slack
     };
-    let (sl, cl) = sin_cos(lo);
-    let (sh, ch) = sin_cos(hi);
     let band = |a: T, b: T, top: bool, bottom: bool| {
         let low = if bottom {
             -one
