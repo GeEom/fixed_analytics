@@ -25,24 +25,42 @@ assert!((log.to_num::<f32>() - 1.0).abs() < 0.01);
 
 | Category | Total | Fallible |
 |--------------|-------|----------|
-| Trigonometric | [`sin`], [`cos`], [`tan`], [`sin_cos`], [`atan`], [`atan2`] | [`asin`], [`acos`] |
+| Trigonometric | [`sin`], [`cos`], [`tan`], [`sin_cos`], [`atan`], [`atan2`] | [`asin`], [`acos`], [`asin_from_gap`] |
 | Hyperbolic | [`sinh`], [`cosh`], [`tanh`], [`sinh_cosh`], [`asinh`] | [`acosh`], [`atanh`], [`acoth`], [`coth`] |
-| Exponential | [`exp`], [`pow2`] | [`ln`], [`log2`], [`log10`], [`pow`] |
-| Algebraic | — | [`sqrt`] |
+| Exponential | [`exp`], [`pow2`], [`expm1`], [`exprel`], [`exprel2`], [`exp_moments`] | [`ln`], [`log2`], [`log10`], [`pow`], [`log1p`], [`log1p_ratio`], [`log1p_residual`], [`log1p_residual_ratio`] |
+| Turns | [`sin_cos_turns`], [`atan2_turns`], [`div_by_tau`], [`mul_by_tau`], [`wrap_radians`], [`wrap_principal`] | — |
+| Ratios | [`stumpff`], [`tan_ratio`], [`atan_ratio`], [`tanh_ratio`] | [`atanh_ratio`] |
+| Algebraic | [`sqrt_or_zero`], [`hypot`], [`norm`], [`scale_exponent`], [`scale_by`] | [`sqrt`], [`sqrt_product`], [`rsqrt`], [`normalize`] |
+| Special | [`erf`], [`erfc`], [`fresnel`] | [`gamma`] |
+| Complex ([`Complex`]) | [`exp`](Complex::exp), [`exprel`](Complex::exprel), [`exprel2`](Complex::exprel2), [`faddeeva`](Complex::faddeeva), [`erf`](Complex::erf) | [`ln`](Complex::ln), [`pow`](Complex::pow), [`exprel_weighted`](Complex::exprel_weighted), [`e1`](Complex::e1), [`gamma_upper`](Complex::gamma_upper) |
+| Elliptic | [`ellip_e`], [`jacobi_sn_cn_dn`], [`jacobi_am`] | [`ellip_k`], [`ellip_pi`], [`ellip_pi_complete`], [`ellip_pi_increment`], [`jacobi_inverse`], [`carlson_rf`], [`carlson_rf_roots`], [`carlson_rj`], [`carlson_rj_roots`], [`carlson_rc`], [`carlson_rd`] |
+| Arithmetic | [`mul_add`], [`mul_div`], [`div_or_saturate`], [`dot`], and by [`Rounding`] [`mul_rounded`], [`div_rounded`], [`mul_div_rounded`], [`mul_add_rounded`], [`dot_rounded`] | — |
+| Solvers | — | [`root_in`], [`kepler_universal`] |
+| Enclosures | [`enclose`], [`sin_cos_range`], [`sin_cos_range_turns`], [`exp_range`], [`atan_range`], [`tanh_range`], [`exprel_range`], [`exprel2_range`], [`exp_moments_range`], [`tanh_ratio_range`], [`atan_ratio_range`], [`tan_ratio_range`], [`stumpff_range`], [`sqrt_range`], [`hypot_range`], [`atan2_range`] | [`log1p_range`], [`log1p_ratio_range`], [`log1p_residual_ratio_range`], [`atanh_ratio_range`] |
 
-Functions use polynomial evaluation, CORDIC, and Newton-Raphson techniques.
-Complete absence of panic is verified at the linker level via the
+Each function works in binary floating point at twice its type's width or
+more, from its arguments converted exactly, and rounds once. Complete absence
+of panic is verified at the linker level via the
 [`no-panic`](https://github.com/dtolnay/no-panic) crate.
 
 # Accuracy
 
-| Type | Typical Accuracy |
-|------|------------------|
-| `I16F16` | ~4 decimal digits |
-| `I32F32` | ~8 decimal digits |
+Every function is within [`ERROR_ULPS`], one ulp, of the exact result on
+every type, from `I8F0` to `I3F125`, and the arithmetic functions within half
+an ulp, or rounded by [`Rounding`] to the nearest value below or above; results
+out of range saturate to the nearer end. Odd and even
+functions are exactly odd and even, except that an odd one saturating at
+`MAX` meets `MIN` on the other side, and functions that are monotone stay
+monotone.
 
-All functions are benchmarked against MPFR reference implementations.
-Accuracy regressions are not permitted across releases.
+The accuracy tool checks all of this against MPFR on 104 layouts: every
+value of the 8- and 16-bit ones, and seeded samples of the wider ones.
+Accuracy regressions are not permitted across releases, and a release that
+changes any output bit says so in the changelog. The enclosure functions
+turn the bound into intervals certain to hold the exact value.
+
+The elliptic functions take a [`Modulus`], built from the parameter `m` or
+from its complement `k' = √(1 − m)`, each kept exact as given.
 
 # Features
 

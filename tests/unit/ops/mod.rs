@@ -1,4 +1,12 @@
 mod algebraic;
+mod arith;
 mod circular;
+mod complex;
+mod edges;
+mod elliptic;
 mod exponential;
 mod hyperbolic;
+mod interval;
+mod ratio;
+mod solve;
+mod turns;

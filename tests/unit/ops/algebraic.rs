@@ -254,3 +254,68 @@ mod exact {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod scale_aware {
+    use crate::unit::support::TestResult;
+    use fixed::types::{I16F16, I64F64};
+    use fixed_analytics::{
+        asin, asin_from_gap, hypot, norm, normalize, rsqrt, scale_by, scale_exponent, sqrt_product,
+    };
+
+    #[test]
+    fn hypot_keeps_tiny_components() {
+        let tiny = I64F64::from_bits(3);
+        // 3² + 4² in ulps: the squares alone would underflow to zero.
+        assert_eq!(hypot(tiny, I64F64::from_bits(4)), I64F64::from_bits(5));
+        let big = I16F16::from_num(30_000);
+        assert_eq!(hypot(big, big), I16F16::MAX);
+        assert_eq!(
+            norm(&[
+                I16F16::from_num(2),
+                I16F16::from_num(3),
+                I16F16::from_num(6)
+            ]),
+            I16F16::from_num(7)
+        );
+    }
+
+    #[test]
+    fn normalize_gives_exact_directions() -> TestResult {
+        let v = normalize([I64F64::from_bits(3), I64F64::from_bits(-4)])?;
+        // Parsed decimals round correctly; `from_num(0.6)` would take the f64.
+        let want = ["0.6".parse::<I64F64>().ok(), "-0.8".parse::<I64F64>().ok()];
+        assert_eq!([Some(v[0]), Some(v[1])], want);
+        assert!(normalize([I16F16::ZERO; 3]).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn scaling_is_exact() {
+        assert_eq!(scale_exponent(I16F16::from_num(5)), Some(2));
+        assert_eq!(scale_exponent(I16F16::from_bits(-1)), Some(-16));
+        assert_eq!(scale_exponent(I16F16::ZERO), None);
+        assert_eq!(scale_by(I16F16::from_num(3), 4), I16F16::from_num(48));
+        assert_eq!(scale_by(I16F16::from_num(3), -1), I16F16::from_num(1.5));
+        assert_eq!(scale_by(I16F16::from_num(3), 20), I16F16::MAX);
+    }
+
+    #[test]
+    fn roots_of_products_and_reciprocals() -> TestResult {
+        let tiny = I64F64::from_bits(1 << 20);
+        assert_eq!(sqrt_product(tiny, tiny)?, tiny);
+        assert!(sqrt_product(I16F16::ONE, -I16F16::ONE).is_err());
+        assert_eq!(rsqrt(I16F16::from_num(4))?, I16F16::from_num(0.5));
+        assert!(rsqrt(I16F16::ZERO).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn asin_from_gap_matches_asin() -> TestResult {
+        assert_eq!(asin_from_gap(I16F16::ZERO)?, asin(I16F16::ONE)?);
+        assert_eq!(asin_from_gap(I16F16::from_num(2))?, asin(-I16F16::ONE)?);
+        assert_eq!(asin_from_gap(I16F16::ONE)?, I16F16::ZERO);
+        assert!(asin_from_gap(I16F16::from_num(-0.5)).is_err());
+        Ok(())
+    }
+}

@@ -3,6 +3,7 @@ name = "accuracy-bench"
 version = "0.1.0"
 edition = "2024"
 publish = false
+default-run = "accuracy-bench"
 
 [dependencies]
 fixed_analytics = { path = "../.." }

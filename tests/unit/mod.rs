@@ -1,4 +1,5 @@
 mod error;
+mod golden;
 mod kernel;
 mod ops;
 mod smoke;

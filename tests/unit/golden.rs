@@ -1,0 +1,597 @@
+//! Holds every function to the output bits pinned in tests/golden.txt.
+//! CHANGELOG.md says how to pin a change and record it.
+
+#[cfg(test)]
+mod tests {
+    use crate::unit::support::Lcg;
+    use fixed::types::extra::{U5, U61};
+    use fixed::types::{I16F16, I24F8, I32F32, I64F64};
+    use fixed::{FixedI8, FixedI64};
+    use fixed_analytics::{Complex, erf, erfc, fresnel, gamma};
+    use fixed_analytics::{
+        CordicNumber, acos, acosh, acoth, asin, asin_from_gap, asinh, atan, atan_range, atan2,
+        atanh, cos, cosh, coth, div_or_saturate, dot, exp, exp_range, hypot, ln, log2, log10,
+        mul_add, mul_div, norm, normalize, pow, pow2, rsqrt, scale_by, scale_exponent, sin,
+        sin_cos, sin_cos_range, sinh, sinh_cosh, sqrt, sqrt_or_zero, sqrt_product, tan, tanh,
+        tanh_range,
+    };
+    use fixed_analytics::{
+        Modulus, carlson_rc, carlson_rd, carlson_rf, carlson_rf_roots, carlson_rj,
+        carlson_rj_roots, ellip_e, ellip_k, ellip_pi, ellip_pi_complete, jacobi_am, jacobi_inverse,
+        jacobi_sn_cn_dn,
+    };
+    use fixed_analytics::{
+        Rounding, atan_ratio_range, atan2_range, atanh_ratio_range, div_rounded, dot_rounded,
+        ellip_pi_increment, exp_moments_range, exprel_range, exprel2_range, hypot_range,
+        log1p_range, log1p_ratio_range, log1p_residual_ratio_range, mul_add_rounded,
+        mul_div_rounded, mul_rounded, sqrt_range, stumpff_range, tan_ratio_range, tanh_ratio_range,
+    };
+    use fixed_analytics::{
+        atan_ratio, atanh_ratio, exp_moments, expm1, exprel, exprel2, log1p, log1p_ratio,
+        log1p_residual, log1p_residual_ratio, stumpff, tan_ratio, tanh_ratio,
+    };
+    use fixed_analytics::{
+        atan2_turns, div_by_tau, kepler_universal, mul_by_tau, root_in, sin_cos_range_turns,
+        sin_cos_turns, wrap_principal, wrap_radians,
+    };
+    use std::collections::BTreeMap;
+    use std::fmt::Write;
+
+    const GOLDEN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/golden.txt");
+    const CHANGELOG: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/CHANGELOG.md");
+    const INPUTS: usize = 600;
+
+    const FUNCTIONS: &[&str] = &[
+        "sin",
+        "cos",
+        "tan",
+        "sin_cos",
+        "asin",
+        "acos",
+        "atan",
+        "atan2",
+        "sinh",
+        "cosh",
+        "tanh",
+        "sinh_cosh",
+        "coth",
+        "asinh",
+        "acosh",
+        "atanh",
+        "acoth",
+        "exp",
+        "pow2",
+        "ln",
+        "log2",
+        "log10",
+        "pow",
+        "sqrt",
+        "sqrt_or_zero",
+        "mul_add",
+        "mul_div",
+        "div_or_saturate",
+        "dot",
+        "hypot",
+        "norm",
+        "normalize",
+        "scale_exponent",
+        "scale_by",
+        "sqrt_product",
+        "rsqrt",
+        "asin_from_gap",
+        "sin_cos_range",
+        "exp_range",
+        "atan_range",
+        "tanh_range",
+        "expm1",
+        "exprel",
+        "exprel2",
+        "exp_moments",
+        "log1p",
+        "log1p_ratio",
+        "log1p_residual",
+        "log1p_residual_ratio",
+        "stumpff",
+        "tan_ratio",
+        "atan_ratio",
+        "atanh_ratio",
+        "tanh_ratio",
+        "ellip_k",
+        "ellip_e",
+        "ellip_pi_complete",
+        "ellip_pi",
+        "jacobi_sn_cn_dn",
+        "jacobi_am",
+        "jacobi_inverse",
+        "carlson_rf",
+        "carlson_rf_roots",
+        "carlson_rj",
+        "carlson_rj_roots",
+        "carlson_rc",
+        "carlson_rd",
+        "sin_cos_turns",
+        "atan2_turns",
+        "div_by_tau",
+        "wrap_radians",
+        "wrap_principal",
+        "mul_by_tau",
+        "sin_cos_range_turns",
+        "root_in",
+        "kepler_universal",
+        "complex_mul",
+        "complex_div",
+        "complex_exp",
+        "complex_exprel",
+        "complex_exprel2",
+        "complex_faddeeva",
+        "complex_erf",
+        "complex_e1",
+        "complex_gamma_upper",
+        "complex_ln",
+        "complex_pow",
+        "complex_exprel_weighted",
+        "erf",
+        "erfc",
+        "fresnel",
+        "gamma",
+        "mul_rounded",
+        "div_rounded",
+        "mul_div_rounded",
+        "mul_add_rounded",
+        "dot_rounded",
+        "exprel_range",
+        "exprel2_range",
+        "exp_moments_range",
+        "log1p_range",
+        "log1p_ratio_range",
+        "log1p_residual_ratio_range",
+        "tanh_ratio_range",
+        "atan_ratio_range",
+        "atanh_ratio_range",
+        "tan_ratio_range",
+        "sqrt_range",
+        "stumpff_range",
+        "hypot_range",
+        "atan2_range",
+        "ellip_pi_increment",
+    ];
+
+    trait Raw: CordicNumber {
+        const NAME: &'static str;
+        fn raw(self) -> i128;
+        fn from_raw(raw: i128) -> Self;
+    }
+
+    macro_rules! raw {
+        ($($t:ty, $bits:ty, $name:literal);+ $(;)?) => {$(
+            impl Raw for $t {
+                const NAME: &'static str = $name;
+                fn raw(self) -> i128 {
+                    i128::from(self.to_bits())
+                }
+                fn from_raw(raw: i128) -> Self {
+                    let clamped = raw.clamp(<$bits>::MIN.into(), <$bits>::MAX.into());
+                    Self::from_bits(<$bits>::try_from(clamped).unwrap_or(0))
+                }
+            }
+        )+};
+    }
+
+    raw! {
+        FixedI8<U5>, i8, "I3F5";
+        I16F16, i32, "I16F16";
+        I24F8, i32, "I24F8";
+        I32F32, i64, "I32F32";
+        FixedI64<U61>, i64, "I3F61";
+        I64F64, i128, "I64F64";
+    }
+
+    const fn pair<T: Copy>(range: (T, T)) -> [Option<T>; 2] {
+        [Some(range.0), Some(range.1)]
+    }
+
+    fn eval<T: CordicNumber>(name: &str, x: T, y: T) -> [Option<T>; 2] {
+        let one = |v: T| [Some(v), None];
+        let res = |v: fixed_analytics::Result<T>| [v.ok(), None];
+        match name {
+            "sin" => one(sin(x)),
+            "cos" => one(cos(x)),
+            "tan" => one(tan(x)),
+            "sin_cos" => {
+                let (s, c) = sin_cos(x);
+                [Some(s), Some(c)]
+            }
+            "asin" => res(asin(x)),
+            "acos" => res(acos(x)),
+            "atan" => one(atan(x)),
+            "atan2" => one(atan2(x, y)),
+            "sinh" => one(sinh(x)),
+            "cosh" => one(cosh(x)),
+            "tanh" => one(tanh(x)),
+            "sinh_cosh" => {
+                let (s, c) = sinh_cosh(x);
+                [Some(s), Some(c)]
+            }
+            "coth" => res(coth(x)),
+            "asinh" => one(asinh(x)),
+            "acosh" => res(acosh(x)),
+            "atanh" => res(atanh(x)),
+            "acoth" => res(acoth(x)),
+            "exp" => one(exp(x)),
+            "pow2" => one(pow2(x)),
+            "ln" => res(ln(x)),
+            "log2" => res(log2(x)),
+            "log10" => res(log10(x)),
+            "pow" => res(pow(x, y)),
+            "sqrt" => res(sqrt(x)),
+            "sqrt_or_zero" => one(sqrt_or_zero(x)),
+            "mul_add" => one(mul_add(x, y, x)),
+            "mul_div" => one(mul_div(x, y, y)),
+            "div_or_saturate" => one(div_or_saturate(x, y)),
+            "dot" => one(dot(&[x, y, x], &[y, y, x])),
+            "hypot" => one(hypot(x, y)),
+            "norm" => one(norm(&[x, y, x])),
+            "normalize" => normalize([x, y]).map_or([None, None], |v| [Some(v[0]), Some(v[1])]),
+            "scale_exponent" => {
+                let e = scale_exponent(x);
+                [
+                    e.map(|v| T::from_num(v.rem_euclid(4))),
+                    e.map(|v| T::from_num(v.div_euclid(16).clamp(-3, 3))),
+                ]
+            }
+            "scale_by" => one(scale_by(x, y.to_i32() % 40)),
+            "sqrt_product" => res(sqrt_product(x, y)),
+            "rsqrt" => res(rsqrt(x)),
+            "asin_from_gap" => res(asin_from_gap(x)),
+            "sin_cos_range" => {
+                let ((s_lo, s_hi), (c_lo, c_hi)) = sin_cos_range(x, y);
+                [
+                    Some(s_lo.saturating_add(s_hi)),
+                    Some(c_lo.saturating_add(c_hi)),
+                ]
+            }
+            "exp_range" => pair(exp_range(x, y)),
+            "atan_range" => pair(atan_range(x, y)),
+            "tanh_range" => pair(tanh_range(x, y)),
+            "expm1" => one(expm1(x)),
+            "exprel" => one(exprel(x)),
+            "exprel2" => one(exprel2(x)),
+            "exp_moments" => moments(x),
+            "log1p" => res(log1p(x)),
+            "log1p_ratio" => res(log1p_ratio(x)),
+            "log1p_residual" => res(log1p_residual(x)),
+            "log1p_residual_ratio" => res(log1p_residual_ratio(x)),
+            "stumpff" => {
+                let [c0, c1, c2, c3] = stumpff(x);
+                [Some(c0.saturating_add(c2)), Some(c1.saturating_add(c3))]
+            }
+            "tan_ratio" => pair(tan_ratio(x)),
+            "atan_ratio" => one(atan_ratio(x)),
+            "atanh_ratio" => res(atanh_ratio(x)),
+            "tanh_ratio" => one(tanh_ratio(x)),
+            "carlson_rf" => res(carlson_rf(x.abs(), y.abs(), T::one())),
+            "carlson_rf_roots" => res(carlson_rf_roots(x, y, T::one())),
+            "carlson_rj" => res(carlson_rj(x.abs(), y.abs(), T::one(), T::two())),
+            "carlson_rj_roots" => res(carlson_rj_roots(x, y, T::one(), T::two())),
+            "carlson_rc" => res(carlson_rc(x.abs(), y.abs())),
+            "carlson_rd" => res(carlson_rd(x.abs(), y.abs(), T::one())),
+            "sin_cos_turns" => pair(sin_cos_turns(x)),
+            "atan2_turns" => one(atan2_turns(x, y)),
+            "div_by_tau" => one(div_by_tau(x)),
+            "wrap_radians" => one(wrap_radians(x)),
+            "wrap_principal" => one(wrap_principal(x)),
+            "mul_by_tau" | "sin_cos_range_turns" | "root_in" | "kepler_universal" => {
+                solving(name, x, y)
+            }
+            "erf" => one(erf(x)),
+            "erfc" => one(erfc(x)),
+            "fresnel" => pair(fresnel(x)),
+            "gamma" => res(gamma(x)),
+            n if n.starts_with("complex") => complex(n, x, y),
+            n if n.ends_with("_rounded") || n.ends_with("_range") => bounding(n, x, y),
+            _ => elliptic(name, x, y),
+        }
+    }
+
+    fn solving<T: CordicNumber>(name: &str, x: T, y: T) -> [Option<T>; 2] {
+        let one = |v: T| [Some(v), None];
+        let res = |v: fixed_analytics::Result<T>| [v.ok(), None];
+        match name {
+            "mul_by_tau" => one(mul_by_tau(x)),
+            "sin_cos_range_turns" => {
+                let ((s_lo, s_hi), (c_lo, c_hi)) = sin_cos_range_turns(x, y);
+                [
+                    Some(s_lo.saturating_add(s_hi)),
+                    Some(c_lo.saturating_add(c_hi)),
+                ]
+            }
+            "root_in" => {
+                let top = x.abs().saturating_add(T::one());
+                let rise = |t: T| exp(t).saturating_sub(top);
+                root_in(rise, T::zero(), top, 64).map_or([None, None], pair)
+            }
+            "kepler_universal" => res(kepler_universal(T::one(), T::zero(), y, x)),
+            _ => [None, None],
+        }
+    }
+
+    /// The directed forms, down then up, and the ranges' ends, several summed.
+    fn bounding<T: CordicNumber>(name: &str, x: T, y: T) -> [Option<T>; 2] {
+        let directed = |f: &dyn Fn(Rounding) -> T| [Some(f(Rounding::Down)), Some(f(Rounding::Up))];
+        let res = |v: fixed_analytics::Result<(T, T)>| v.map_or([None, None], pair);
+        let sums = |ends: &[(T, T)]| {
+            let add = |a: T, b: T| a.saturating_add(b);
+            let low = ends.iter().map(|e| e.0).fold(T::zero(), add);
+            [
+                Some(low),
+                Some(ends.iter().map(|e| e.1).fold(T::zero(), add)),
+            ]
+        };
+        let unit = |v: T| div_or_saturate(v.abs(), v.abs().saturating_add(T::one()));
+        match name {
+            "mul_rounded" => directed(&|m| mul_rounded(x, y, m)),
+            "div_rounded" => directed(&|m| div_rounded(x, y, m)),
+            "mul_div_rounded" => directed(&|m| mul_div_rounded(x, y, y.div_int(3), m)),
+            "mul_add_rounded" => directed(&|m| mul_add_rounded(x, y, x, m)),
+            "dot_rounded" => directed(&|m| dot_rounded(&[x, y, x], &[y, y, x], m)),
+            "exprel_range" => pair(exprel_range(x, y)),
+            "exprel2_range" => pair(exprel2_range(x, y)),
+            "exp_moments_range" => sums(&exp_moments_range(x, y)),
+            "log1p_range" => res(log1p_range(x.abs(), y.abs())),
+            "log1p_ratio_range" => res(log1p_ratio_range(x.abs(), y.abs())),
+            "log1p_residual_ratio_range" => res(log1p_residual_ratio_range(x.abs(), y.abs())),
+            "tanh_ratio_range" => pair(tanh_ratio_range(x, y)),
+            "atan_ratio_range" => pair(atan_ratio_range(x, y)),
+            "atanh_ratio_range" => res(atanh_ratio_range(unit(x), -unit(y))),
+            "tan_ratio_range" => pair(tan_ratio_range(x, y)),
+            "sqrt_range" => pair(sqrt_range(x, y)),
+            "stumpff_range" => sums(&stumpff_range(x, y)),
+            "hypot_range" => pair(hypot_range((x, y), (y, x.div_int(2)))),
+            _ => pair(atan2_range((x, y), (y, x.div_int(2)))),
+        }
+    }
+
+    fn moments<T: CordicNumber>(x: T) -> [Option<T>; 2] {
+        let [e1, e2, e3, e4, e5, decay] = exp_moments(x);
+        [
+            Some(e1.saturating_add(e2).saturating_add(e4)),
+            Some(e3.saturating_add(e5).saturating_add(decay)),
+        ]
+    }
+
+    /// The complex functions of `x + iy`, both parts.
+    fn complex<T: CordicNumber>(name: &str, x: T, y: T) -> [Option<T>; 2] {
+        let z = Complex::new(x, y);
+        let w = Complex::new(y, x);
+        let parts = |c: Complex<T>| [Some(c.re), Some(c.im)];
+        match name {
+            "complex_mul" => parts(z * w),
+            "complex_div" => parts(z / w),
+            "complex_exp" => parts(z.exp()),
+            "complex_exprel" => parts(z.exprel()),
+            "complex_exprel2" => parts(z.exprel2()),
+            "complex_faddeeva" => parts(z.faddeeva()),
+            "complex_erf" => parts(z.erf()),
+            "complex_e1" => z.e1().map_or([None, None], parts),
+            "complex_gamma_upper" => z.gamma_upper(T::two()).map_or([None, None], parts),
+            "complex_ln" => z.ln().map_or([None, None], parts),
+            "complex_pow" => z.pow(T::two() + T::half()).map_or([None, None], parts),
+            "complex_exprel_weighted" => {
+                let eps = if x.abs() < T::one() {
+                    x.abs()
+                } else {
+                    T::half()
+                };
+                z.exprel_weighted(eps, y.abs())
+                    .map_or([None, None], |(k1, k2)| parts(k1 + k2))
+            }
+            _ => [None, None],
+        }
+    }
+
+    /// The elliptic functions, their modulus `|y|` folded into `[0, 1]`.
+    fn elliptic<T: CordicNumber>(name: &str, x: T, y: T) -> [Option<T>; 2] {
+        let one = |v: T| [Some(v), None];
+        let res = |v: fixed_analytics::Result<T>| [v.ok(), None];
+        let fold = if y.abs() > T::one() {
+            T::one().div(y.abs())
+        } else {
+            y.abs()
+        };
+        let Some(m) = Modulus::from_complement(fold) else {
+            return [None, None];
+        };
+        match name {
+            "ellip_k" => res(ellip_k(m)),
+            "ellip_e" => one(ellip_e(m)),
+            "ellip_pi_complete" => res(ellip_pi_complete(x, m)),
+            "ellip_pi" => {
+                let (sn, cn, dn) = jacobi_sn_cn_dn(x, m);
+                res(ellip_pi(-T::one(), sn, cn, dn, m))
+            }
+            "jacobi_sn_cn_dn" => {
+                let (sn, cn, dn) = jacobi_sn_cn_dn(x, m);
+                [Some(sn.saturating_add(dn)), Some(cn)]
+            }
+            "jacobi_am" => one(jacobi_am(x, m)),
+            "jacobi_inverse" => {
+                let (sn, cn, dn) = jacobi_sn_cn_dn(x, m);
+                res(jacobi_inverse(sn, cn, dn, m))
+            }
+            "ellip_pi_increment" => res(ellip_pi_increment(T::half(), x, y, m)),
+            _ => [None, None],
+        }
+    }
+
+    /// A few fixed values, then raw bits of every length in equal measure.
+    fn inputs<T: Raw>(seed: u64) -> Vec<T> {
+        let mut v: Vec<T> = [0.0, 1.0, -1.0, 0.5, -0.5, 2.0, -2.0, 3.0, -3.0]
+            .iter()
+            .map(|&x| T::from_num(x))
+            .collect();
+        v.extend([
+            T::min_value(),
+            T::max_value(),
+            T::from_raw(1),
+            T::from_raw(-1),
+        ]);
+        let mut rng = Lcg(seed);
+        let bits = T::total_bits();
+        while v.len() < INPUTS {
+            let len = u32::try_from(rng.next_u64() % u64::from(bits)).unwrap_or(0);
+            let r = i128::from(rng.next_u64()) << 64 | i128::from(rng.next_u64());
+            let mag = r.unsigned_abs().checked_shr(128 - len).unwrap_or(0);
+            let raw = i128::try_from(mag).unwrap_or(0);
+            v.push(T::from_raw(if rng.next_u64() & 1 == 0 {
+                raw
+            } else {
+                -raw
+            }));
+        }
+        v
+    }
+
+    fn fnv(hash: &mut u64, bytes: &[u8]) {
+        for &b in bytes {
+            *hash = (*hash ^ u64::from(b)).wrapping_mul(0x0100_0000_01B3);
+        }
+    }
+
+    fn digest<T: Raw>(name: &str) -> u64 {
+        let seed = name.bytes().fold(0x9E37_79B9_7F4A_7C15, |h: u64, b| {
+            h.rotate_left(7) ^ u64::from(b)
+        });
+        let xs = inputs::<T>(seed);
+        let ys = inputs::<T>(seed ^ 0x5555);
+        // Debug code runs the elliptic functions slowly. Fewer inputs do.
+        let count = if name.starts_with("ellip")
+            || name.starts_with("jacobi")
+            || name.starts_with("carlson")
+        {
+            64
+        } else {
+            INPUTS
+        };
+        let mut hash = 0xCBF2_9CE4_8422_2325;
+        for (&x, &y) in xs.iter().zip(&ys).take(count) {
+            for out in eval(name, x, y) {
+                match out {
+                    Some(v) => fnv(&mut hash, &v.raw().to_le_bytes()),
+                    None => fnv(&mut hash, b"none"),
+                }
+            }
+        }
+        hash
+    }
+
+    fn current() -> BTreeMap<(String, String), u64> {
+        let mut map = BTreeMap::new();
+        for &name in FUNCTIONS {
+            for (ty, hash) in [
+                (<FixedI8<U5> as Raw>::NAME, digest::<FixedI8<U5>>(name)),
+                (<I16F16 as Raw>::NAME, digest::<I16F16>(name)),
+                (<I24F8 as Raw>::NAME, digest::<I24F8>(name)),
+                (<I32F32 as Raw>::NAME, digest::<I32F32>(name)),
+                (<FixedI64<U61> as Raw>::NAME, digest::<FixedI64<U61>>(name)),
+                (<I64F64 as Raw>::NAME, digest::<I64F64>(name)),
+            ] {
+                map.insert((name.to_string(), ty.to_string()), hash);
+            }
+        }
+        map
+    }
+
+    /// Rows keyed by function and type: the hash and the version that last moved it.
+    type Pinned = BTreeMap<(String, String), (u64, String)>;
+
+    fn pinned() -> Result<Pinned, String> {
+        let text = std::fs::read_to_string(GOLDEN).map_err(|e| format!("{GOLDEN}: {e}"))?;
+        let mut map = BTreeMap::new();
+        for line in text
+            .lines()
+            .filter(|l| !l.starts_with('#') && !l.is_empty())
+        {
+            let cols: Vec<&str> = line.split_whitespace().collect();
+            let [name, ty, hash, changed] = cols.as_slice() else {
+                return Err(format!("malformed golden row: {line}"));
+            };
+            let hash = u64::from_str_radix(hash, 16).map_err(|e| format!("{line}: {e}"))?;
+            map.insert(
+                ((*name).to_string(), (*ty).to_string()),
+                (hash, (*changed).to_string()),
+            );
+        }
+        Ok(map)
+    }
+
+    #[test]
+    fn golden_outputs() -> Result<(), String> {
+        let now = current();
+        let old = pinned().unwrap_or_default();
+        let changed: Vec<String> = now
+            .iter()
+            .filter(|(k, h)| old.get(*k).is_some_and(|(o, _)| o != *h))
+            .map(|((name, ty), _)| format!("{name} on {ty}"))
+            .collect();
+        let missing = now.keys().any(|k| !old.contains_key(k));
+        if std::env::var_os("GOLDEN_UPDATE").is_some() {
+            let version = env!("CARGO_PKG_VERSION");
+            let mut out = String::from("# function type hash changed_in\n");
+            for ((name, ty), hash) in &now {
+                let stamp = match old.get(&(name.clone(), ty.clone())) {
+                    Some((o, v)) if o == hash => v.clone(),
+                    Some(_) => version.to_string(),
+                    None => "-".to_string(),
+                };
+                writeln!(out, "{name} {ty} {hash:016x} {stamp}").map_err(|e| e.to_string())?;
+            }
+            return std::fs::write(GOLDEN, out).map_err(|e| e.to_string());
+        }
+        if changed.is_empty() && !missing {
+            return Ok(());
+        }
+        Err(format!(
+            "outputs changed for {}{}; rerun with GOLDEN_UPDATE=1 and name each changed function in CHANGELOG.md",
+            changed.join(", "),
+            if missing { " (and new rows)" } else { "" }
+        ))
+    }
+
+    #[test]
+    fn golden_changes_in_changelog() -> Result<(), String> {
+        let log = std::fs::read_to_string(CHANGELOG).map_err(|e| format!("{CHANGELOG}: {e}"))?;
+        let mut sections: BTreeMap<String, String> = BTreeMap::new();
+        let mut current: Option<String> = None;
+        for line in log.lines() {
+            if let Some(head) = line.strip_prefix("## ") {
+                let version = head.trim_matches(|c: char| c == '[' || c == ']' || c == ' ');
+                let version = version.split_whitespace().next().unwrap_or("");
+                current = Some(version.trim_end_matches(']').to_string());
+            } else if let Some(v) = &current {
+                let body = sections.entry(v.clone()).or_default();
+                body.push_str(line);
+                body.push('\n');
+            }
+        }
+        let mut missing = Vec::new();
+        for ((name, ty), (_, version)) in pinned()? {
+            if version == "-" {
+                continue;
+            }
+            let named = sections
+                .get(&version)
+                .is_some_and(|body| body.contains(&format!("`{name}`")));
+            if !named {
+                missing.push(format!("{name} ({ty}) in {version}"));
+            }
+        }
+        if missing.is_empty() {
+            Ok(())
+        } else {
+            Err(format!(
+                "CHANGELOG.md doesn't name these output changes: {}",
+                missing.join(", ")
+            ))
+        }
+    }
+}

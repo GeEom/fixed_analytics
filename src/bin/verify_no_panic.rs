@@ -10,9 +10,30 @@ use fixed_analytics::CordicNumber;
 use fixed_analytics::bounded::{NonNegative, OpenUnitInterval};
 use fixed_analytics::ops::algebraic::sqrt_nonneg;
 use fixed_analytics::ops::hyperbolic::atanh_open;
+use fixed_analytics::{Complex, erf, erfc, fresnel, gamma, kepler_universal, root_in};
 use fixed_analytics::{
-    acos, acosh, acoth, asin, asinh, atan, atan2, atanh, cos, cosh, coth, exp, ln, log2, log10,
-    pow, pow2, sin, sin_cos, sinh, sinh_cosh, sqrt, tan, tanh,
+    Modulus, carlson_rc, carlson_rd, carlson_rf, carlson_rf_roots, carlson_rj, carlson_rj_roots,
+    ellip_e, ellip_k, ellip_pi, ellip_pi_complete, jacobi_am, jacobi_inverse, jacobi_sn_cn_dn,
+};
+use fixed_analytics::{
+    Rounding, atan_ratio_range, atan2_range, atanh_ratio_range, div_rounded, dot_rounded,
+    ellip_pi_increment, exp_moments_range, exprel_range, exprel2_range, hypot_range, log1p_range,
+    log1p_ratio_range, log1p_residual_ratio_range, mul_add_rounded, mul_div_rounded, mul_rounded,
+    sqrt_range, stumpff_range, tan_ratio_range, tanh_ratio_range,
+};
+use fixed_analytics::{
+    acos, acosh, acoth, asin, asin_from_gap, asinh, atan, atan_range, atan2, atanh, cos, cosh,
+    coth, div_or_saturate, dot, enclose, exp, exp_range, hypot, ln, log2, log10, mul_add, mul_div,
+    norm, normalize, pow, pow2, rsqrt, scale_by, scale_exponent, sin, sin_cos, sin_cos_range, sinh,
+    sinh_cosh, sqrt, sqrt_or_zero, sqrt_product, tan, tanh, tanh_range,
+};
+use fixed_analytics::{
+    atan_ratio, atanh_ratio, exp_moments, expm1, exprel, exprel2, log1p, log1p_ratio,
+    log1p_residual, log1p_residual_ratio, stumpff, tan_ratio, tanh_ratio,
+};
+use fixed_analytics::{
+    atan2_turns, div_by_tau, mul_by_tau, sin_cos_range_turns, sin_cos_turns, wrap_principal,
+    wrap_radians,
 };
 
 /// Hands `v` to `black_box`, so the optimizer must compute it in full.
@@ -47,6 +68,127 @@ fn exercise<T: CordicNumber>(x: T, y: T, two: T) {
     keep(coth(x));
     keep(acoth(two));
     keep(pow(two, x));
+    keep(sqrt_or_zero(x));
+    keep(mul_add(x, y, two));
+    keep(mul_div(x, y, two));
+    keep(div_or_saturate(x, y));
+    keep(dot(&[x, y], &[two, x]));
+    keep(hypot(x, y));
+    keep(norm(&[x, y, two]));
+    keep(normalize([x, y, two]));
+    keep(scale_exponent(x));
+    keep(scale_by(x, 3));
+    keep(sqrt_product(x, y));
+    keep(rsqrt(x));
+    keep(asin_from_gap(x));
+    keep(enclose(x));
+    keep(sin_cos_range(x, two));
+    keep(exp_range(x, two));
+    keep(atan_range(x, two));
+    keep(tanh_range(x, two));
+    keep(expm1(x));
+    keep(exprel(x));
+    keep(exprel2(x));
+    keep(exp_moments(x));
+    keep(log1p(x));
+    keep(log1p_ratio(x));
+    keep(log1p_residual(x));
+    keep(log1p_residual_ratio(x));
+    keep(stumpff(x));
+    keep(tan_ratio(x));
+    keep(atan_ratio(x));
+    keep(atanh_ratio(x));
+    keep(tanh_ratio(x));
+    if let Some(m) = Modulus::from_complement(y) {
+        keep(ellip_k(m));
+        keep(ellip_e(m));
+        keep(ellip_pi_complete(x, m));
+        keep(ellip_pi(x, y, x, y, m));
+        keep(jacobi_sn_cn_dn(x, m));
+        keep(jacobi_am(x, m));
+        keep(jacobi_inverse(x, y, x, m));
+        keep(m.parameter());
+        keep(m.complement());
+    }
+    keep(Modulus::from_parameter(y));
+    keep(carlson_rf(x, y, two));
+    keep(carlson_rf_roots(x, y, two));
+    keep(carlson_rj(x, y, two, x));
+    keep(carlson_rj_roots(x, y, two, x));
+    keep(carlson_rc(x, y));
+    keep(carlson_rd(x, y, two));
+    exercise_more(x, y, two);
+    exercise_bounds(x, y, two);
+}
+
+/// The range forms and directed arithmetic, which bound what the rest compute.
+fn exercise_bounds<T: CordicNumber>(x: T, y: T, two: T) {
+    for mode in [Rounding::Down, Rounding::Nearest, Rounding::Up] {
+        keep(mul_rounded(x, y, mode));
+        keep(div_rounded(x, y, mode));
+        keep(mul_div_rounded(x, y, two, mode));
+        keep(mul_add_rounded(x, y, two, mode));
+        keep(dot_rounded(&[x, y], &[two, x], mode));
+    }
+    keep(exprel_range(x, two));
+    keep(exprel2_range(x, two));
+    keep(exp_moments_range(x, two));
+    keep(log1p_range(x, two));
+    keep(log1p_ratio_range(x, two));
+    keep(log1p_residual_ratio_range(x, two));
+    keep(tanh_ratio_range(x, two));
+    keep(atan_ratio_range(x, two));
+    keep(atanh_ratio_range(y, x));
+    keep(tan_ratio_range(x, two));
+    keep(sqrt_range(x, two));
+    keep(stumpff_range(x, two));
+    keep(hypot_range((x, y), (y, two)));
+    keep(atan2_range((x, y), (y, two)));
+    if let Some(m) = Modulus::from_complement(y) {
+        keep(ellip_pi_increment(x, y, two, m));
+    }
+}
+
+/// The turns and complex functions, kept apart so neither list grows too long.
+fn exercise_more<T: CordicNumber>(x: T, y: T, two: T) {
+    keep(sin_cos_turns(x));
+    keep(atan2_turns(y, x));
+    keep(div_by_tau(x));
+    keep(mul_by_tau(x));
+    keep(sin_cos_range_turns(x, y));
+    keep(wrap_radians(x));
+    keep(wrap_principal(x));
+    let z = Complex::new(x, y);
+    let w = Complex::new(two, x);
+    keep(z + w);
+    keep(z - w);
+    keep(z * w);
+    keep(z / w);
+    keep(-z);
+    keep(z.saturating_add(w));
+    keep(z.saturating_sub(w));
+    keep(z.saturating_mul(w));
+    keep(z.saturating_div(w));
+    keep(z.saturating_neg());
+    keep(z.ln());
+    keep(z.pow(two));
+    keep(z.exprel_weighted(y, two));
+    keep(z.conj());
+    keep(z.norm());
+    keep(z.arg());
+    keep(z.exp());
+    keep(z.exprel());
+    keep(z.exprel2());
+    keep(z.faddeeva());
+    keep(z.erf());
+    keep(z.e1());
+    keep(z.gamma_upper(two));
+    keep(erf(x));
+    keep(erfc(x));
+    keep(fresnel(x));
+    keep(gamma(x));
+    keep(root_in(|t: T| t.saturating_sub(y), x, two, 40));
+    keep(kepler_universal(two, y, x, two));
 
     if let Some(nn) = NonNegative::new(x) {
         keep(sqrt_nonneg(nn));
