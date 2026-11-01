@@ -38,6 +38,16 @@ mod tests {
     }
 
     #[test]
+    fn root_in_probes_inside_its_bracket() -> TestResult {
+        // Regula falsi lands within an ulp of an end here, where f steps by single ulps.
+        let (e, m) = (I16F16::from_num(0.9), I16F16::from_num(1.05));
+        let kepler = |x: I16F16| x - e * sin(x) - m;
+        let (a, b) = root_in(kepler, I16F16::ZERO, I16F16::from_num(3), 40)?;
+        assert_eq!((a.to_bits(), b.to_bits()), (124_602, 124_603));
+        Ok(())
+    }
+
+    #[test]
     fn kepler_matches_mpmath() -> TestResult {
         let t = |x: f64| I64F64::from_num(x);
         let close = |got: I64F64, want: f64| {

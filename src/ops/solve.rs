@@ -67,7 +67,10 @@ pub fn root_in<T: CordicNumber, F: FnMut(T) -> T>(
         } else {
             wh - reach.with_sign(toward.is_neg())
         };
-        let raw = x.to_raw(0, a.saturating_add(1), b.saturating_sub(1), true);
+        let raw = x
+            .to_raw(0, a, b, true)
+            .max(a.saturating_add(1))
+            .min(b.saturating_sub(1));
         let point = T::from_raw_i128(raw);
         let y = func(point);
         if y == zero {
