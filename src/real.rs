@@ -695,38 +695,26 @@ impl<const N: usize> Real<N> {
         }
     }
 
-    /// `x·2^(e − 256)`, `x`'s top bit set, rounded to nearest even, `sticky` for bits below.
+    /// Three limbs: `x·2^(e − 256)`, `x`'s top bit set, rounded to nearest even, `sticky` for
+    /// bits below.
     fn round_wide(neg: bool, e: i32, (hi, lo): Wide, sticky: bool) -> Self {
         let mut m = [0u64; N];
         let mut e = e;
-        if N == 2 {
-            let mut top = hi;
-            if lo >> 127 == 1 && (lo << 1 != 0 || sticky || top & 1 == 1) {
+        let (mut top, mut low) = (hi, hi64(lo));
+        let below = lo64(lo);
+        if below >> 63 == 1 && (below << 1 != 0 || sticky || low & 1 == 1) {
+            low = low.wrapping_add(1);
+            if low == 0 {
                 top = top.wrapping_add(1);
                 if top == 0 {
                     top = 1 << 127;
                     e = e.saturating_add(1);
                 }
             }
-            set(&mut m, 0, lo64(top));
-            set(&mut m, 1, hi64(top));
-        } else {
-            let (mut top, mut low) = (hi, hi64(lo));
-            let below = lo64(lo);
-            if below >> 63 == 1 && (below << 1 != 0 || sticky || low & 1 == 1) {
-                low = low.wrapping_add(1);
-                if low == 0 {
-                    top = top.wrapping_add(1);
-                    if top == 0 {
-                        top = 1 << 127;
-                        e = e.saturating_add(1);
-                    }
-                }
-            }
-            set(&mut m, 0, low);
-            set(&mut m, 1, lo64(top));
-            set(&mut m, 2, hi64(top));
         }
+        set(&mut m, 0, low);
+        set(&mut m, 1, lo64(top));
+        set(&mut m, 2, hi64(top));
         Self { neg, e, m }
     }
 
@@ -870,7 +858,7 @@ impl<const N: usize> Real<N> {
         Self::round_two(neg, e, hi, lo, false)
     }
 
-    /// The sum at 128 or 192 bits, rounded to nearest, for non-zero `|big| ≥ |small|`.
+    /// The sum at 192 bits, rounded to nearest, for non-zero `|big| ≥ |small|`.
     fn add_wide(big: Self, small: Self) -> Self {
         let gap = big.e.abs_diff(small.e);
         let ((ah, al), sticky) = wide_shr(small.wide(), gap);
