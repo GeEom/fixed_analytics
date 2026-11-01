@@ -35,7 +35,8 @@ pub use ops::arith::{
 pub use ops::circular::{acos, asin, asin_from_gap, atan, atan2, cos, sin, sin_cos, tan};
 pub use ops::complex::Complex;
 pub use ops::elliptic::{
-    Modulus, carlson_rc, carlson_rd, carlson_rf, carlson_rf_roots, carlson_rj, carlson_rj_roots,
+    Modulus, carlson_rc, carlson_rd, carlson_rd_rj_roots, carlson_rd_roots, carlson_rf,
+    carlson_rf_rd_rj_roots, carlson_rf_rd_roots, carlson_rf_roots, carlson_rj, carlson_rj_roots,
     ellip_e, ellip_k, ellip_pi, ellip_pi_complete, ellip_pi_increment, jacobi_am, jacobi_inverse,
     jacobi_sn_cn_dn,
 };
@@ -50,8 +51,10 @@ pub use ops::interval::{
     log1p_residual_ratio_range, sin_cos_range, sin_cos_range_turns, sqrt_range, stumpff_range,
     tan_ratio_range, tanh_range, tanh_ratio_range,
 };
-pub use ops::ratio::{atan_ratio, atanh_ratio, stumpff, tan_ratio, tanh_ratio};
-pub use ops::solve::{kepler_universal, root_in};
+pub use ops::ratio::{atan_ratio, atanh_ratio, sin_ratio, stumpff, tan_ratio, tanh_ratio};
+pub use ops::solve::{
+    kepler_universal, kepler_universal_near, kepler_universal_stumpff, root_in, root_in_newton,
+};
 pub use ops::special::{erf, erfc, fresnel, gamma};
 pub use ops::turns::{
     atan2_turns, div_by_tau, mul_by_tau, sin_cos_turns, wrap_principal, wrap_radians,

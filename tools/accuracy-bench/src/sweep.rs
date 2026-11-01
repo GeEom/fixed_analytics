@@ -64,6 +64,8 @@ pub enum Fun {
     StumpffC1,
     StumpffC2,
     StumpffC3,
+    SinRatio,
+    SinRatioVersine,
     TanRatio,
     AtanRatio,
     AtanhRatio,
@@ -81,6 +83,15 @@ pub enum Fun {
     CarlsonRj,
     CarlsonRc,
     CarlsonRd,
+    CarlsonRjRoots,
+    CarlsonRdRoots,
+    CarlsonRfRdRootsRf,
+    CarlsonRfRdRootsRd,
+    CarlsonRdRjRootsRd,
+    CarlsonRdRjRootsRj,
+    CarlsonRfRdRjRootsRf,
+    CarlsonRfRdRjRootsRd,
+    CarlsonRfRdRjRootsRj,
     EllipPi,
     EllipPiComplete,
     SinTurns,
@@ -117,6 +128,11 @@ pub enum Fun {
     WeightedK2Re,
     WeightedK2Im,
     KeplerUniversal,
+    KeplerStumpffC0,
+    KeplerStumpffC1,
+    KeplerStumpffC2,
+    KeplerStumpffC3,
+    KeplerNear,
     Erf,
     Erfc,
     FresnelC,
@@ -141,10 +157,10 @@ pub const ALL: &[Fun] = &[
     Sin, Cos, Tan, Asin, Acos, Atan, Atan2, Sinh, Cosh, Tanh, Coth, Asinh, Acosh, Atanh, Acoth,
     Exp, Pow2, Ln, Log2, Log10, Pow, Sqrt, SqrtOrZero, MulAdd, MulDiv, DivOrSaturate, Dot3,
     Hypot, Norm3, Normalize3, ScaleBy, SqrtProduct, AsinFromGap, Rsqrt,
-    Expm1, Exprel, Exprel2, MomentE1, MomentE2, MomentE3, MomentE4, MomentE5, Log1p, Log1pRatio, Log1pResidual, Log1pResidualRatio, StumpffC0, StumpffC1, StumpffC2, StumpffC3, TanRatio, AtanRatio, AtanhRatio, TanhRatio,
-    EllipK, EllipKm, EllipE, JacobiSn, JacobiCn, JacobiDn, JacobiAm, JacobiInverse, CarlsonRf, CarlsonRfRoots, CarlsonRj, CarlsonRc, CarlsonRd, EllipPi, EllipPiComplete,
+    Expm1, Exprel, Exprel2, MomentE1, MomentE2, MomentE3, MomentE4, MomentE5, Log1p, Log1pRatio, Log1pResidual, Log1pResidualRatio, StumpffC0, StumpffC1, StumpffC2, StumpffC3, SinRatio, SinRatioVersine, TanRatio, AtanRatio, AtanhRatio, TanhRatio,
+    EllipK, EllipKm, EllipE, JacobiSn, JacobiCn, JacobiDn, JacobiAm, JacobiInverse, CarlsonRf, CarlsonRfRoots, CarlsonRj, CarlsonRc, CarlsonRd, CarlsonRjRoots, CarlsonRdRoots, CarlsonRfRdRootsRf, CarlsonRfRdRootsRd, CarlsonRdRjRootsRd, CarlsonRdRjRootsRj, CarlsonRfRdRjRootsRf, CarlsonRfRdRjRootsRd, CarlsonRfRdRjRootsRj, EllipPi, EllipPiComplete,
     SinTurns, CosTurns, Atan2Turns, DivByTau, WrapRadians, WrapPrincipal, MulByTau,
-    CMulRe, CMulIm, CDivRe, CDivIm, CExpRe, CExpIm, CExprelRe, CExprelIm, CExprel2Re, CExprel2Im, FaddeevaRe, FaddeevaIm, CErfRe, CErfIm, E1Re, E1Im, GammaUpperRe, GammaUpperIm, CLnRe, CLnIm, CPowRe, CPowIm, WeightedK1Re, WeightedK1Im, WeightedK2Re, WeightedK2Im, KeplerUniversal, Erf, Erfc, FresnelC, FresnelS, Gamma,
+    CMulRe, CMulIm, CDivRe, CDivIm, CExpRe, CExpIm, CExprelRe, CExprelIm, CExprel2Re, CExprel2Im, FaddeevaRe, FaddeevaIm, CErfRe, CErfIm, E1Re, E1Im, GammaUpperRe, GammaUpperIm, CLnRe, CLnIm, CPowRe, CPowIm, WeightedK1Re, WeightedK1Im, WeightedK2Re, WeightedK2Im, KeplerUniversal, KeplerStumpffC0, KeplerStumpffC1, KeplerStumpffC2, KeplerStumpffC3, KeplerNear, Erf, Erfc, FresnelC, FresnelS, Gamma,
     MulDown, MulUp, MulDivDown, MulDivUp, MulAddDown, MulAddUp, DivDown, DivUp, Dot3Down, Dot3Up, EllipPiIncrement,
 ];
 
@@ -180,10 +196,6 @@ fn exhaustive_bits() -> u32 {
     if quick() { 8 } else { 16 }
 }
 
-pub const fn sample_count() -> usize {
-    SAMPLES
-}
-
 fn fun_roots(fun: Fun) -> bool {
     fun == CarlsonRfRoots
 }
@@ -206,6 +218,15 @@ fn elliptic(fun: Fun, a: &[Float]) -> Float {
         CarlsonRj => er::rj(&a[0], &a[1], &a[2], &a[3]),
         CarlsonRc => er::rc(&up(&a[0]), &up(&a[1])),
         CarlsonRd => er::rd(&a[0], &a[1], &a[2]),
+        CarlsonRjRoots | CarlsonRdRoots | CarlsonRfRdRootsRf | CarlsonRfRdRootsRd | CarlsonRdRjRootsRd | CarlsonRdRjRootsRj
+        | CarlsonRfRdRjRootsRf | CarlsonRfRdRjRootsRd | CarlsonRfRdRjRootsRj => {
+            let s: Vec<Float> = a.iter().map(|v| up(v).square()).collect();
+            match fun {
+                CarlsonRfRdRootsRf | CarlsonRfRdRjRootsRf => er::rf(&s[0], &s[1], &s[2]),
+                CarlsonRjRoots | CarlsonRdRjRootsRj | CarlsonRfRdRjRootsRj => er::rj(&s[0], &s[1], &s[2], &s[3]),
+                _ => er::rd(&s[0], &s[1], &s[2]),
+            }
+        }
         EllipPi => er::pi(&up(&a[0]), &a[1], &a[2], &a[3], &a[4]),
         EllipPiIncrement => er::pi_increment(&up(&a[0]), &up(&a[1]), &up(&a[2]), &up(&a[3])),
         _ => er::pi_complete(&up(&a[0]), &a[1]),
@@ -227,7 +248,9 @@ fn elliptic_points<T: Sut>(fun: Fun, rng: &mut Rng) -> Vec<Vec<T>> {
             EllipK | EllipKm | EllipE => vec![pick(rng, &unit)],
             JacobiSn | JacobiCn | JacobiDn | JacobiAm => vec![pick(rng, &any), pick(rng, &unit)],
             CarlsonRf | CarlsonRd => (0..3).map(|_| pick(rng, &pos)).collect(),
-            CarlsonRfRoots => (0..3).map(|_| pick(rng, &any)).collect(),
+            CarlsonRfRoots | CarlsonRdRoots | CarlsonRfRdRootsRf | CarlsonRfRdRootsRd => (0..3).map(|_| pick(rng, &any)).collect(),
+            CarlsonRjRoots | CarlsonRdRjRootsRd | CarlsonRdRjRootsRj | CarlsonRfRdRjRootsRf | CarlsonRfRdRjRootsRd
+            | CarlsonRfRdRjRootsRj => (0..4).map(|_| pick(rng, &any)).collect(),
             CarlsonRj => (0..4).map(|_| pick(rng, &pos)).collect(),
             CarlsonRc => vec![pick(rng, &pos), pick(rng, &pos)],
             EllipPiComplete => vec![pick(rng, &any), pick(rng, &unit)],
@@ -334,6 +357,11 @@ fn special(fun: Fun, x: &Float) -> Float {
                 _ => (one - c1) / x,
             }
         }
+        SinRatio if zero => at_zero(1.0),
+        SinRatio => x.clone().sin() / x,
+        SinRatioVersine if zero => at_zero(0.5),
+        // 1 − cos x = 2·sin²(x/2), which does not cancel.
+        SinRatioVersine => (Float::with_val(p, x / 2u32).sin().square() * 2u32) / x.clone().square(),
         TanRatio if zero => at_zero(1.0),
         TanRatio => x.clone().tan() / x,
         AtanRatio if zero => at_zero(1.0),
@@ -511,6 +539,8 @@ impl Fun {
             StumpffC1 => "stumpff_c1",
             StumpffC2 => "stumpff_c2",
             StumpffC3 => "stumpff_c3",
+            SinRatio => "sin_ratio",
+            SinRatioVersine => "sin_ratio_versine",
             TanRatio => "tan_ratio",
             AtanRatio => "atan_ratio",
             AtanhRatio => "atanh_ratio",
@@ -528,6 +558,15 @@ impl Fun {
             CarlsonRj => "carlson_rj",
             CarlsonRc => "carlson_rc",
             CarlsonRd => "carlson_rd",
+            CarlsonRjRoots => "carlson_rj_roots",
+            CarlsonRdRoots => "carlson_rd_roots",
+            CarlsonRfRdRootsRf => "carlson_rf_rd_roots_rf",
+            CarlsonRfRdRootsRd => "carlson_rf_rd_roots_rd",
+            CarlsonRdRjRootsRd => "carlson_rd_rj_roots_rd",
+            CarlsonRdRjRootsRj => "carlson_rd_rj_roots_rj",
+            CarlsonRfRdRjRootsRf => "carlson_rf_rd_rj_roots_rf",
+            CarlsonRfRdRjRootsRd => "carlson_rf_rd_rj_roots_rd",
+            CarlsonRfRdRjRootsRj => "carlson_rf_rd_rj_roots_rj",
             EllipPi => "ellip_pi",
             EllipPiComplete => "ellip_pi_complete",
             SinTurns => "sin_turns",
@@ -564,6 +603,11 @@ impl Fun {
             WeightedK2Re => "exprel_weighted_k2_re",
             WeightedK2Im => "exprel_weighted_k2_im",
             KeplerUniversal => "kepler_universal",
+            KeplerStumpffC0 => "kepler_universal_stumpff_c0",
+            KeplerStumpffC1 => "kepler_universal_stumpff_c1",
+            KeplerStumpffC2 => "kepler_universal_stumpff_c2",
+            KeplerStumpffC3 => "kepler_universal_stumpff_c3",
+            KeplerNear => "kepler_universal_near",
             Erf => "erf",
             Erfc => "erfc",
             FresnelC => "fresnel_c",
@@ -587,6 +631,9 @@ impl Fun {
         match self {
             Atan2 | Pow | DivOrSaturate | Hypot | ScaleBy | SqrtProduct => 2,
             MulAdd | MulDiv | Norm3 | Normalize3 | CarlsonRf | CarlsonRfRoots | CarlsonRd => 3,
+            CarlsonRdRoots | CarlsonRfRdRootsRf | CarlsonRfRdRootsRd => 3,
+            CarlsonRjRoots | CarlsonRdRjRootsRd | CarlsonRdRjRootsRj => 4,
+            CarlsonRfRdRjRootsRf | CarlsonRfRdRjRootsRd | CarlsonRfRdRjRootsRj => 4,
             JacobiSn | JacobiCn | JacobiDn | JacobiAm | CarlsonRc | EllipPiComplete | Atan2Turns => 2,
             JacobiInverse | CarlsonRj | CMulRe | CMulIm | CDivRe | CDivIm => 4,
             CExpRe | CExpIm | CExprelRe | CExprelIm | CExprel2Re | CExprel2Im | FaddeevaRe
@@ -594,6 +641,8 @@ impl Fun {
             GammaUpperRe | GammaUpperIm | CPowRe | CPowIm => 3,
             CLnRe | CLnIm => 2,
             WeightedK1Re | WeightedK1Im | WeightedK2Re | WeightedK2Im | KeplerUniversal => 4,
+            KeplerStumpffC0 | KeplerStumpffC1 | KeplerStumpffC2 | KeplerStumpffC3 => 4,
+            KeplerNear => 5,
             EllipPi => 5,
             Dot3 | Dot3Down | Dot3Up => 6,
             MulDown | MulUp | DivDown | DivUp => 2,
@@ -657,6 +706,8 @@ impl Fun {
             StumpffC1 => Some(fa::stumpff(x)[1]),
             StumpffC2 => Some(fa::stumpff(x)[2]),
             StumpffC3 => Some(fa::stumpff(x)[3]),
+            SinRatio => Some(fa::sin_ratio(x).0),
+            SinRatioVersine => Some(fa::sin_ratio(x).1),
             TanRatio => Some(fa::tan_ratio(x).0),
             AtanRatio => Some(fa::atan_ratio(x)),
             AtanhRatio => fa::atanh_ratio(x).ok(),
@@ -675,6 +726,15 @@ impl Fun {
             CarlsonRj => fa::carlson_rj(x, a[1], a[2], a[3]).ok(),
             CarlsonRc => fa::carlson_rc(x, a[1]).ok(),
             CarlsonRd => fa::carlson_rd(x, a[1], a[2]).ok(),
+            CarlsonRjRoots => fa::carlson_rj_roots(x, a[1], a[2], a[3]).ok(),
+            CarlsonRdRoots => fa::carlson_rd_roots(x, a[1], a[2]).ok(),
+            CarlsonRfRdRootsRf => fa::carlson_rf_rd_roots(x, a[1], a[2]).ok().map(|v| v.0),
+            CarlsonRfRdRootsRd => fa::carlson_rf_rd_roots(x, a[1], a[2]).ok().map(|v| v.1),
+            CarlsonRdRjRootsRd => fa::carlson_rd_rj_roots(x, a[1], a[2], a[3]).ok().map(|v| v.0),
+            CarlsonRdRjRootsRj => fa::carlson_rd_rj_roots(x, a[1], a[2], a[3]).ok().map(|v| v.1),
+            CarlsonRfRdRjRootsRf => fa::carlson_rf_rd_rj_roots(x, a[1], a[2], a[3]).ok().map(|v| v.0),
+            CarlsonRfRdRjRootsRd => fa::carlson_rf_rd_rj_roots(x, a[1], a[2], a[3]).ok().map(|v| v.1),
+            CarlsonRfRdRjRootsRj => fa::carlson_rf_rd_rj_roots(x, a[1], a[2], a[3]).ok().map(|v| v.2),
             EllipPi => fa::ellip_pi(x, a[1], a[2], a[3], fa::Modulus::from_complement(a[4])?).ok(),
             EllipPiComplete => fa::ellip_pi_complete(x, fa::Modulus::from_complement(a[1])?).ok(),
             SinTurns => Some(fa::sin_cos_turns(x).0),
@@ -720,6 +780,11 @@ impl Fun {
                 })
             }
             KeplerUniversal => fa::kepler_universal(x, a[1], a[2], a[3]).ok(),
+            KeplerStumpffC0 | KeplerStumpffC1 | KeplerStumpffC2 | KeplerStumpffC3 => {
+                let (_, c) = fa::kepler_universal_stumpff(x, a[1], a[2], a[3]).ok()?;
+                Some(c[kepler_stumpff_index(self)])
+            }
+            KeplerNear => fa::kepler_universal_near(x, a[1], a[2], a[3], a[4]).ok().map(|(chi, _)| chi),
             MulByTau => Some(fa::mul_by_tau(x)),
             Erf => Some(fa::erf(x)),
             Erfc => Some(fa::erfc(x)),
@@ -773,6 +838,9 @@ impl Fun {
             CarlsonRj => a[..3].iter().filter(|&&v| v == zero).count() <= 1 && a.iter().all(|&v| v >= zero) && a[3] > zero,
             CarlsonRc => x >= zero && a[1] > zero,
             CarlsonRd => x >= zero && a[1] >= zero && a[2] > zero && (x != zero || a[1] != zero),
+            CarlsonRjRoots => a[..3].iter().filter(|&&v| v == zero).count() <= 1 && a[3] != zero,
+            CarlsonRdRoots | CarlsonRfRdRootsRf | CarlsonRfRdRootsRd => a[2] != zero && (x != zero || a[1] != zero),
+            CarlsonRdRjRootsRd | CarlsonRdRjRootsRj | CarlsonRfRdRjRootsRf | CarlsonRfRdRjRootsRd | CarlsonRfRdRjRootsRj => a[2] != zero && a[3] != zero && (x != zero || a[1] != zero),
             EllipPi => {
                 let sn = a[1].to_float();
                 let pole = Float::with_val(PREC, 1) - Float::with_val(PREC, a[0].to_float() * sn.square());
@@ -786,7 +854,7 @@ impl Fun {
             CLnRe | CLnIm => x != zero || a[1] != zero,
             CPowRe | CPowIm => x != zero || a[1] != zero || a[2] >= zero,
             WeightedK1Re | WeightedK1Im | WeightedK2Re | WeightedK2Im => a[2] >= zero && a[2] < one && a[3] >= zero,
-            KeplerUniversal => {
+            KeplerUniversal | KeplerStumpffC0 | KeplerStumpffC1 | KeplerStumpffC2 | KeplerStumpffC3 | KeplerNear => {
                 let (r, s, al) = (a[0].to_float(), a[1].to_float(), a[2].to_float());
                 let h2 = Float::with_val(PREC * 3, &r * (Float::with_val(PREC * 3, 2) - Float::with_val(PREC * 3, &al * &r))) - Float::with_val(PREC * 3, s.square_ref());
                 x > zero && h2 > 0
@@ -882,7 +950,9 @@ impl Fun {
             Rsqrt => one / x.sqrt(),
             EllipK | EllipKm | EllipE | JacobiSn | JacobiCn | JacobiDn | JacobiAm | JacobiInverse
             | CarlsonRf | CarlsonRfRoots | CarlsonRj | CarlsonRc | CarlsonRd | EllipPi
-            | EllipPiComplete | EllipPiIncrement => elliptic(self, a),
+            | EllipPiComplete | EllipPiIncrement | CarlsonRjRoots | CarlsonRdRoots | CarlsonRfRdRootsRf
+            | CarlsonRfRdRootsRd | CarlsonRdRjRootsRd | CarlsonRdRjRootsRj | CarlsonRfRdRjRootsRf
+            | CarlsonRfRdRjRootsRd | CarlsonRfRdRjRootsRj => elliptic(self, a),
             SinTurns | CosTurns | DivByTau | WrapRadians | WrapPrincipal => {
                 let p = PREC * 3;
                 let tau = Float::with_val(p, Constant::Pi) * 2u32;
@@ -958,7 +1028,13 @@ impl Fun {
                 };
                 if matches!(self, WeightedK1Re | WeightedK2Re) { r.real().clone() } else { r.imag().clone() }
             }
-            KeplerUniversal => kepler(a),
+            KeplerUniversal | KeplerNear => kepler(a),
+            // cₖ(αχ̂²) at the function's own χ̂, appended by `own`.
+            KeplerStumpffC0 | KeplerStumpffC1 | KeplerStumpffC2 | KeplerStumpffC3 => {
+                let z = Float::with_val(PREC * 3, &a[2] * Float::with_val(PREC * 3, a[4].square_ref()));
+                let fun = [StumpffC0, StumpffC1, StumpffC2, StumpffC3][kepler_stumpff_index(self)];
+                special(fun, &z)
+            }
             MulByTau => {
                 let p = PREC * 3;
                 Float::with_val(p, &x) * (Float::with_val(p, Constant::Pi) * 2u32)
@@ -982,6 +1058,17 @@ impl Fun {
         }
     }
 
+    /// A value of the function's own that its reference needs: the anomaly the
+    /// Stumpff values of `kepler_universal_stumpff` are taken at.
+    pub fn own<T: Sut>(self, a: &[T]) -> Option<Float> {
+        match self {
+            KeplerStumpffC0 | KeplerStumpffC1 | KeplerStumpffC2 | KeplerStumpffC3 => {
+                fixed_analytics::kepler_universal_stumpff(a[0], a[1], a[2], a[3]).ok().map(|(chi, _)| chi.to_float())
+            }
+            _ => None,
+        }
+    }
+
     /// The period an error is taken modulo, for the wraps.
     pub fn period(self) -> Option<Float> {
         matches!(self, WrapRadians | WrapPrincipal).then(|| Float::with_val(PREC, Constant::Pi) * 2u32)
@@ -996,7 +1083,9 @@ impl Fun {
                 | WeightedK2Im |
             EllipK | EllipKm | EllipE | JacobiSn | JacobiCn | JacobiDn | JacobiAm | JacobiInverse
                 | CarlsonRf | CarlsonRfRoots | CarlsonRj | CarlsonRc | CarlsonRd | EllipPi
-                | EllipPiComplete | EllipPiIncrement
+                | EllipPiComplete | EllipPiIncrement | CarlsonRjRoots | CarlsonRdRoots
+                | CarlsonRfRdRootsRf | CarlsonRfRdRootsRd | CarlsonRdRjRootsRd | CarlsonRdRjRootsRj
+                | CarlsonRfRdRjRootsRf | CarlsonRfRdRjRootsRd | CarlsonRfRdRjRootsRj
         )
     }
 
@@ -1010,7 +1099,8 @@ impl Fun {
         match self {
             Sin | Tan | Asin | Atan | Sinh | Tanh | Coth | Asinh | Atanh | Acoth | SinTurns
             | DivByTau | MulByTau | Erf | FresnelC | FresnelS => Parity::Odd,
-            Cos | Cosh | TanRatio | AtanRatio | AtanhRatio | TanhRatio | CosTurns => Parity::Even,
+            Cos | Cosh | SinRatio | SinRatioVersine | TanRatio | AtanRatio | AtanhRatio | TanhRatio
+            | CosTurns => Parity::Even,
             _ => Parity::Neither,
         }
     }
@@ -1041,6 +1131,9 @@ impl Fun {
             Expm1 | Exprel | Exprel2 | Log1p => vec![(ninf, inf, true)],
             MomentE1 | MomentE2 | MomentE3 | MomentE4 | MomentE5 | Log1pRatio => vec![(ninf, inf, false)],
             StumpffC0 | StumpffC1 | StumpffC2 | StumpffC3 => vec![(ninf, zero.clone() + f(1e-300), false)],
+            // sin x / x falls to its first minimum, at tan x = x, and 2·sin²(x/2)/x² to 2π.
+            SinRatio => vec![(f(-4.4934), zero.clone() + f(1e-300), true), (zero.clone() - f(1e-300), f(4.4934), false)],
+            SinRatioVersine => vec![(-(pi() * 2u32), zero.clone() + f(1e-300), true), (zero.clone() - f(1e-300), pi() * 2u32, false)],
             Log1pResidual => vec![(f(-1.0), zero.clone(), true), (zero, inf, false)],
             AsinFromGap => vec![(zero.clone() - f(1e-300), f(2.0) + f(1e-300), false)],
             Sqrt => vec![(zero - f(1e-300), inf, true)],
@@ -1056,7 +1149,7 @@ impl Fun {
         let min_exp = -(i64::from(T::frac_n()) + 1);
         let mut h = vec![f(1.0), f(-1.0), f(0.5), f(-0.5), f(2.0), f(-2.0)];
         match self {
-            Sin | Cos | Tan => {
+            Sin | Cos | Tan | SinRatio | SinRatioVersine => {
                 for j in 0..int_bits + 1 {
                     let k = Float::with_val(PREC, 1u32) << j;
                     h.push(pi() * k.clone() / 2u32);
@@ -1122,6 +1215,10 @@ impl Rng {
         };
         if self.next() & 1 == 0 { m } else { -m }
     }
+}
+
+fn kepler_stumpff_index(fun: Fun) -> usize {
+    match fun { KeplerStumpffC0 => 0, KeplerStumpffC1 => 1, KeplerStumpffC2 => 2, _ => 3 }
 }
 
 fn is_weighted(fun: Fun) -> bool {
@@ -1304,7 +1401,8 @@ pub fn run<T: Sut>(fun: Fun) -> FunStats {
             }
             continue;
         };
-        let args: Vec<Float> = p.iter().map(|x| x.to_float()).collect();
+        let mut args: Vec<Float> = p.iter().map(|x| x.to_float()).collect();
+        args.extend(fun.own(p));
         let r = fun.reference(&args);
         if r.is_nan() {
             continue;

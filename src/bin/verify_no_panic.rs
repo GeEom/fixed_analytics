@@ -10,9 +10,12 @@ use fixed_analytics::CordicNumber;
 use fixed_analytics::bounded::{NonNegative, OpenUnitInterval};
 use fixed_analytics::ops::algebraic::sqrt_nonneg;
 use fixed_analytics::ops::hyperbolic::atanh_open;
-use fixed_analytics::{Complex, erf, erfc, fresnel, gamma, kepler_universal, root_in};
 use fixed_analytics::{
-    Modulus, carlson_rc, carlson_rd, carlson_rf, carlson_rf_roots, carlson_rj, carlson_rj_roots,
+    Complex, erf, erfc, fresnel, gamma, kepler_universal, root_in, root_in_newton,
+};
+use fixed_analytics::{
+    Modulus, carlson_rc, carlson_rd, carlson_rd_rj_roots, carlson_rd_roots, carlson_rf,
+    carlson_rf_rd_rj_roots, carlson_rf_rd_roots, carlson_rf_roots, carlson_rj, carlson_rj_roots,
     ellip_e, ellip_k, ellip_pi, ellip_pi_complete, jacobi_am, jacobi_inverse, jacobi_sn_cn_dn,
 };
 use fixed_analytics::{
@@ -29,12 +32,13 @@ use fixed_analytics::{
 };
 use fixed_analytics::{
     atan_ratio, atanh_ratio, exp_moments, expm1, exprel, exprel2, log1p, log1p_ratio,
-    log1p_residual, log1p_residual_ratio, stumpff, tan_ratio, tanh_ratio,
+    log1p_residual, log1p_residual_ratio, sin_ratio, stumpff, tan_ratio, tanh_ratio,
 };
 use fixed_analytics::{
     atan2_turns, div_by_tau, mul_by_tau, sin_cos_range_turns, sin_cos_turns, wrap_principal,
     wrap_radians,
 };
+use fixed_analytics::{kepler_universal_near, kepler_universal_stumpff};
 
 /// Hands `v` to `black_box`, so the optimizer must compute it in full.
 fn keep<V>(v: V) {
@@ -95,6 +99,7 @@ fn exercise<T: CordicNumber>(x: T, y: T, two: T) {
     keep(log1p_residual(x));
     keep(log1p_residual_ratio(x));
     keep(stumpff(x));
+    keep(sin_ratio(x));
     keep(tan_ratio(x));
     keep(atan_ratio(x));
     keep(atanh_ratio(x));
@@ -117,6 +122,10 @@ fn exercise<T: CordicNumber>(x: T, y: T, two: T) {
     keep(carlson_rj_roots(x, y, two, x));
     keep(carlson_rc(x, y));
     keep(carlson_rd(x, y, two));
+    keep(carlson_rd_roots(x, y, two));
+    keep(carlson_rf_rd_roots(x, y, two));
+    keep(carlson_rd_rj_roots(x, y, two, x));
+    keep(carlson_rf_rd_rj_roots(x, y, two, x));
     exercise_more(x, y, two);
     exercise_bounds(x, y, two);
 }
@@ -188,7 +197,17 @@ fn exercise_more<T: CordicNumber>(x: T, y: T, two: T) {
     keep(fresnel(x));
     keep(gamma(x));
     keep(root_in(|t: T| t.saturating_sub(y), x, two, 40));
+    keep(root_in_newton(
+        |t: T| t.saturating_sub(y),
+        |_, v| v,
+        y,
+        x,
+        two,
+        40,
+    ));
     keep(kepler_universal(two, y, x, two));
+    keep(kepler_universal_stumpff(two, y, x, two));
+    keep(kepler_universal_near(two, y, x, two, y));
 
     if let Some(nn) = NonNegative::new(x) {
         keep(sqrt_nonneg(nn));

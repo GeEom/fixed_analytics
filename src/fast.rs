@@ -76,8 +76,12 @@ pub fn sin_cos(mag: u128, point: u32, radians: bool) -> (i128, i128) {
     let d = mul_q126(rest, QUARTER_PI) >> 1;
     let d2 = mul_q126(d, d);
     let coef = |i: u32| FACT.q126.get(i as usize).copied().unwrap_or(0);
-    let (mut ps, mut pc) = (0i128, 0i128);
-    for k in (0..=7u32).rev() {
+    let d2_q62 = i128::from(i64::try_from(d2 >> 64).unwrap_or(0));
+    let q62 = |i: usize| i128::from(FACT.q62.get(i).copied().unwrap_or(0));
+    // Below 2^−63, in Q62.
+    let past_four = |i: usize| ((d2_q62 * q62(12 + i)) >> 62).wrapping_sub(q62(10 + i)) << 64;
+    let (mut ps, mut pc) = (past_four(1), past_four(0));
+    for k in (0..=4u32).rev() {
         let sign = if k % 2 == 1 { -1 } else { 1 };
         ps = sign * coef(2 * k + 1) + mul_q126(d2, ps);
         pc = sign * coef(2 * k) + mul_q126(d2, pc);
@@ -137,6 +141,25 @@ pub fn shift_round(v: i128, s: u32) -> i128 {
     let m = v.unsigned_abs();
     let (q, rem, half) = (m >> s, m & ((1 << s) - 1), 1u128 << (s - 1));
     (q + u128::from(rem > half || (rem == half && q & 1 == 1))).cast_signed()
+}
+
+/// `s/c·2^frac` rounded, if `|c| ≥ 2^((frac − 94)/2)` leaves 24 guard bits.
+pub fn tan(s: i128, c: i128, frac: u32) -> Option<i128> {
+    let (ms, mc) = (s.unsigned_abs(), c.unsigned_abs());
+    let lz = mc.leading_zeros();
+    if lz + frac.div_ceil(2) > 48 {
+        return None;
+    }
+    if ms == 0 {
+        return Some(0);
+    }
+    let zs = ms.leading_zeros();
+    let q = mul_q126(
+        (ms << (zs - 1)).cast_signed(),
+        recip((mc << (lz - 1)).cast_signed()),
+    );
+    let t = shift_round(q, 126 + zs - lz - frac);
+    Some(if (s < 0) == (c < 0) { t } else { -t })
 }
 
 /// `2^252/d` in Q126 for `d` in `[2^125, 2^127)`: a seed, then two steps of `g + g(1 − δg)`.

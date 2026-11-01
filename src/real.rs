@@ -59,7 +59,7 @@ fn shl(limbs: &mut [u64], len: usize, shift: u32) {
     }
 }
 
-/// Shifts right by `s`, returning whether a set bit fell off the end.
+/// Shifts right by `s`. True if a set bit fell off the end.
 fn shr(limbs: &mut [u64], len: usize, shift: u32) -> bool {
     let words = (shift / 64) as usize;
     let bits = shift % 64;
@@ -119,7 +119,7 @@ fn sub_into(a: &mut Scratch, b: &Scratch, len: usize) {
     }
 }
 
-/// `|v|·2^62` for a mantissa top limb whose value is `top · 2^(e − 64)`, `|v| < 2`.
+/// `|v|·2^62` for `|v| < 2` held as `top · 2^(e − 64)`.
 fn q62(neg: bool, e: i32, top: u64) -> i64 {
     let sh = 2 - i64::from(e);
     let q = u32::try_from(sh)
@@ -226,13 +226,13 @@ const RECIP_SEEDS: [u64; 64] = {
     t
 };
 
-/// `1/√f` in Q62 at the middle of `[i/128, (i + 1)/128)`, for `i` from 16.
-const RSQRT_SEEDS: [u64; 112] = {
-    let mut t = [0u64; 112];
+/// `1/√f` in Q62 at the middle of `[i/512, (i + 1)/512)`, for `i` from 128.
+const RSQRT_SEEDS: [u64; 384] = {
+    let mut t = [0u64; 384];
     let mut rest: &mut [u64] = &mut t;
-    let mut i = 16u128;
+    let mut i = 128u128;
     while let [slot, tail @ ..] = rest {
-        *slot = low64(((1u128 << 124) / (2 * i + 1)).isqrt() << 4);
+        *slot = low64(((1u128 << 124) / (2 * i + 1)).isqrt() << 5);
         rest = tail;
         i += 1;
     }
@@ -255,39 +255,75 @@ pub fn recip_seed(t: u64) -> u128 {
     u128::from(g) << 2
 }
 
-/// `2^128/√x` to about 2^−57, `x` in `[2^125, 2^128)`: a seed, then four steps of `g ← g(3 − fg²)/2`.
-fn rsqrt_seed(x: u128) -> u128 {
-    let s = hi64(x);
-    let index = usize::try_from(s >> 57).unwrap_or(16).saturating_sub(16);
+/// `⌊√x⌋` and `x − ⌊√x⌋²` for `x` in `[2^126, 2^128)`, from a tabled `1/√x` and Newton steps.
+fn isqrt_rem(x: u128) -> (u64, u128) {
+    let f = hi64(x);
+    let index = usize::try_from(x >> 119).unwrap_or(128).saturating_sub(128);
     let mut g = RSQRT_SEEDS.get(index).copied().unwrap_or(1 << 62);
-    for _ in 0..4 {
+    for _ in 0..2 {
         let g2 = hi64(u128::from(g) * u128::from(g));
-        let fg2 = u128::from(s) * u128::from(g2);
-        let rest = hi64((3u128 << 124).wrapping_sub(fg2));
+        let rest = hi64((3u128 << 124).wrapping_sub(u128::from(f) * u128::from(g2)));
         g = lo64((u128::from(g) * u128::from(rest)) >> 61);
     }
-    u128::from(g) << 2
-}
-
-/// `⌊√x⌋`, `x` in `[2^125, 2^128)`: `x·g/2^128`, a Newton correction by `g`, then exact steps.
-fn isqrt_top(x: u128) -> u128 {
-    let g = lo64(rsqrt_seed(x) >> 2);
-    let estimate = (u128::from(hi64(x)) * u128::from(g)) >> 62;
-    let error = x
-        .cast_signed()
-        .wrapping_sub(estimate.wrapping_mul(estimate).cast_signed());
-    let step = ((error >> 32) * i128::from(g)) >> 95;
-    let mut r = estimate
-        .saturating_add_signed(step)
-        .min(u128::from(u64::MAX));
-    for _ in 0..4 {
-        if r * r > x {
-            r -= 1;
-        } else if (r + 1).checked_mul(r + 1).is_some_and(|v| v <= x) {
-            r += 1;
+    let estimate = ((u128::from(f) * u128::from(g)) >> 62).min(u128::from(u64::MAX));
+    let error = x.wrapping_sub(estimate * estimate).cast_signed() >> 40;
+    let step = (i128::from(i64::try_from(error).unwrap_or(0)) * i128::from(g)) >> 87;
+    let mut r = lo64(
+        estimate
+            .saturating_add_signed(step)
+            .min(u128::from(u64::MAX)),
+    );
+    let mut rem = x.wrapping_sub(u128::from(r) * u128::from(r)).cast_signed();
+    for _ in 0..2 {
+        let twice = i128::from(r) << 1;
+        if rem < 0 {
+            r = r.wrapping_sub(1);
+            rem += twice - 1;
+        } else if rem > twice {
+            r = r.wrapping_add(1);
+            rem -= twice + 1;
         }
     }
-    r
+    (r, rem.cast_unsigned())
+}
+
+/// Root and 129-bit remainder of `x·2^128 + a1·2^64 + a0` for `x ≥ 2^126`. One step
+/// of Zimmermann's recursion on [`isqrt_rem`] gives both. docs/sqrt.md has the proof.
+fn root_rem(x: u128, a1: u64, a0: u64) -> (u128, (bool, u128)) {
+    let (s, rem) = isqrt_rem(x);
+    let s_wide = u128::from(s);
+    let num = (rem << 63) | u128::from(a1 >> 1);
+    let q = (num / s_wide.max(1)).min(u128::from(u64::MAX));
+    let u = ((num - q * s_wide) << 1) | u128::from(a1 & 1);
+    let root = (s_wide << 64) | q;
+    let (lo, borrow) = ((u << 64) | u128::from(a0)).overflowing_sub(q * q);
+    let hi = (u >> 64).wrapping_sub(u128::from(borrow));
+    if hi >> 127 == 0 {
+        return (root, (hi != 0, lo));
+    }
+    let root = root - 1;
+    let (lo, carry) = lo.overflowing_add((root << 1) | 1);
+    let hi = hi.wrapping_add(root >> 127).wrapping_add(u128::from(carry));
+    (root, (hi != 0, lo))
+}
+
+/// `⌊(n·2^64 + low)/d⌋` and its remainder, for `n < d` and a normalized `d`.
+fn div_digit(n: u128, low: u64, d: u128) -> (u64, u128) {
+    let (d1, d0) = (hi64(d), lo64(d));
+    let mut q = if hi64(n) >= d1 {
+        u64::MAX
+    } else {
+        lo64(n / u128::from(d1.max(1)))
+    };
+    let mut rest = n.wrapping_sub(u128::from(q) * u128::from(d1));
+    for _ in 0..2 {
+        if rest >> 64 == 0 && u128::from(q) * u128::from(d0) > ((rest << 64) | u128::from(low)) {
+            q = q.wrapping_sub(1);
+            rest += u128::from(d1);
+        }
+    }
+    let r = ((rest << 64) | u128::from(low)).wrapping_sub(u128::from(q) * u128::from(d0));
+    (q, r)
 }
 
 type Wide = (u128, u128);
@@ -359,14 +395,14 @@ pub trait Work:
     fn square(self) -> Self;
     #[must_use]
     fn mul_int(self, k: i64) -> Self;
-    /// Division by a positive integer, correctly rounded.
+    /// Division by a positive integer, rounded to nearest.
     #[must_use]
     fn div_int(self, k: u64) -> Self;
     #[must_use]
     fn sqrt(self) -> Self;
-    /// For `mag · 2^−frac` turns, or radians when `radians`: the octant
-    /// `⌊8·frac(t)⌋` and the fraction of it, measured from the octant's near
-    /// end to π/4's multiple, so odd octants count back from their top.
+    /// The octant `⌊8·frac(t)⌋` of `t = mag · 2^−frac` turns, or radians if
+    /// `radians` is set. The fraction within it runs from the nearer multiple of
+    /// π/4, so odd octants count back from their top.
     fn octant(mag: u128, frac: u32, radians: bool) -> (u32, Self);
     /// [`octant`](Self::octant) of `|self|` radians, below `2^PREC`.
     fn octant_of(self) -> (u32, Self);
@@ -374,9 +410,9 @@ pub trait Work:
     fn octant_of_product(a: Self, b: Self) -> (u32, Self);
     /// `a·b + c·d` from the exact products, rounded once.
     fn dot2(a: Self, b: Self, c: Self, d: Self) -> Self;
-    /// `Σ ±table[first + step·k]·u^k` for k from 0 to `n` by Horner's rule,
-    /// the signs alternating when `alternate`, for `|u| < 1` and terms whose
-    /// sum stays near 1, in fixed point with 62, 126 or 190 fractional bits.
+    /// `Σ ±table[first + step·k]·u^k` for k up to `n`, by Horner's rule in fixed
+    /// point with 62, 126 or 190 fractional bits. Signs alternate if `alternate`
+    /// is set. It needs `|u| < 1` and a sum near 1.
     fn horner(u: Self, table: &Series, first: u32, step: u32, n: u32, alternate: bool) -> Self;
     /// `round(16·num/den)` from the top bits, for `0 ≤ num ≤ den`, `den > 0`.
     fn sixteenths(num: Self, den: Self) -> i64;
@@ -659,93 +695,170 @@ impl<const N: usize> Real<N> {
         }
     }
 
-    /// `x·2^(e − 256)`, `x`'s top bit set, rounded to nearest even, `sticky` for bits below.
+    /// Three limbs: `x·2^(e − 256)`, `x`'s top bit set, rounded to nearest even, `sticky` for
+    /// bits below.
     fn round_wide(neg: bool, e: i32, (hi, lo): Wide, sticky: bool) -> Self {
         let mut m = [0u64; N];
         let mut e = e;
-        if N == 2 {
-            let mut top = hi;
-            if lo >> 127 == 1 && (lo << 1 != 0 || sticky || top & 1 == 1) {
+        let (mut top, mut low) = (hi, hi64(lo));
+        let below = lo64(lo);
+        if below >> 63 == 1 && (below << 1 != 0 || sticky || low & 1 == 1) {
+            low = low.wrapping_add(1);
+            if low == 0 {
                 top = top.wrapping_add(1);
                 if top == 0 {
                     top = 1 << 127;
                     e = e.saturating_add(1);
                 }
             }
-            set(&mut m, 0, lo64(top));
-            set(&mut m, 1, hi64(top));
-        } else {
-            let (mut top, mut low) = (hi, hi64(lo));
-            let below = lo64(lo);
-            if below >> 63 == 1 && (below << 1 != 0 || sticky || low & 1 == 1) {
-                low = low.wrapping_add(1);
-                if low == 0 {
-                    top = top.wrapping_add(1);
-                    if top == 0 {
-                        top = 1 << 127;
-                        e = e.saturating_add(1);
-                    }
-                }
-            }
-            set(&mut m, 0, low);
-            set(&mut m, 1, lo64(top));
-            set(&mut m, 2, hi64(top));
         }
+        set(&mut m, 0, low);
+        set(&mut m, 1, lo64(top));
+        set(&mut m, 2, hi64(top));
         Self { neg, e, m }
     }
 
-    /// The correctly rounded sum for two limbs in 192 bits, `|big| ≥ |small|`, both non-zero.
-    fn add_two(big: Self, small: Self) -> Self {
-        let (bm, sm) = (big.wide().0, small.wide().0);
-        let gap = big.e.abs_diff(small.e);
-        // small·2^64 >> gap as its high 128 and low 64 bits, and whether bits fell off.
-        let (ah, al, sticky) = match gap {
-            0 => (sm, 0, false),
-            1..=63 => (sm >> gap, lo64(sm << (64 - gap)), false),
-            64 => (sm >> 64, lo64(sm), false),
-            65..=127 => (sm >> gap, lo64(sm >> (gap - 64)), sm << (192 - gap) != 0),
-            128..=191 => (0, lo64(sm >> (gap - 64)), sm << (192 - gap) != 0),
-            _ => (0, 0, true),
-        };
-        let (mut hi, lo, mut e, sticky) = if big.neg == small.neg {
-            let (sum, carry) = bm.overflowing_add(ah);
-            if carry {
-                let lo = (al >> 1) | (lo64(sum) << 63);
-                (
-                    (sum >> 1) | 1 << 127,
-                    lo,
-                    big.e.saturating_add(1),
-                    sticky || al & 1 == 1,
-                )
-            } else {
-                (sum, al, big.e, sticky)
-            }
-        } else {
-            let (low, b1) = 0u64.overflowing_sub(al);
-            let (low, b2) = low.overflowing_sub(u64::from(sticky));
-            let high = bm.wrapping_sub(ah).wrapping_sub(u128::from(b1 || b2));
-            if high == 0 && low == 0 {
-                return <Self as Work>::zero();
-            }
-            let full = (high, u128::from(low) << 64);
-            let z = wide_leading_zeros(full);
-            let (h, l) = wide_shl(full, z);
-            (h, hi64(l), big.e.saturating_sub(z.cast_signed()), sticky)
-        };
-        if lo >> 63 == 1 && (lo << 1 != 0 || sticky || hi & 1 == 1) {
-            hi = hi.wrapping_add(1);
-            if hi == 0 {
-                hi = 1 << 127;
+    /// The mantissa as one `u128`.
+    fn two(&self) -> u128 {
+        (u128::from(self.top()) << 64) | u128::from(limb(&self.m, 0))
+    }
+
+    /// Rounds `hi·2^(e − 128)` to nearest even by what lies below it.
+    fn round_two(neg: bool, e: i32, hi: u128, lo: u128, sticky: bool) -> Self {
+        let mut top = hi;
+        let mut e = e;
+        if lo >> 127 == 1 && (lo << 1 != 0 || sticky || top & 1 == 1) {
+            top = top.wrapping_add(1);
+            if top == 0 {
+                top = 1 << 127;
                 e = e.saturating_add(1);
             }
         }
         let mut m = [0u64; N];
-        set(&mut m, 0, lo64(hi));
-        set(&mut m, 1, hi64(hi));
-        Self { neg: big.neg, e, m }
+        set(&mut m, 0, lo64(top));
+        set(&mut m, 1, hi64(top));
+        Self { neg, e, m }
     }
 
-    /// The correctly rounded sum for two or three limbs, `|big| ≥ |small|`, both non-zero.
+    /// Division by `divisor > 0` through Möller and Granlund's reciprocal, rounded to nearest.
+    fn div_two(self, divisor: u64) -> Self {
+        let shift = divisor.leading_zeros();
+        let d = divisor << shift;
+        let inverse = ((u128::from(!d) << 64) | u128::from(u64::MAX))
+            .checked_div(u128::from(d))
+            .map_or(0, lo64);
+        // `high·2^64 + low` over `d`, for `high < d`.
+        let digit = |high: u64, low: u64| {
+            let guess = (u128::from(inverse) * u128::from(high))
+                .wrapping_add((u128::from(high + 1) << 64) | u128::from(low));
+            let q = hi64(guess);
+            let r = low.wrapping_sub(q.wrapping_mul(d));
+            let (q, r) = if r > lo64(guess) {
+                (q.wrapping_sub(1), r.wrapping_add(d))
+            } else {
+                (q, r)
+            };
+            if r >= d { (q + 1, r - d) } else { (q, r) }
+        };
+        let num = self.two() << shift;
+        let (q2, r) = digit(self.top().checked_shr(64 - shift).unwrap_or(0), hi64(num));
+        let (q1, r) = digit(r, lo64(num));
+        let (q0, r) = digit(r, 0);
+        let high = (u128::from(q2) << 64) | u128::from(q1);
+        let z = high.leading_zeros();
+        let rest = u128::from(q0) << z;
+        Self::round_two(
+            self.neg,
+            self.e.saturating_sub(z.cast_signed()),
+            (high << z) | rest >> 64,
+            rest << 64,
+            r != 0,
+        )
+    }
+
+    /// The sum at 128 bits, rounded to nearest.
+    fn add_two(a: Self, b: Self) -> Self {
+        if b.is_zero() {
+            return a;
+        }
+        if a.is_zero() {
+            return b;
+        }
+        if a.e < b.e {
+            return Self::add_sorted(b, a);
+        }
+        Self::add_sorted(a, b)
+    }
+
+    /// [`add_two`](Self::add_two) of non-zero values, `big.e ≥ small.e`.
+    fn add_sorted(big: Self, small: Self) -> Self {
+        let (hm, sm, gap) = (big.two(), small.two(), big.e.abs_diff(small.e));
+        if gap == 0 && big.neg != small.neg {
+            let (diff, borrow) = hm.overflowing_sub(sm);
+            if diff == 0 {
+                return <Self as Work>::zero();
+            }
+            let (neg, mag) = if borrow {
+                (small.neg, diff.wrapping_neg())
+            } else {
+                (big.neg, diff)
+            };
+            let z = mag.leading_zeros();
+            return Self::round_two(
+                neg,
+                big.e.saturating_sub(z.cast_signed()),
+                mag << z,
+                0,
+                false,
+            );
+        }
+        let ((high, low), sticky) = wide_shr((sm, 0), gap);
+        if big.neg == small.neg {
+            let (sum, carry) = hm.overflowing_add(high);
+            if carry {
+                return Self::round_two(
+                    big.neg,
+                    big.e.saturating_add(1),
+                    (sum >> 1) | 1 << 127,
+                    (low >> 1) | sum << 127,
+                    sticky || low & 1 == 1,
+                );
+            }
+            return Self::round_two(big.neg, big.e, sum, low, sticky);
+        }
+        // big − small, less one unit if bits fell off small, which `sticky` then marks.
+        let (lo, b1) = 0u128.overflowing_sub(low);
+        let (lo, b2) = lo.overflowing_sub(u128::from(sticky));
+        let hi = hm.wrapping_sub(high).wrapping_sub(u128::from(b1 | b2));
+        if hi == 0 && lo == 0 {
+            return <Self as Work>::zero();
+        }
+        let z = wide_leading_zeros((hi, lo));
+        let (hi, lo) = wide_shl((hi, lo), z);
+        Self::round_two(
+            big.neg,
+            big.e.saturating_sub(z.cast_signed()),
+            hi,
+            lo,
+            sticky,
+        )
+    }
+
+    /// Rounds the product `hi·2^128 + lo` of normalized mantissas.
+    fn round_product(neg: bool, e: i32, hi: u128, lo: u128) -> Self {
+        if hi >> 127 == 0 {
+            return Self::round_two(
+                neg,
+                e.saturating_sub(1),
+                (hi << 1) | (lo >> 127),
+                lo << 1,
+                false,
+            );
+        }
+        Self::round_two(neg, e, hi, lo, false)
+    }
+
+    /// The sum at 192 bits, rounded to nearest, for non-zero `|big| ≥ |small|`.
     fn add_wide(big: Self, small: Self) -> Self {
         let gap = big.e.abs_diff(small.e);
         let ((ah, al), sticky) = wide_shr(small.wide(), gap);
@@ -781,55 +894,54 @@ impl<const N: usize> Real<N> {
         )
     }
 
-    /// The correctly rounded product for two or three limbs of normalized mantissas.
+    /// The product at 128 bits, rounded to nearest.
+    fn mul_two(self, o: Self) -> Self {
+        let (a, b) = (self.two(), o.two());
+        let (a1, a0, b1, b0) = (
+            a >> 64,
+            a & u128::from(u64::MAX),
+            b >> 64,
+            b & u128::from(u64::MAX),
+        );
+        let (mid, c1) = (a0 * b1).overflowing_add(a1 * b0);
+        let (lo, c2) = (a0 * b0).overflowing_add(mid << 64);
+        let hi = a1 * b1 + (mid >> 64) + (u128::from(c1) << 64) + u128::from(c2);
+        Self::round_product(self.neg != o.neg, self.e.saturating_add(o.e), hi, lo)
+    }
+
+    /// The product of normalized mantissas at 128 or 192 bits, rounded to nearest.
     fn mul_wide(self, o: Self) -> Option<Self> {
+        if N == 2 {
+            return Some(self.mul_two(o));
+        }
         let neg = self.neg != o.neg;
         let e = self.e.saturating_add(o.e);
-        let (acc, sticky) = if N == 2 {
-            let (a, b) = (self.wide().0, o.wide().0);
-            let (a1, a0, b1, b0) = (
-                a >> 64,
-                a & u128::from(u64::MAX),
-                b >> 64,
-                b & u128::from(u64::MAX),
-            );
-            let (mid, c1) = (a0 * b1).overflowing_add(a1 * b0);
-            let (lo, c2) = (a0 * b0).overflowing_add(mid << 64);
-            let hi = a1 * b1 + (mid >> 64) + (u128::from(c1) << 64) + u128::from(c2);
-            ((hi, lo), false)
-        } else {
-            let mut p = [0u64; 6];
-            for i in 0..3 {
-                let x = u128::from(limb(&self.m, i));
-                let mut carry: u128 = 0;
-                for j in 0..3 {
-                    let cur = u128::from(limb(&p, i + j)) + x * u128::from(limb(&o.m, j)) + carry;
-                    set(&mut p, i + j, lo64(cur));
-                    carry = cur >> 64;
-                }
-                set(&mut p, i + 3, lo64(carry));
+        let mut p = [0u64; 6];
+        for i in 0..3 {
+            let x = u128::from(limb(&self.m, i));
+            let mut carry: u128 = 0;
+            for j in 0..3 {
+                let cur = u128::from(limb(&p, i + j)) + x * u128::from(limb(&o.m, j)) + carry;
+                set(&mut p, i + j, lo64(cur));
+                carry = cur >> 64;
             }
-            let pair = |i: usize| (u128::from(limb(&p, i + 1)) << 64) | u128::from(limb(&p, i));
-            let top = (pair(4), pair(2));
-            let below = pair(0);
-            if top.0 >> 127 == 0 {
-                let shifted = wide_shl(top, 1);
-                return (top.0 >> 126 == 1).then(|| {
-                    Self::round_wide(
-                        neg,
-                        e.saturating_sub(1),
-                        (shifted.0, shifted.1 | below >> 127),
-                        below << 1 != 0,
-                    )
-                });
-            }
-            (top, below != 0)
-        };
-        if acc.0 >> 127 == 0 {
-            return (acc.0 >> 126 == 1)
-                .then(|| Self::round_wide(neg, e.saturating_sub(1), wide_shl(acc, 1), sticky));
+            set(&mut p, i + 3, lo64(carry));
         }
-        Some(Self::round_wide(neg, e, acc, sticky))
+        let pair = |i: usize| (u128::from(limb(&p, i + 1)) << 64) | u128::from(limb(&p, i));
+        let top = (pair(4), pair(2));
+        let below = pair(0);
+        if top.0 >> 127 == 0 {
+            let shifted = wide_shl(top, 1);
+            return (top.0 >> 126 == 1).then(|| {
+                Self::round_wide(
+                    neg,
+                    e.saturating_sub(1),
+                    (shifted.0, shifted.1 | below >> 127),
+                    below << 1 != 0,
+                )
+            });
+        }
+        Some(Self::round_wide(neg, e, top, below != 0))
     }
 
     fn mag_cmp(&self, o: &Self) -> Ordering {
@@ -843,29 +955,6 @@ impl<const N: usize> Real<N> {
             .cmp(&o.e)
             .then_with(|| self.top().cmp(&o.top()))
             .then_with(|| self.m.iter().rev().cmp(o.m.iter().rev()))
-    }
-
-    fn recip(self) -> Self {
-        let top = self.top();
-        if top == 0 {
-            return self;
-        }
-        let one = <Self as Work>::one();
-        if N == 1 {
-            return one / self;
-        }
-        let b = self.abs();
-        // At two limbs the exact 128/64 quotient beats the seed's chain of products.
-        let seed = if N == 2 {
-            u128::MAX / u128::from(top)
-        } else {
-            recip_seed(top)
-        };
-        let mut y = Self::from_u128(false, seed, 64i32.saturating_sub(self.e));
-        for _ in 0..2 {
-            y = y + y * (one - b * y);
-        }
-        y.with_sign(self.neg)
     }
 }
 
@@ -926,21 +1015,19 @@ impl<const N: usize> Add for Real<N> {
                 Self::add1(self, other)
             };
         }
+        if N == 2 {
+            return Self::add_two(self, other);
+        }
         if other.is_zero() {
             return self;
         }
         if self.is_zero() {
             return other;
         }
-        let (big, small) = if self.mag_cmp(&other) == Ordering::Less {
-            (other, self)
+        if self.mag_cmp(&other) == Ordering::Less {
+            Self::add_wide(other, self)
         } else {
-            (self, other)
-        };
-        if N == 2 {
-            Self::add_two(big, small)
-        } else {
-            Self::add_wide(big, small)
+            Self::add_wide(self, other)
         }
     }
 }
@@ -948,7 +1035,7 @@ impl<const N: usize> Add for Real<N> {
 impl<const N: usize> Sub for Real<N> {
     type Output = Self;
     fn sub(self, o: Self) -> Self {
-        self + -o
+        self + Self { neg: !o.neg, ..o }
     }
 }
 
@@ -980,7 +1067,7 @@ impl<const N: usize> Mul for Real<N> {
 
 impl<const N: usize> Div for Real<N> {
     type Output = Self;
-    /// To within a few units in the last place; correctly rounded for one limb.
+    /// Rounded to nearest at every width.
     fn div(self, o: Self) -> Self {
         if self.is_zero() || o.is_zero() {
             return <Self as Work>::zero();
@@ -995,7 +1082,141 @@ impl<const N: usize> Div for Real<N> {
             let e = self.e.saturating_sub(o.e).saturating_add(64);
             return Self::normalize(self.neg != o.neg, e, &mut ext, 2, num % den != 0);
         }
-        self * o.recip()
+        if N == 2 {
+            return Self::quotient_two(self, o);
+        }
+        Self::div_long(self, o)
+    }
+}
+
+impl<const N: usize> Real<N> {
+    /// Long division at 128 bits. It rounds up when twice the remainder passes the divisor.
+    fn quotient_two(a: Self, b: Self) -> Self {
+        let (num, den) = (a.wide().0, b.wide().0);
+        let (high, low, e) = if num < den {
+            (num, 0, a.e.saturating_sub(b.e))
+        } else {
+            (
+                num >> 1,
+                lo64(num) << 63,
+                a.e.saturating_sub(b.e).saturating_add(1),
+            )
+        };
+        let (q1, r1) = div_digit(high, low, den);
+        let (q0, r0) = div_digit(r1, 0, den);
+        let up = r0 > den - r0;
+        let quot = (u128::from(q1) << 64) | u128::from(q0);
+        Self::from_two(a.neg != b.neg, e, quot.wrapping_add(u128::from(up)))
+    }
+
+    /// [`quotient_two`](Self::quotient_two) for any width, by Knuth's algorithm D.
+    fn div_long(a: Self, b: Self) -> Self {
+        let below = a.m.iter().rev().cmp(b.m.iter().rev()).is_lt();
+        let mut num = [0; SCRATCH];
+        for (i, &word) in a.m.iter().enumerate() {
+            set(&mut num, N + i, word);
+        }
+        shr(&mut num, 2 * N, u32::from(!below));
+        let (d1, d0) = (b.top(), limb(&b.m, N.saturating_sub(2)));
+        let mut quot = [0u64; N];
+        for j in (0..N).rev() {
+            let head = limb(&num, j + N);
+            let top = (u128::from(head) << 64) | u128::from(limb(&num, j + N - 1));
+            let next = u128::from(limb(&num, (j + N).saturating_sub(2)));
+            let mut digit = if head >= d1 {
+                u64::MAX
+            } else {
+                lo64(top / u128::from(d1.max(1)))
+            };
+            let mut rest = top.wrapping_sub(u128::from(digit) * u128::from(d1));
+            for _ in 0..2 {
+                if rest >> 64 == 0 && u128::from(digit) * u128::from(d0) > ((rest << 64) | next) {
+                    digit = digit.wrapping_sub(1);
+                    rest += u128::from(d1);
+                }
+            }
+            let (mut carry, mut borrow) = (0u128, false);
+            for i in 0..=N {
+                let prod = u128::from(digit) * u128::from(limb(&b.m, i)) + carry;
+                carry = prod >> 64;
+                let (word, b1) = limb(&num, i + j).overflowing_sub(lo64(prod));
+                let (word, b2) = word.overflowing_sub(u64::from(borrow));
+                set(&mut num, i + j, word);
+                borrow = b1 || b2;
+            }
+            if borrow {
+                digit = digit.wrapping_sub(1);
+                let mut over = false;
+                for i in 0..=N {
+                    let (word, c1) = limb(&num, i + j).overflowing_add(limb(&b.m, i));
+                    let (word, c2) = word.overflowing_add(u64::from(over));
+                    set(&mut num, i + j, word);
+                    over = c1 || c2;
+                }
+            }
+            set(&mut quot, j, digit);
+        }
+        let mut gap = [0; SCRATCH];
+        for (i, &word) in b.m.iter().enumerate() {
+            set(&mut gap, i, word);
+        }
+        sub_into(&mut gap, &num, N);
+        let mut up = num
+            .iter()
+            .take(N)
+            .rev()
+            .cmp(gap.iter().take(N).rev())
+            .is_gt();
+        for word in &mut quot {
+            (*word, up) = word.overflowing_add(u64::from(up));
+        }
+        let e = a.e.saturating_sub(b.e).saturating_add(i32::from(!below));
+        Self {
+            neg: a.neg != b.neg,
+            e,
+            m: quot,
+        }
+    }
+
+    /// `m·2^(e − 128)` for an `m` with its top bit set.
+    fn from_two(neg: bool, e: i32, m: u128) -> Self {
+        let mut limbs = [0u64; N];
+        set(&mut limbs, 0, lo64(m));
+        set(&mut limbs, 1, hi64(m));
+        Self { neg, e, m: limbs }
+    }
+
+    /// Square root of `m·2^(e − 64N)` for even `e`, from the top 256 bits of `m` in
+    /// `top` and `low`. See docs/sqrt.md.
+    fn root(top: u128, low: u128, e: i32) -> Self {
+        let (head, (over, rem)) = root_rem(top, hi64(low), lo64(low));
+        if N == 2 {
+            let up = over || rem > head;
+            return Self::from_two(false, e, head.wrapping_add(u128::from(up)));
+        }
+        let half = (u128::from(over) << 127) | (rem >> 1);
+        let (q, up) = if half >= head {
+            (u64::MAX, true)
+        } else {
+            let (q, u) = div_digit(half, lo64(rem) << 63, head);
+            let q2 = u128::from(q) * u128::from(q);
+            let short = u >> 63 == 0 && u << 65 < q2;
+            let past = u
+                .checked_sub(head - u)
+                .is_some_and(|excess| excess >> 64 != 0 || excess << 64 > q2 + u128::from(q));
+            (q, !short && past)
+        };
+        let (q, carry) = q.overflowing_add(u64::from(up));
+        let head = head.wrapping_add(u128::from(carry));
+        let mut limbs = [0u64; N];
+        set(&mut limbs, 0, q);
+        set(&mut limbs, 1, lo64(head));
+        set(&mut limbs, 2, hi64(head));
+        Self {
+            neg: false,
+            e,
+            m: limbs,
+        }
     }
 }
 
@@ -1156,6 +1377,9 @@ impl<const N: usize> Work for Real<N> {
         if self.is_zero() || k == 0 {
             return self;
         }
+        if N == 2 {
+            return self.div_two(k);
+        }
         let mut q = [0; SCRATCH];
         let mut rem: u128 = 0;
         let small = u32::try_from(k).is_ok();
@@ -1186,24 +1410,23 @@ impl<const N: usize> Work for Real<N> {
             (u128::from(self.top()) << 64) | u128::from(limb(&self.m, N.saturating_sub(2)))
         };
         let ee = i64::from(self.e) - 128;
-        let (x, ee) = if ee % 2 == 0 {
-            (top2, ee)
-        } else {
-            (top2 >> 1, ee + 1)
-        };
-        let half_e = i32_of(ee / 2);
+        let odd = ee & 1 == 1;
+        let half_e = i32_of((ee + 1) >> 1);
         if N == 1 {
-            let r = isqrt_top(x);
-            let up = x - r * r > r;
-            return Self::from_u128(false, r + u128::from(up), half_e.saturating_add(128));
+            let (r, rem) = isqrt_rem(if odd { top2 >> 1 } else { top2 });
+            let up = rem > u128::from(r);
+            return Self::from_u128(
+                false,
+                u128::from(r) + u128::from(up),
+                half_e.saturating_add(128),
+            );
         }
-        let a = self.abs();
-        let three = Self::from_int(3);
-        let mut y = Self::from_u128(false, rsqrt_seed(x), 0i32.saturating_sub(half_e));
-        for _ in 0..2 {
-            y = (y * (three - a * y.square())).ldexp(-1);
-        }
-        a * y
+        let (x, a) = if odd {
+            wide_shr(self.wide(), 1).0
+        } else {
+            self.wide()
+        };
+        Self::root(x, a, half_e.saturating_add(64))
     }
 
     fn octant(mag: u128, frac: u32, radians: bool) -> (u32, Self) {
@@ -1309,7 +1532,7 @@ impl<const N: usize> Work for Real<N> {
                 Self::horner(u, table, b, step, n, alternate),
             );
         }
-        // Both chains in one loop, each hiding the other's latency.
+        // Both chains share one loop, so one runs while the other waits.
         let top = (u128::from(u.top()) << 64) | u128::from(limb(&u.m, 0));
         let uq = q126(u.neg, u.e, top);
         let coef = |first: u32, k: u32| {
@@ -1367,26 +1590,128 @@ impl<const N: usize> Work for Real<N> {
 
 #[cfg(test)]
 mod tests {
-    use super::{isqrt_top, recip_seed, rsqrt_seed};
+    use super::{
+        Ordering, Real, SCRATCH, Scratch, add_into, hi64, isqrt_rem, lo64, recip_seed, set, shl,
+        shr, sub_into,
+    };
+    use crate::real::Work;
+
+    fn next(state: &mut u64) -> u64 {
+        *state ^= *state << 13;
+        *state ^= *state >> 7;
+        *state ^= *state << 17;
+        *state
+    }
+
+    /// Test mantissas. Most are noise, but some sit near powers of two or squares.
+    fn mantissa(state: &mut u64) -> u128 {
+        let r = (u128::from(next(state)) << 64) | u128::from(next(state));
+        let nudge = u128::from(next(state) % 5);
+        let t = (r >> 66) | 1 << 63;
+        let m = match next(state) % 8 {
+            0 => 1 << 127,
+            1 => u128::MAX,
+            2 => (r >> 64 | 1 << 63) * (r >> 64 | 1 << 63),
+            3 => (t * t) << 1,
+            _ => return r | 1 << 127,
+        };
+        m.wrapping_add(nudge).wrapping_sub(2) | 1 << 127
+    }
+
+    /// A 192-bit root input, just under a square `c²·2^62 + c` in a quarter of cases.
+    fn limbs3(state: &mut u64) -> [u64; 3] {
+        let m = mantissa(state);
+        let low = next(state);
+        if !next(state).is_multiple_of(4) {
+            return [low, lo64(m), hi64(m)];
+        }
+        let c = Real::<2> {
+            neg: false,
+            e: 0,
+            m: [next(state) | 0xB505 << 48, 1],
+        };
+        let mut x = c.product(&c);
+        shl(&mut x, 4, 62);
+        add_into(&mut x, &widen(&c.m, 0), 4);
+        let mut out = [0; 3];
+        for (i, v) in out.iter_mut().enumerate() {
+            *v = x.get(i).copied().unwrap_or(0);
+        }
+        out
+    }
+
+    fn cmp(a: &Scratch, b: &Scratch, len: usize) -> Ordering {
+        a.iter().take(len).rev().cmp(b.iter().take(len).rev())
+    }
+
+    fn widen(m: &[u64], at: usize) -> Scratch {
+        let mut x = [0; SCRATCH];
+        for (i, &v) in m.iter().enumerate() {
+            set(&mut x, at + i, v);
+        }
+        x
+    }
+
+    fn check<const N: usize>(a: [u64; N], b: [u64; N], odd: bool) {
+        let real = |e: bool, m: [u64; N]| Real::<N> {
+            neg: false,
+            e: i32::from(e),
+            m,
+        };
+        let len = 2 * N + 1;
+        // The root r of X = a·2^(64N − odd) has r(r − 1) < X ≤ r(r + 1).
+        let root = real(odd, a).sqrt();
+        assert_eq!(root.e, i32::from(odd), "{a:?}");
+        let mut square = widen(&a, N);
+        shr(&mut square, len, u32::from(odd));
+        let (mut lower, mut upper) = (root.product(&root), root.product(&root));
+        sub_into(&mut lower, &widen(&root.m, 0), len);
+        add_into(&mut upper, &widen(&root.m, 0), len);
+        assert!(
+            cmp(&lower, &square, len).is_lt() && cmp(&square, &upper, len).is_le(),
+            "{a:?} {odd}"
+        );
+        // a/b is q·2^(k − 64N), k = [a ≥ b], |a·2^(64N − k) − qb| < b/2.
+        let quotient = real(false, a) / real(false, b);
+        let past = a.iter().rev().cmp(b.iter().rev()).is_ge();
+        assert_eq!(quotient.e, i32::from(past), "{a:?} {b:?}");
+        let mut num = widen(&a, N);
+        shr(&mut num, len, u32::from(past));
+        let qb = quotient.product(&real(false, b));
+        let (mut gap, small) = if cmp(&qb, &num, len).is_gt() {
+            (qb, num)
+        } else {
+            (num, qb)
+        };
+        sub_into(&mut gap, &small, len);
+        let mut rest = widen(&b, 0);
+        sub_into(&mut rest, &gap, len);
+        let below = cmp(&gap, &widen(&b, 0), len).is_lt();
+        assert!(below && cmp(&gap, &rest, len).is_lt(), "{a:?} {b:?}");
+    }
 
     #[test]
     fn seeds_and_roots_are_exact_enough() {
         let mut state = 0x9E37_79B9_7F4A_7C15u64;
-        let mut next = || {
-            state ^= state << 13;
-            state ^= state >> 7;
-            state ^= state << 17;
-            state
-        };
         for _ in 0..200_000 {
-            let x = (u128::from(next()) << 64 | u128::from(next())) >> (next() % 3);
-            let x = x.max(1 << 125);
-            assert_eq!(isqrt_top(x), x.isqrt(), "{x}");
-            let t = next() | 1 << 63;
+            let x = mantissa(&mut state) >> (next(&mut state) % 2);
+            let (r, rem) = isqrt_rem(x);
+            assert_eq!(u128::from(r), x.isqrt(), "{x}");
+            assert_eq!(rem, x - u128::from(r) * u128::from(r), "{x}");
+            let t = next(&mut state) | 1 << 63;
             let inverse = u128::MAX / u128::from(t);
             assert!(recip_seed(t).abs_diff(inverse) < inverse >> 55, "{t}");
-            let root = u128::MAX / x.isqrt();
-            assert!(rsqrt_seed(x).abs_diff(root) < root >> 55, "{x}");
+        }
+    }
+
+    #[test]
+    fn roots_and_quotients_are_correctly_rounded() {
+        let mut state = 0x2545_F491_4F6C_DD1Du64;
+        for _ in 0..300_000 {
+            let odd = next(&mut state) % 2 == 1;
+            let (a, b) = (mantissa(&mut state), mantissa(&mut state));
+            check::<2>([lo64(a), hi64(a)], [lo64(b), hi64(b)], odd);
+            check::<3>(limbs3(&mut state), limbs3(&mut state), odd);
         }
     }
 }
@@ -1459,11 +1784,89 @@ mod two_limbs {
             } else {
                 (a, b)
             };
-            let (x, y) = (Real::add_two(big, small), generic(big, small));
-            assert!(
-                x.neg == y.neg && x.e == y.e && x.m == y.m,
-                "{a:?} {b:?}: {x:?} {y:?}"
-            );
+            let y = generic(big, small);
+            for x in [Real::add_two(a, b), Real::add_two(b, a)] {
+                assert!(
+                    x.neg == y.neg && x.e == y.e && x.m == y.m,
+                    "{a:?} {b:?}: {x:?} {y:?}"
+                );
+            }
+        }
+    }
+
+    fn generic_int(x: Real<2>, k: i64, divide: bool) -> Real<2> {
+        let mut p = [0; SCRATCH];
+        if divide {
+            let k = k.cast_unsigned();
+            let mut rem: u128 = 0;
+            for i in (0..3).rev() {
+                let cur = (rem << 64) | u128::from(if i == 0 { 0 } else { limb(&x.m, i - 1) });
+                set(&mut p, i, lo64(cur / u128::from(k)));
+                rem = cur % u128::from(k);
+            }
+            return Real::normalize(x.neg, x.e, &mut p, 3, rem != 0);
+        }
+        let mut carry: u128 = 0;
+        for i in 0..2 {
+            let cur = u128::from(limb(&x.m, i)) * u128::from(k.unsigned_abs()) + carry;
+            set(&mut p, i, lo64(cur));
+            carry = cur >> 64;
+        }
+        set(&mut p, 2, lo64(carry));
+        Real::normalize(x.neg != (k < 0), x.e.saturating_add(64), &mut p, 3, false)
+    }
+
+    #[test]
+    fn products_and_quotients_match_the_limb_loops() {
+        let mut state = 0x9E37_79B9_7F4A_7C15u64;
+        let mut next = move || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+        for _ in 0..1_000_000 {
+            let limbs = |n: &mut dyn FnMut() -> u64| match n() % 4 {
+                0 => u64::MAX,
+                1 => 0,
+                _ => n(),
+            };
+            let a = Real::<2> {
+                neg: next() % 2 == 1,
+                e: i32::try_from(next() % 64).unwrap_or(0) - 32,
+                m: [limbs(&mut next), limbs(&mut next) | 1 << 63],
+            };
+            let b = Real::<2> {
+                neg: next() % 2 == 1,
+                e: 1,
+                m: [limbs(&mut next), limbs(&mut next) | 1 << 63],
+            };
+            let k = match next() % 4 {
+                0 => next() % 300 + 1,
+                1 => 1 << (next() % 64),
+                2 => next() | 1,
+                _ => u64::MAX - next() % 3,
+            };
+            let ki = k.cast_signed();
+            let (mut ab, mut aa) = (a.product(&b), a.product(&a));
+            let pairs = [
+                (
+                    a * b,
+                    Real::normalize(a.neg != b.neg, a.e + 1, &mut ab, 4, false),
+                ),
+                (
+                    a.square(),
+                    Real::normalize(false, a.e * 2, &mut aa, 4, false),
+                ),
+                (a.mul_int(ki), generic_int(a, ki, false)),
+                (a.div_int(k), generic_int(a, ki, true)),
+            ];
+            for (x, y) in pairs {
+                assert!(
+                    x.neg == y.neg && x.e == y.e && x.m == y.m,
+                    "{a:?} {b:?} {k}: {x:?} {y:?}"
+                );
+            }
         }
     }
 }

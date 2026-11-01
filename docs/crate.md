@@ -29,13 +29,13 @@ assert!((log.to_num::<f32>() - 1.0).abs() < 0.01);
 | Hyperbolic | [`sinh`], [`cosh`], [`tanh`], [`sinh_cosh`], [`asinh`] | [`acosh`], [`atanh`], [`acoth`], [`coth`] |
 | Exponential | [`exp`], [`pow2`], [`expm1`], [`exprel`], [`exprel2`], [`exp_moments`] | [`ln`], [`log2`], [`log10`], [`pow`], [`log1p`], [`log1p_ratio`], [`log1p_residual`], [`log1p_residual_ratio`] |
 | Turns | [`sin_cos_turns`], [`atan2_turns`], [`div_by_tau`], [`mul_by_tau`], [`wrap_radians`], [`wrap_principal`] | — |
-| Ratios | [`stumpff`], [`tan_ratio`], [`atan_ratio`], [`tanh_ratio`] | [`atanh_ratio`] |
+| Ratios | [`stumpff`], [`sin_ratio`], [`tan_ratio`], [`atan_ratio`], [`tanh_ratio`] | [`atanh_ratio`] |
 | Algebraic | [`sqrt_or_zero`], [`hypot`], [`norm`], [`scale_exponent`], [`scale_by`] | [`sqrt`], [`sqrt_product`], [`rsqrt`], [`normalize`] |
 | Special | [`erf`], [`erfc`], [`fresnel`] | [`gamma`] |
 | Complex ([`Complex`]) | [`exp`](Complex::exp), [`exprel`](Complex::exprel), [`exprel2`](Complex::exprel2), [`faddeeva`](Complex::faddeeva), [`erf`](Complex::erf) | [`ln`](Complex::ln), [`pow`](Complex::pow), [`exprel_weighted`](Complex::exprel_weighted), [`e1`](Complex::e1), [`gamma_upper`](Complex::gamma_upper) |
-| Elliptic | [`ellip_e`], [`jacobi_sn_cn_dn`], [`jacobi_am`] | [`ellip_k`], [`ellip_pi`], [`ellip_pi_complete`], [`ellip_pi_increment`], [`jacobi_inverse`], [`carlson_rf`], [`carlson_rf_roots`], [`carlson_rj`], [`carlson_rj_roots`], [`carlson_rc`], [`carlson_rd`] |
+| Elliptic | [`ellip_e`], [`jacobi_sn_cn_dn`], [`jacobi_am`] | [`ellip_k`], [`ellip_pi`], [`ellip_pi_complete`], [`ellip_pi_increment`], [`jacobi_inverse`], [`carlson_rf`], [`carlson_rf_roots`], [`carlson_rj`], [`carlson_rj_roots`], [`carlson_rc`], [`carlson_rd`], [`carlson_rd_roots`], [`carlson_rf_rd_roots`], [`carlson_rd_rj_roots`], [`carlson_rf_rd_rj_roots`] |
 | Arithmetic | [`mul_add`], [`mul_div`], [`div_or_saturate`], [`dot`], and by [`Rounding`] [`mul_rounded`], [`div_rounded`], [`mul_div_rounded`], [`mul_add_rounded`], [`dot_rounded`] | — |
-| Solvers | — | [`root_in`], [`kepler_universal`] |
+| Solvers | — | [`root_in`], [`root_in_newton`], [`kepler_universal`], [`kepler_universal_stumpff`], [`kepler_universal_near`] |
 | Enclosures | [`enclose`], [`sin_cos_range`], [`sin_cos_range_turns`], [`exp_range`], [`atan_range`], [`tanh_range`], [`exprel_range`], [`exprel2_range`], [`exp_moments_range`], [`tanh_ratio_range`], [`atan_ratio_range`], [`tan_ratio_range`], [`stumpff_range`], [`sqrt_range`], [`hypot_range`], [`atan2_range`] | [`log1p_range`], [`log1p_ratio_range`], [`log1p_residual_ratio_range`], [`atanh_ratio_range`] |
 
 Each function works in binary floating point at twice its type's width or
@@ -53,8 +53,9 @@ functions are exactly odd and even, except that an odd one saturating at
 `MAX` meets `MIN` on the other side, and functions that are monotone stay
 monotone.
 
-The accuracy tool checks all of this against MPFR on 104 layouts: every
-value of the 8- and 16-bit ones, and seeded samples of the wider ones.
+The accuracy tool checks all of this against MPFR on 104 layouts. It tries
+every input of a one-argument function on the 8- and 16-bit ones, and seeded
+samples elsewhere.
 Accuracy regressions are not permitted across releases, and a release that
 changes any output bit says so in the changelog. The enclosure functions
 turn the bound into intervals certain to hold the exact value.

@@ -17,7 +17,7 @@ pub type W<T> = <T as Sealed>::Work;
 pub type Narrow<T> = <T as Sealed>::Narrow;
 
 /// Bits a narrow result must keep past `T`'s ulp to be trusted.
-const GUARD: i32 = 24;
+pub const GUARD: i32 = 24;
 
 pub fn narrow<T: CordicNumber>(x: T) -> Narrow<T> {
     Narrow::<T>::from_raw(x.raw_i128(), T::frac_bits())

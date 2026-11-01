@@ -3,10 +3,11 @@
 use crate::bounded::OpenUnitInterval;
 use crate::error::{Error, Result};
 use crate::eval::{
-    HUGE, atan_ratio as atan_of_ratio, beyond, expm1, log1p, sin_cos, stumpff as stumpff_work,
-    tiered,
+    HUGE, atan_ratio as atan_of_ratio, beyond, by_width, expm1, log1p, sin_cos,
+    stumpff as stumpff_work, tiered,
 };
 use crate::real::Work;
+use crate::series::FACT;
 use crate::traits::CordicNumber;
 
 /// The Stumpff functions `[c₀, c₁, c₂, c₃]`, `cₖ(z) = Σ (−z)ⁿ/(2n + k)!`, of either sign.
@@ -39,6 +40,34 @@ fn tan_ratio_work<V: Work>(v: V) -> (V, V) {
         s / (v * c)
     };
     (ratio, c)
+}
+
+/// `(sin x / x, (1 − cos x)/x²)`, Stumpff's `c₁` and `c₂` of `x²`, 1 and ½ at 0.
+#[must_use]
+#[cfg_attr(
+    all(feature = "verify-no-panic", not(debug_assertions)),
+    no_panic::no_panic
+)]
+pub fn sin_ratio<T: CordicNumber>(x: T) -> (T, T) {
+    tiered!(T, |v| sin_ratio_work(v(x)))
+}
+
+/// The series below ½, past it `sin x = 2sc` and `1 − cos x = 2s²` from `(s, c)` of `x/2`.
+fn sin_ratio_work<V: Work>(x: V) -> (V, V) {
+    let a = x.abs();
+    if a <= V::one().ldexp(-1) {
+        return V::horner2(
+            a.square(),
+            &FACT,
+            [1, 2],
+            2,
+            by_width::<V>([10, 17, 21]),
+            true,
+        );
+    }
+    let (s, c) = sin_cos(a.ldexp(-1));
+    let half = s / a;
+    ((half * c).ldexp(1), half.square().ldexp(1))
 }
 
 /// `atan z / z`, which is 1 at 0.

@@ -8,8 +8,11 @@ Every function converts its arguments exactly into a binary floating-point
 value, evaluates there, and rounds once to the fixed-point type. The mantissa
 has 64 bits for 8-, 16- and 32-bit types, 128 for 64-bit ones and 192 for
 128-bit ones, so each type works with at least 64 bits to spare above its
-own. Each operation rounds to nearest even. Division by more than one limb
-uses a Newton reciprocal, good to a few units in the last place.
+own. Each operation rounds to nearest even, square roots and quotients
+included: long division and a Karatsuba root step work in integers, and the
+exact remainder settles the last bit, as [sqrt.md](sqrt.md) shows for the
+root. No quotient or root of these mantissas lies exactly halfway, so neither
+meets a tie.
 
 Sign and magnitude are kept apart, so `f(−x)` repeats the work of `f(x)` on
 the same magnitude and odd and even functions are exactly so. The final

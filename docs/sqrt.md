@@ -29,3 +29,23 @@ two steps.
 The division `⌊x·2^f / seed⌋` is the fixed-point division of the raw values.
 It is called only with `seed ≥ √N`, so the quotient is below `2^127` and
 cannot overflow; the saturating fallback only keeps the function total.
+
+## The working arithmetic
+
+`Real::sqrt` in `src/real.rs` rounds the same way. With the exponent made
+even, the mantissa is an integer `X` of 256 bits, or 384 for three limbs,
+whose top 128 bits `x` are at least `2^126`.
+
+1. `s = ⌊√x⌋` and `x − s²` come from a tabled `1/√x`, two Newton steps on
+   it, the product `x·(1/√x)` corrected once, and a step or two to the exact
+   root.
+2. With `a1` and `a0` the next two limbs of `X`, a Karatsuba step,
+   `q = ⌊((x − s²)·2^64 + a1)/2s⌋` with remainder `u`, gives `s·2^64 + q`,
+   the root of `x·2^128 + a1·2^64 + a0` or one more. The remainder
+   `u·2^64 + a0 − q²` says which, without a full square.
+3. Two limbs are done: the root rounds up when its remainder exceeds it.
+   Three limbs take one more such step, `s` now the 128-bit root and `q` a
+   digit of long division.
+
+`q` reaches `2^64` only when `x − s² = 2s`, and capping it gives the root
+`(s + 1)·2^64 − 1`.

@@ -16,7 +16,8 @@ mod tests {
         tanh_range,
     };
     use fixed_analytics::{
-        Modulus, carlson_rc, carlson_rd, carlson_rf, carlson_rf_roots, carlson_rj,
+        Modulus, carlson_rc, carlson_rd, carlson_rd_rj_roots, carlson_rd_roots, carlson_rf,
+        carlson_rf_rd_rj_roots, carlson_rf_rd_roots, carlson_rf_roots, carlson_rj,
         carlson_rj_roots, ellip_e, ellip_k, ellip_pi, ellip_pi_complete, jacobi_am, jacobi_inverse,
         jacobi_sn_cn_dn,
     };
@@ -28,12 +29,13 @@ mod tests {
     };
     use fixed_analytics::{
         atan_ratio, atanh_ratio, exp_moments, expm1, exprel, exprel2, log1p, log1p_ratio,
-        log1p_residual, log1p_residual_ratio, stumpff, tan_ratio, tanh_ratio,
+        log1p_residual, log1p_residual_ratio, sin_ratio, stumpff, tan_ratio, tanh_ratio,
     };
     use fixed_analytics::{
-        atan2_turns, div_by_tau, kepler_universal, mul_by_tau, root_in, sin_cos_range_turns,
-        sin_cos_turns, wrap_principal, wrap_radians,
+        atan2_turns, div_by_tau, kepler_universal, mul_by_tau, root_in, root_in_newton,
+        sin_cos_range_turns, sin_cos_turns, wrap_principal, wrap_radians,
     };
+    use fixed_analytics::{kepler_universal_near, kepler_universal_stumpff};
     use std::collections::BTreeMap;
     use std::fmt::Write;
 
@@ -92,6 +94,7 @@ mod tests {
         "log1p_residual",
         "log1p_residual_ratio",
         "stumpff",
+        "sin_ratio",
         "tan_ratio",
         "atan_ratio",
         "atanh_ratio",
@@ -109,6 +112,10 @@ mod tests {
         "carlson_rj_roots",
         "carlson_rc",
         "carlson_rd",
+        "carlson_rd_roots",
+        "carlson_rf_rd_roots",
+        "carlson_rd_rj_roots",
+        "carlson_rf_rd_rj_roots",
         "sin_cos_turns",
         "atan2_turns",
         "div_by_tau",
@@ -117,7 +124,10 @@ mod tests {
         "mul_by_tau",
         "sin_cos_range_turns",
         "root_in",
+        "root_in_newton",
         "kepler_universal",
+        "kepler_universal_stumpff",
+        "kepler_universal_near",
         "complex_mul",
         "complex_div",
         "complex_exp",
@@ -265,6 +275,7 @@ mod tests {
                 let [c0, c1, c2, c3] = stumpff(x);
                 [Some(c0.saturating_add(c2)), Some(c1.saturating_add(c3))]
             }
+            "sin_ratio" => pair(sin_ratio(x)),
             "tan_ratio" => pair(tan_ratio(x)),
             "atan_ratio" => one(atan_ratio(x)),
             "atanh_ratio" => res(atanh_ratio(x)),
@@ -275,28 +286,33 @@ mod tests {
             "carlson_rj_roots" => res(carlson_rj_roots(x, y, T::one(), T::two())),
             "carlson_rc" => res(carlson_rc(x.abs(), y.abs())),
             "carlson_rd" => res(carlson_rd(x.abs(), y.abs(), T::one())),
-            "sin_cos_turns" => pair(sin_cos_turns(x)),
-            "atan2_turns" => one(atan2_turns(x, y)),
-            "div_by_tau" => one(div_by_tau(x)),
-            "wrap_radians" => one(wrap_radians(x)),
-            "wrap_principal" => one(wrap_principal(x)),
-            "mul_by_tau" | "sin_cos_range_turns" | "root_in" | "kepler_universal" => {
-                solving(name, x, y)
-            }
             "erf" => one(erf(x)),
             "erfc" => one(erfc(x)),
             "fresnel" => pair(fresnel(x)),
             "gamma" => res(gamma(x)),
             n if n.starts_with("complex") => complex(n, x, y),
             n if n.ends_with("_rounded") || n.ends_with("_range") => bounding(n, x, y),
-            _ => elliptic(name, x, y),
+            _ => solving(name, x, y),
         }
     }
 
     fn solving<T: CordicNumber>(name: &str, x: T, y: T) -> [Option<T>; 2] {
         let one = |v: T| [Some(v), None];
+        let anomaly = |v: fixed_analytics::Result<(T, [T; 4])>| {
+            v.map_or([None, None], |(chi, c)| {
+                [
+                    Some(chi),
+                    Some(c.into_iter().fold(T::zero(), T::saturating_add)),
+                ]
+            })
+        };
         let res = |v: fixed_analytics::Result<T>| [v.ok(), None];
         match name {
+            "sin_cos_turns" => pair(sin_cos_turns(x)),
+            "atan2_turns" => one(atan2_turns(x, y)),
+            "div_by_tau" => one(div_by_tau(x)),
+            "wrap_radians" => one(wrap_radians(x)),
+            "wrap_principal" => one(wrap_principal(x)),
             "mul_by_tau" => one(mul_by_tau(x)),
             "sin_cos_range_turns" => {
                 let ((s_lo, s_hi), (c_lo, c_hi)) = sin_cos_range_turns(x, y);
@@ -310,8 +326,18 @@ mod tests {
                 let rise = |t: T| exp(t).saturating_sub(top);
                 root_in(rise, T::zero(), top, 64).map_or([None, None], pair)
             }
+            "root_in_newton" => {
+                let top = x.abs().saturating_add(T::one());
+                let rise = |t: T| exp(t).saturating_sub(top);
+                let step = |t: T, _| T::one().saturating_sub(top.saturating_mul(exp(-t)));
+                root_in_newton(rise, step, y, T::zero(), top, 64).map_or([None, None], pair)
+            }
             "kepler_universal" => res(kepler_universal(T::one(), T::zero(), y, x)),
-            _ => [None, None],
+            "kepler_universal_stumpff" => {
+                anomaly(kepler_universal_stumpff(T::one(), T::zero(), y, x))
+            }
+            "kepler_universal_near" => anomaly(kepler_universal_near(T::one(), T::zero(), y, x, y)),
+            _ => elliptic(name, x, y),
         }
     }
 
@@ -419,6 +445,15 @@ mod tests {
                 res(jacobi_inverse(sn, cn, dn, m))
             }
             "ellip_pi_increment" => res(ellip_pi_increment(T::half(), x, y, m)),
+            "carlson_rd_roots" => res(carlson_rd_roots(x, y, T::one())),
+            "carlson_rf_rd_roots" => carlson_rf_rd_roots(x, y, T::one()).map_or([None, None], pair),
+            "carlson_rd_rj_roots" => {
+                carlson_rd_rj_roots(x, y, T::one(), T::two()).map_or([None, None], pair)
+            }
+            "carlson_rf_rd_rj_roots" => carlson_rf_rd_rj_roots(x, y, T::one(), T::two())
+                .map_or([None, None], |(f, d, j)| {
+                    [Some(f.saturating_add(j)), Some(d)]
+                }),
             _ => [None, None],
         }
     }
