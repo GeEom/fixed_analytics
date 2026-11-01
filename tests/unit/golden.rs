@@ -28,7 +28,7 @@ mod tests {
     };
     use fixed_analytics::{
         atan_ratio, atanh_ratio, exp_moments, expm1, exprel, exprel2, log1p, log1p_ratio,
-        log1p_residual, log1p_residual_ratio, stumpff, tan_ratio, tanh_ratio,
+        log1p_residual, log1p_residual_ratio, sin_ratio, stumpff, tan_ratio, tanh_ratio,
     };
     use fixed_analytics::{
         atan2_turns, div_by_tau, kepler_universal, mul_by_tau, root_in, root_in_newton,
@@ -92,6 +92,7 @@ mod tests {
         "log1p_residual",
         "log1p_residual_ratio",
         "stumpff",
+        "sin_ratio",
         "tan_ratio",
         "atan_ratio",
         "atanh_ratio",
@@ -266,6 +267,7 @@ mod tests {
                 let [c0, c1, c2, c3] = stumpff(x);
                 [Some(c0.saturating_add(c2)), Some(c1.saturating_add(c3))]
             }
+            "sin_ratio" => pair(sin_ratio(x)),
             "tan_ratio" => pair(tan_ratio(x)),
             "atan_ratio" => one(atan_ratio(x)),
             "atanh_ratio" => res(atanh_ratio(x)),

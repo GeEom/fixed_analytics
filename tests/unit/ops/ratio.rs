@@ -4,7 +4,7 @@ mod tests {
     use fixed::types::{I16F16, I32F32, I64F64};
     use fixed_analytics::{
         atan_ratio, atanh_ratio, exp_moments, expm1, exprel, exprel2, log1p, log1p_ratio,
-        log1p_residual, log1p_residual_ratio, mul_add, stumpff, tan_ratio, tanh_ratio,
+        log1p_residual, log1p_residual_ratio, mul_add, sin_ratio, stumpff, tan_ratio, tanh_ratio,
     };
 
     #[test]
@@ -22,6 +22,7 @@ mod tests {
             stumpff(z)[..3],
             [I32F32::ONE, I32F32::ONE, I32F32::from_num(0.5)]
         );
+        assert_eq!(sin_ratio(z), (I32F32::ONE, I32F32::from_num(0.5)));
         assert_eq!(tan_ratio(z), (I32F32::ONE, I32F32::ONE));
         assert_eq!(atan_ratio(z), I32F32::ONE);
         assert_eq!(atanh_ratio(z)?, I32F32::ONE);
@@ -54,6 +55,33 @@ mod tests {
             let tol = I32F32::from_bits(40);
             assert!(e0.abs() <= tol && e1.abs() <= tol, "z = {z}: {e0}, {e1}");
         }
+    }
+
+    #[test]
+    fn sin_ratio_is_even_and_matches_stumpff() {
+        let mut rng = Lcg(0x51_4a7);
+        for _ in 0..2000 {
+            let x = I64F64::from_num(rng.range(-40.0, 40.0));
+            assert_eq!(sin_ratio(x), sin_ratio(-x), "{x}");
+            let (ratio, versine) = sin_ratio(x);
+            let f = x.to_num::<f64>();
+            let half = (f / 2.0).sin();
+            assert!((ratio.to_num::<f64>() - f.sin() / f).abs() < 1e-15, "{x}");
+            assert!((versine.to_num::<f64>() - 2.0 * half * half / (f * f)).abs() < 1e-15);
+        }
+        // Below 2^-8 the square is exact in I32F32, and both round the same series.
+        for k in -255..=255 {
+            let x = I32F32::from_num(k) >> 16;
+            let [_, c1, c2, _] = stumpff(x * x);
+            assert_eq!(sin_ratio(x), (c1, c2), "{x}");
+        }
+        let tiny = I64F64::from_bits(1);
+        assert_eq!(sin_ratio(tiny), (I64F64::ONE, I64F64::from_num(0.5)));
+        let far = sin_ratio(I64F64::MAX);
+        assert!(far.0.abs() <= I64F64::from_bits(2) && far.1 <= I64F64::from_bits(1));
+        let pi = sin_ratio(I16F16::PI);
+        assert!(pi.0.abs() <= I16F16::from_bits(1));
+        assert_eq!(pi.1, I16F16::from_num(2.0 / core::f64::consts::PI.powi(2)));
     }
 
     #[test]

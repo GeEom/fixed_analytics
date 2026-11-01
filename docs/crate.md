@@ -29,7 +29,7 @@ assert!((log.to_num::<f32>() - 1.0).abs() < 0.01);
 | Hyperbolic | [`sinh`], [`cosh`], [`tanh`], [`sinh_cosh`], [`asinh`] | [`acosh`], [`atanh`], [`acoth`], [`coth`] |
 | Exponential | [`exp`], [`pow2`], [`expm1`], [`exprel`], [`exprel2`], [`exp_moments`] | [`ln`], [`log2`], [`log10`], [`pow`], [`log1p`], [`log1p_ratio`], [`log1p_residual`], [`log1p_residual_ratio`] |
 | Turns | [`sin_cos_turns`], [`atan2_turns`], [`div_by_tau`], [`mul_by_tau`], [`wrap_radians`], [`wrap_principal`] | — |
-| Ratios | [`stumpff`], [`tan_ratio`], [`atan_ratio`], [`tanh_ratio`] | [`atanh_ratio`] |
+| Ratios | [`stumpff`], [`sin_ratio`], [`tan_ratio`], [`atan_ratio`], [`tanh_ratio`] | [`atanh_ratio`] |
 | Algebraic | [`sqrt_or_zero`], [`hypot`], [`norm`], [`scale_exponent`], [`scale_by`] | [`sqrt`], [`sqrt_product`], [`rsqrt`], [`normalize`] |
 | Special | [`erf`], [`erfc`], [`fresnel`] | [`gamma`] |
 | Complex ([`Complex`]) | [`exp`](Complex::exp), [`exprel`](Complex::exprel), [`exprel2`](Complex::exprel2), [`faddeeva`](Complex::faddeeva), [`erf`](Complex::erf) | [`ln`](Complex::ln), [`pow`](Complex::pow), [`exprel_weighted`](Complex::exprel_weighted), [`e1`](Complex::e1), [`gamma_upper`](Complex::gamma_upper) |

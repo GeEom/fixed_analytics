@@ -31,7 +31,7 @@ use fixed_analytics::{
 };
 use fixed_analytics::{
     atan_ratio, atanh_ratio, exp_moments, expm1, exprel, exprel2, log1p, log1p_ratio,
-    log1p_residual, log1p_residual_ratio, stumpff, tan_ratio, tanh_ratio,
+    log1p_residual, log1p_residual_ratio, sin_ratio, stumpff, tan_ratio, tanh_ratio,
 };
 use fixed_analytics::{
     atan2_turns, div_by_tau, mul_by_tau, sin_cos_range_turns, sin_cos_turns, wrap_principal,
@@ -97,6 +97,7 @@ fn exercise<T: CordicNumber>(x: T, y: T, two: T) {
     keep(log1p_residual(x));
     keep(log1p_residual_ratio(x));
     keep(stumpff(x));
+    keep(sin_ratio(x));
     keep(tan_ratio(x));
     keep(atan_ratio(x));
     keep(atanh_ratio(x));

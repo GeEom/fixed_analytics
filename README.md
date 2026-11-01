@@ -52,7 +52,7 @@ Total functions return `T` for every input. Fallible functions return `Result<T,
 | Hyperbolic | `sinh`, `cosh`, `tanh`, `sinh_cosh`, `asinh` | `acosh`, `atanh`, `acoth`, `coth` |
 | Exponential | `exp`, `pow2`, `expm1`, `exprel`, `exprel2`, `exp_moments` | `ln`, `log2`, `log10`, `pow`, `log1p`, `log1p_ratio`, `log1p_residual`, `log1p_residual_ratio` |
 | Turns | `sin_cos_turns`, `atan2_turns`, `div_by_tau`, `mul_by_tau`, `wrap_radians`, `wrap_principal` | — |
-| Ratios | `stumpff`, `tan_ratio`, `atan_ratio`, `tanh_ratio` | `atanh_ratio` |
+| Ratios | `stumpff`, `sin_ratio`, `tan_ratio`, `atan_ratio`, `tanh_ratio` | `atanh_ratio` |
 | Algebraic | `sqrt_or_zero`, `hypot`, `norm`, `scale_exponent`, `scale_by` | `sqrt`, `sqrt_product`, `rsqrt`, `normalize` |
 | Special | `erf`, `erfc`, `fresnel` | `gamma` |
 | Complex (`Complex`) | `exp`, `exprel`, `exprel2`, `faddeeva`, `erf` | `ln`, `pow`, `exprel_weighted`, `e1`, `gamma_upper` |

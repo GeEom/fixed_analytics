@@ -50,7 +50,7 @@ pub use ops::interval::{
     log1p_residual_ratio_range, sin_cos_range, sin_cos_range_turns, sqrt_range, stumpff_range,
     tan_ratio_range, tanh_range, tanh_ratio_range,
 };
-pub use ops::ratio::{atan_ratio, atanh_ratio, stumpff, tan_ratio, tanh_ratio};
+pub use ops::ratio::{atan_ratio, atanh_ratio, sin_ratio, stumpff, tan_ratio, tanh_ratio};
 pub use ops::solve::{kepler_universal, root_in, root_in_newton};
 pub use ops::special::{erf, erfc, fresnel, gamma};
 pub use ops::turns::{

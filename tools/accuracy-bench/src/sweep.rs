@@ -64,6 +64,8 @@ pub enum Fun {
     StumpffC1,
     StumpffC2,
     StumpffC3,
+    SinRatio,
+    SinRatioVersine,
     TanRatio,
     AtanRatio,
     AtanhRatio,
@@ -141,7 +143,7 @@ pub const ALL: &[Fun] = &[
     Sin, Cos, Tan, Asin, Acos, Atan, Atan2, Sinh, Cosh, Tanh, Coth, Asinh, Acosh, Atanh, Acoth,
     Exp, Pow2, Ln, Log2, Log10, Pow, Sqrt, SqrtOrZero, MulAdd, MulDiv, DivOrSaturate, Dot3,
     Hypot, Norm3, Normalize3, ScaleBy, SqrtProduct, AsinFromGap, Rsqrt,
-    Expm1, Exprel, Exprel2, MomentE1, MomentE2, MomentE3, MomentE4, MomentE5, Log1p, Log1pRatio, Log1pResidual, Log1pResidualRatio, StumpffC0, StumpffC1, StumpffC2, StumpffC3, TanRatio, AtanRatio, AtanhRatio, TanhRatio,
+    Expm1, Exprel, Exprel2, MomentE1, MomentE2, MomentE3, MomentE4, MomentE5, Log1p, Log1pRatio, Log1pResidual, Log1pResidualRatio, StumpffC0, StumpffC1, StumpffC2, StumpffC3, SinRatio, SinRatioVersine, TanRatio, AtanRatio, AtanhRatio, TanhRatio,
     EllipK, EllipKm, EllipE, JacobiSn, JacobiCn, JacobiDn, JacobiAm, JacobiInverse, CarlsonRf, CarlsonRfRoots, CarlsonRj, CarlsonRc, CarlsonRd, EllipPi, EllipPiComplete,
     SinTurns, CosTurns, Atan2Turns, DivByTau, WrapRadians, WrapPrincipal, MulByTau,
     CMulRe, CMulIm, CDivRe, CDivIm, CExpRe, CExpIm, CExprelRe, CExprelIm, CExprel2Re, CExprel2Im, FaddeevaRe, FaddeevaIm, CErfRe, CErfIm, E1Re, E1Im, GammaUpperRe, GammaUpperIm, CLnRe, CLnIm, CPowRe, CPowIm, WeightedK1Re, WeightedK1Im, WeightedK2Re, WeightedK2Im, KeplerUniversal, Erf, Erfc, FresnelC, FresnelS, Gamma,
@@ -330,6 +332,11 @@ fn special(fun: Fun, x: &Float) -> Float {
                 _ => (one - c1) / x,
             }
         }
+        SinRatio if zero => at_zero(1.0),
+        SinRatio => x.clone().sin() / x,
+        SinRatioVersine if zero => at_zero(0.5),
+        // 1 − cos x = 2·sin²(x/2), which does not cancel.
+        SinRatioVersine => (Float::with_val(p, x / 2u32).sin().square() * 2u32) / x.clone().square(),
         TanRatio if zero => at_zero(1.0),
         TanRatio => x.clone().tan() / x,
         AtanRatio if zero => at_zero(1.0),
@@ -507,6 +514,8 @@ impl Fun {
             StumpffC1 => "stumpff_c1",
             StumpffC2 => "stumpff_c2",
             StumpffC3 => "stumpff_c3",
+            SinRatio => "sin_ratio",
+            SinRatioVersine => "sin_ratio_versine",
             TanRatio => "tan_ratio",
             AtanRatio => "atan_ratio",
             AtanhRatio => "atanh_ratio",
@@ -653,6 +662,8 @@ impl Fun {
             StumpffC1 => Some(fa::stumpff(x)[1]),
             StumpffC2 => Some(fa::stumpff(x)[2]),
             StumpffC3 => Some(fa::stumpff(x)[3]),
+            SinRatio => Some(fa::sin_ratio(x).0),
+            SinRatioVersine => Some(fa::sin_ratio(x).1),
             TanRatio => Some(fa::tan_ratio(x).0),
             AtanRatio => Some(fa::atan_ratio(x)),
             AtanhRatio => fa::atanh_ratio(x).ok(),
@@ -1006,7 +1017,8 @@ impl Fun {
         match self {
             Sin | Tan | Asin | Atan | Sinh | Tanh | Coth | Asinh | Atanh | Acoth | SinTurns
             | DivByTau | MulByTau | Erf | FresnelC | FresnelS => Parity::Odd,
-            Cos | Cosh | TanRatio | AtanRatio | AtanhRatio | TanhRatio | CosTurns => Parity::Even,
+            Cos | Cosh | SinRatio | SinRatioVersine | TanRatio | AtanRatio | AtanhRatio | TanhRatio
+            | CosTurns => Parity::Even,
             _ => Parity::Neither,
         }
     }
@@ -1037,6 +1049,9 @@ impl Fun {
             Expm1 | Exprel | Exprel2 | Log1p => vec![(ninf, inf, true)],
             MomentE1 | MomentE2 | MomentE3 | MomentE4 | MomentE5 | Log1pRatio => vec![(ninf, inf, false)],
             StumpffC0 | StumpffC1 | StumpffC2 | StumpffC3 => vec![(ninf, zero.clone() + f(1e-300), false)],
+            // sin x / x falls to its first minimum, at tan x = x, and 2·sin²(x/2)/x² to 2π.
+            SinRatio => vec![(f(-4.4934), zero.clone() + f(1e-300), true), (zero.clone() - f(1e-300), f(4.4934), false)],
+            SinRatioVersine => vec![(-(pi() * 2u32), zero.clone() + f(1e-300), true), (zero.clone() - f(1e-300), pi() * 2u32, false)],
             Log1pResidual => vec![(f(-1.0), zero.clone(), true), (zero, inf, false)],
             AsinFromGap => vec![(zero.clone() - f(1e-300), f(2.0) + f(1e-300), false)],
             Sqrt => vec![(zero - f(1e-300), inf, true)],
@@ -1052,7 +1067,7 @@ impl Fun {
         let min_exp = -(i64::from(T::frac_n()) + 1);
         let mut h = vec![f(1.0), f(-1.0), f(0.5), f(-0.5), f(2.0), f(-2.0)];
         match self {
-            Sin | Cos | Tan => {
+            Sin | Cos | Tan | SinRatio | SinRatioVersine => {
                 for j in 0..int_bits + 1 {
                     let k = Float::with_val(PREC, 1u32) << j;
                     h.push(pi() * k.clone() / 2u32);
