@@ -2,7 +2,7 @@
 
 use crate::error::{Error, Result};
 use crate::eval::{
-    W, atan_ratio, by_width, fixed, half_pi, log1p, pi, sin_cos, sinh_cosh, tiered, work,
+    W, atan_ratio, by_width, fixed, half_pi, log1p, pi, sin_cos_octant, sinh_cosh, tiered, work,
 };
 use crate::real::Work;
 use crate::series::ODD;
@@ -304,10 +304,11 @@ fn rd<V: Work>(x0: V, y0: V, z0: V) -> V {
 fn agm<V: Work>(b: V) -> V {
     let (mut a, mut b) = (V::one(), b);
     for _ in 0..32 {
-        if V::negligible(&(a - b), &a) {
-            break;
+        let mean = (a + b).ldexp(-1);
+        if (a - b).abs().ldexp(V::PREC.cast_signed() / 2 + 2) <= a {
+            return mean;
         }
-        (a, b) = ((a + b).ldexp(-1), (a * b).sqrt());
+        (a, b) = (mean, (a * b).sqrt());
     }
     a
 }
@@ -317,12 +318,13 @@ fn complete_k<V: Work>(kc: V) -> V {
     half_pi::<V>() / agm(kc)
 }
 
-const DEPTH: usize = 40;
+const DEPTH: usize = 16;
 
 /// The AGM of 1 and `k′`, each level's means kept, `mean` its limit.
 struct Means<V> {
     arith: [V; DEPTH],
     geo: [V; DEPTH],
+    next: [V; DEPTH],
     used: usize,
     mean: V,
 }
@@ -332,14 +334,19 @@ fn means<V: Work>(kc: V) -> Means<V> {
     let mut out = Means {
         arith: [V::zero(); DEPTH],
         geo: [V::zero(); DEPTH],
+        next: [V::zero(); DEPTH],
         used: 0,
         mean: one,
     };
     let (mut a, mut b) = (one, kc);
-    for (i, (x, y)) in out.arith.iter_mut().zip(out.geo.iter_mut()).enumerate() {
-        (*x, *y) = (a, b);
+    let levels = out
+        .arith
+        .iter_mut()
+        .zip(out.geo.iter_mut().zip(out.next.iter_mut()));
+    for (i, (arith, (geo, next))) in levels.enumerate() {
         out.used = i + 1;
         out.mean = (a + b).ldexp(-1);
+        (*arith, *geo, *next) = (a, b, out.mean);
         if (a - b).abs().ldexp(V::PREC.cast_signed() / 2 + 2) <= a {
             break;
         }
@@ -349,25 +356,30 @@ fn means<V: Work>(kc: V) -> Means<V> {
     out
 }
 
-/// `(sn, cn, dn)` of `v` in `[0, K/2]` by Bulirsch: `sin_cos` of `c·v`, then rational steps up.
-fn sn_cn_dn_core<V: Work>(arg: V, means: &Means<V>) -> (V, V, V) {
+/// `(sn, cn, dn)·h` and `h` for `w`, `c·w = (π/4)·frac`, by descending Landen steps.
+fn landen<V: Work>(frac: V, means: &Means<V>) -> (V, V, V, V) {
     let one = V::one();
-    let (sine, cosine) = sin_cos(arg * means.mean);
-    if sine.is_zero() {
-        return (sine, cosine, one);
+    let (sine, cosine) = sin_cos_octant(0, frac);
+    let at = |t: &[V; DEPTH], i: usize| t.get(i).copied().unwrap_or(one);
+    // 1 ± k·sn² as a_n·sn² or b_n·sn² plus a_{n+1}·cn²: sums, so small cn and dn keep their bits.
+    let low = means.used.saturating_sub(1);
+    let (mut s, mut c) = (at(&means.arith, low) * sine, at(&means.next, low) * cosine);
+    let cos_part = c * cosine;
+    let (mut d, mut h) = (
+        at(&means.geo, low) * sine.square() + cos_part,
+        s * sine + cos_part,
+    );
+    for i in (0..low).rev() {
+        let (lead, tail) = (at(&means.arith, i) * s, at(&means.next, i) * c);
+        let rest = tail * c;
+        (s, c, d, h) = (
+            lead * h,
+            tail * d,
+            at(&means.geo, i) * s.square() + rest,
+            lead * s + rest,
+        );
     }
-    let mut ratio = cosine / sine;
-    let mut cot = means.mean * ratio;
-    let mut dn = one;
-    for i in (0..means.used).rev() {
-        let at = |t: &[V; DEPTH]| t.get(i).copied().unwrap_or(one);
-        ratio = ratio * cot;
-        cot = cot * dn;
-        dn = (at(&means.geo) + ratio) / (at(&means.arith) + ratio);
-        ratio = cot / at(&means.arith);
-    }
-    let sn = one / (cot.square() + one).sqrt();
-    (sn, cot * sn, dn)
+    (s, c, d, h)
 }
 
 /// `u = (2^124·c₀ + 2^62·c₁ + c₂)·period + rest`, the count in parts so a 128-bit `u` fits.
@@ -389,46 +401,34 @@ fn times<V: Work>([top, high, low]: [i64; 3], unit: V) -> V {
     unit.mul_int(top).ldexp(124) + unit.mul_int(high).ldexp(62) + unit.mul_int(low)
 }
 
-/// `(sn, cn, dn, am)` of `u` for the modulus parts.
+/// `(sn, cn, dn, c·u)` of `u` for the modulus parts; reducing `c·u` loses bits in proportion.
 fn jacobi_work<V: Work>(u: V, parts_: &Parts<V>) -> (V, V, V, V) {
     let one = V::one();
     if parts_.kc.is_zero() {
-        // The separatrix: sn = tanh u, cn = dn = sech u, am = atan(sinh u).
         if u.abs() > V::from_int(crate::eval::HUGE) {
-            let edge = one.with_sign(u.is_neg());
-            return (
-                edge,
-                V::zero(),
-                V::zero(),
-                half_pi::<V>().with_sign(u.is_neg()),
-            );
+            return (one.with_sign(u.is_neg()), V::zero(), V::zero(), V::zero());
         }
         let (sh, ch) = sinh_cosh(u.abs());
         let sech = one / ch;
-        let am = atan_ratio(sh, one).with_sign(u.is_neg());
-        return ((sh / ch).with_sign(u.is_neg()), sech, sech, am);
+        return ((sh / ch).with_sign(u.is_neg()), sech, sech, V::zero());
     }
     let levels = means(parts_.kc);
-    let quarter = half_pi::<V>() / levels.mean;
-    let (count, rest) = reduce(u, quarter.ldexp(1));
-    let dist = rest.abs();
-    let (sn, cn, dn) = if dist <= quarter.ldexp(-1) {
-        sn_cn_dn_core(dist, &levels)
+    let scaled = u * levels.mean;
+    let (oct, frac) = scaled.octant_of();
+    let (sine, cosine, delta, den) = landen(frac, &levels);
+    let (sn, cn, dn) = if (oct + 1) & 2 == 0 {
+        let inv = one / den;
+        (sine * inv, cosine * inv, delta * inv)
     } else {
-        // sn(K − w) = cn/dn, cn(K − w) = kk'·sn/dn and dn(K − w) = kk'/dn.
-        let (sine, cosine, delta) = sn_cn_dn_core(quarter - dist, &levels);
-        (cosine / delta, parts_.kc * sine / delta, parts_.kc / delta)
+        // sn(K ∓ w) = cn/dn, cn(K ∓ w) = ±k'·sn/dn and dn(K ∓ w) = k'/dn.
+        let inv = one / delta;
+        (cosine * inv, parts_.kc * sine * inv, parts_.kc * den * inv)
     };
-    let am = atan_ratio(sn, cn.abs());
-    let am = if cn.is_neg() { pi::<V>() - am } else { am };
-    let flip = count[2] % 2 != 0;
-    let sign = |x: V, neg: bool| if neg { -x } else { x };
-    let winding = times(count, pi::<V>());
     (
-        sign(sign(sn, rest.is_neg()), flip),
-        sign(cn, flip),
+        sn.with_sign((oct & 4 != 0) != scaled.is_neg()),
+        cn.with_sign((oct + 2) & 4 != 0),
         dn,
-        sign(am, rest.is_neg()) + winding,
+        scaled,
     )
 }
 
@@ -439,10 +439,9 @@ fn jacobi_work<V: Work>(u: V, parts_: &Parts<V>) -> (V, V, V, V) {
     no_panic::no_panic
 )]
 pub fn jacobi_sn_cn_dn<T: CordicNumber>(u: T, modulus: Modulus<T>) -> (T, T, T) {
-    // am, which grows with u, joins the check: reducing u loses bits in proportion.
     let ((sn, cn), (dn, _)) = tiered!(T, |v| {
-        let (sn, cn, dn, am) = jacobi_work(v(u), &parts_in(modulus, v));
-        ((sn, cn), (dn, am))
+        let (sn, cn, dn, scaled) = jacobi_work(v(u), &parts_in(modulus, v));
+        ((sn, cn), (dn, scaled))
     });
     (sn, cn, dn)
 }
@@ -454,7 +453,20 @@ pub fn jacobi_sn_cn_dn<T: CordicNumber>(u: T, modulus: Modulus<T>) -> (T, T, T) 
     no_panic::no_panic
 )]
 pub fn jacobi_am<T: CordicNumber>(u: T, modulus: Modulus<T>) -> T {
-    tiered!(T, |v| jacobi_work(v(u), &parts_in(modulus, v)).3)
+    tiered!(T, |v| {
+        let (sn, cn, _, scaled) = jacobi_work(v(u), &parts_in(modulus, v));
+        amplitude(sn, cn, scaled)
+    })
+}
+
+/// `nπ` nearest `c·u` with `(−1)^n·cn ≥ 0`, plus `atan(sn/cn)`.
+fn amplitude<V: Work>(sn: V, cn: V, scaled: V) -> V {
+    let (mut count, rest) = reduce(scaled, pi::<V>());
+    if cn.is_neg() == (count[2] % 2 == 0) && !cn.is_zero() {
+        count[2] += if rest.is_neg() { -1 } else { 1 };
+    }
+    let lean = atan_ratio(sn.abs(), cn.abs()).with_sign(sn.is_neg() != (count[2] % 2 != 0));
+    times(count, pi::<V>()) + lean
 }
 
 /// `R_F(cn², dn², 1)`, finite unless `cn` and `dn` are both 0.
@@ -486,20 +498,25 @@ pub fn jacobi_inverse<T: CordicNumber>(sn: T, cn: T, dn: T, modulus: Modulus<T>)
         v(sn),
         v(cn),
         v(dn),
-        &parts_in(modulus, v)
+        modulus,
+        v
     )))
 }
 
-fn inverse_work<V: Work>(sw: V, cw: V, dw: V, parts_: &Parts<V>) -> V {
+fn inverse_work<T: CordicNumber, V: Work>(
+    sw: V,
+    cw: V,
+    dw: V,
+    modulus: Modulus<T>,
+    as_work: fn(T) -> V,
+) -> V {
     let part = sw.abs() * rf_sq(cw, dw).unwrap_or_else(V::zero);
-    let arg = if cw.is_neg() {
-        if parts_.kc.is_zero() {
-            crate::eval::beyond()
-        } else {
-            complete_k(parts_.kc).ldexp(1) - part
-        }
-    } else {
+    let arg = if !cw.is_neg() {
         part
+    } else if modulus.at_separatrix() {
+        crate::eval::beyond()
+    } else {
+        complete_k(parts_in(modulus, as_work).kc).ldexp(1) - part
     };
     arg.with_sign(sw.is_neg())
 }
