@@ -21,9 +21,9 @@ pub use arith::{
 pub use circular::{acos, asin, asin_from_gap, atan, atan2, cos, sin, sin_cos, tan};
 pub use complex::Complex;
 pub use elliptic::{
-    Modulus, carlson_rc, carlson_rd, carlson_rf, carlson_rf_roots, carlson_rj, carlson_rj_roots,
-    ellip_e, ellip_k, ellip_pi, ellip_pi_complete, ellip_pi_increment, jacobi_am, jacobi_inverse,
-    jacobi_sn_cn_dn,
+    Modulus, carlson_rc, carlson_rd, carlson_rd_rj_roots, carlson_rd_roots, carlson_rf,
+    carlson_rf_rd_roots, carlson_rf_roots, carlson_rj, carlson_rj_roots, ellip_e, ellip_k,
+    ellip_pi, ellip_pi_complete, ellip_pi_increment, jacobi_am, jacobi_inverse, jacobi_sn_cn_dn,
 };
 pub use exponential::{
     exp, exp_moments, expm1, exprel, exprel2, ln, log1p, log1p_ratio, log1p_residual,

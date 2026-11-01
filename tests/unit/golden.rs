@@ -16,9 +16,9 @@ mod tests {
         tanh_range,
     };
     use fixed_analytics::{
-        Modulus, carlson_rc, carlson_rd, carlson_rf, carlson_rf_roots, carlson_rj,
-        carlson_rj_roots, ellip_e, ellip_k, ellip_pi, ellip_pi_complete, jacobi_am, jacobi_inverse,
-        jacobi_sn_cn_dn,
+        Modulus, carlson_rc, carlson_rd, carlson_rd_rj_roots, carlson_rd_roots, carlson_rf,
+        carlson_rf_rd_roots, carlson_rf_roots, carlson_rj, carlson_rj_roots, ellip_e, ellip_k,
+        ellip_pi, ellip_pi_complete, jacobi_am, jacobi_inverse, jacobi_sn_cn_dn,
     };
     use fixed_analytics::{
         Rounding, atan_ratio_range, atan2_range, atanh_ratio_range, div_rounded, dot_rounded,
@@ -110,6 +110,9 @@ mod tests {
         "carlson_rj_roots",
         "carlson_rc",
         "carlson_rd",
+        "carlson_rd_roots",
+        "carlson_rf_rd_roots",
+        "carlson_rd_rj_roots",
         "sin_cos_turns",
         "atan2_turns",
         "div_by_tau",
@@ -425,6 +428,11 @@ mod tests {
                 res(jacobi_inverse(sn, cn, dn, m))
             }
             "ellip_pi_increment" => res(ellip_pi_increment(T::half(), x, y, m)),
+            "carlson_rd_roots" => res(carlson_rd_roots(x, y, T::one())),
+            "carlson_rf_rd_roots" => carlson_rf_rd_roots(x, y, T::one()).map_or([None, None], pair),
+            "carlson_rd_rj_roots" => {
+                carlson_rd_rj_roots(x, y, T::one(), T::two()).map_or([None, None], pair)
+            }
             _ => [None, None],
         }
     }

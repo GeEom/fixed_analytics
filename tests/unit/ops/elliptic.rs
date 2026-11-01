@@ -3,8 +3,9 @@ mod tests {
     use crate::unit::support::{Lcg, TestResult};
     use fixed::types::{I32F32, I64F64};
     use fixed_analytics::{
-        Error, Modulus, carlson_rc, carlson_rd, carlson_rf, carlson_rf_roots, carlson_rj, ellip_e,
-        ellip_k, ellip_pi, ellip_pi_complete, ellip_pi_increment, jacobi_am, jacobi_inverse,
+        Error, Modulus, carlson_rc, carlson_rd, carlson_rd_rj_roots, carlson_rd_roots, carlson_rf,
+        carlson_rf_rd_roots, carlson_rf_roots, carlson_rj, carlson_rj_roots, ellip_e, ellip_k,
+        ellip_pi, ellip_pi_complete, ellip_pi_increment, jacobi_am, jacobi_inverse,
         jacobi_sn_cn_dn,
     };
 
@@ -124,6 +125,91 @@ mod tests {
         assert!(carlson_rf(f(0.0), f(0.0), f(1.0)).is_err());
         assert!(carlson_rj(f(1.0), f(1.0), f(1.0), f(0.0)).is_err());
         Ok(())
+    }
+
+    #[test]
+    fn carlson_roots_and_pairs_agree_with_the_singles() -> TestResult {
+        let mut rng = Lcg(0xCA21);
+        let at = |v: f64| I64F64::from_num(v);
+        for i in 0..400 {
+            let (rx, ry, rz) = (at(rng.range(-1.0, 1.0)), at(rng.range(0.0, 1.0)), at(1.0));
+            let rp = if i % 4 == 0 {
+                at(rng.range(4.0, 40.0))
+            } else {
+                at(rng.range(0.001, 1.5))
+            };
+            let rd = carlson_rd_roots(rx, ry, rz)?;
+            assert_eq!(rd, carlson_rj_roots(rx, ry, rz, rz)?, "{rx} {ry}");
+            assert_eq!(carlson_rd_roots(-rx, ry, -rz)?, rd);
+            let rf = carlson_rf_roots(rx, ry, rz)?;
+            assert_eq!(carlson_rf_rd_roots(rx, ry, rz)?, (rf, rd), "{rx} {ry}");
+            let rj = carlson_rj_roots(rx, ry, rz, rp)?;
+            assert_eq!(
+                carlson_rd_rj_roots(rx, ry, rz, rp)?,
+                (rd, rj),
+                "{rx} {ry} {rp}"
+            );
+        }
+        let (zero, one, far) = (I64F64::ZERO, I64F64::ONE, at(30.0));
+        assert_eq!(
+            carlson_rd_rj_roots(zero, at(0.5), one, far)?,
+            (
+                carlson_rd_roots(zero, at(0.5), one)?,
+                carlson_rj_roots(zero, at(0.5), one, far)?
+            )
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn carlson_rd_roots_matches_rd_of_exact_squares() -> TestResult {
+        let mut rng = Lcg(0xCA22);
+        // Sixteen fractional bits, so the squares are exact.
+        let at = |v: f64| I32F32::from_num((v * 65536.0).round() / 65536.0);
+        for _ in 0..300 {
+            let (rx, ry, rz) = (at(rng.range(0.0, 2.0)), at(rng.range(0.0, 2.0)), at(0.75));
+            let rd = carlson_rd_roots(rx, ry, rz)?;
+            assert_eq!(rd, carlson_rj_roots(rx, ry, rz, rz)?, "{rx} {ry}");
+            let exact = carlson_rd(rx * rx, ry * ry, rz * rz)?;
+            assert!((rd - exact).abs() <= I32F32::DELTA, "{rx} {ry}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn carlson_rd_roots_keeps_tiny_arguments() -> TestResult {
+        // R_D(t², t², t²) = t⁻³, though t² underflows I64F64.
+        let tiny = I64F64::from_bits(1 << 10);
+        assert_eq!(
+            carlson_rd_roots(tiny, tiny, tiny)?,
+            I64F64::from_num(1u64 << 54).saturating_mul(I64F64::from_num(1u64 << 54))
+        );
+        let small = I64F64::from_bits(1 << 46);
+        assert_eq!(
+            carlson_rd_roots(small, small, small)?,
+            I64F64::from_num(1u64 << 54)
+        );
+        let three_quarter_pi = 2.356_194_490_192_345;
+        let near_zero = carlson_rd_roots(I64F64::from_bits(1 << 4), I64F64::ONE, I64F64::ONE)?;
+        assert!(near(near_zero, three_quarter_pi, 1e-15));
+        let (f, d) = carlson_rf_rd_roots(I64F64::ZERO, I64F64::ONE, I64F64::ONE)?;
+        assert!(near(f, core::f64::consts::FRAC_PI_2, 1e-15));
+        assert!(near(d, three_quarter_pi, 1e-15));
+        Ok(())
+    }
+
+    #[test]
+    fn carlson_roots_and_pairs_reject_their_poles() {
+        let (zero, one) = (I32F32::ZERO, I32F32::ONE);
+        assert!(carlson_rd_roots(zero, zero, one).is_err());
+        assert!(carlson_rd_roots(one, one, zero).is_err());
+        assert!(carlson_rd_roots(zero, one, one).is_ok());
+        assert!(carlson_rf_rd_roots(zero, zero, one).is_err());
+        assert!(carlson_rf_rd_roots(one, zero, zero).is_err());
+        assert!(carlson_rd_rj_roots(zero, zero, one, one).is_err());
+        assert!(carlson_rd_rj_roots(one, one, zero, one).is_err());
+        assert!(carlson_rd_rj_roots(one, one, one, zero).is_err());
+        assert!(carlson_rd_rj_roots(zero, one, one, one).is_ok());
     }
 
     #[test]

@@ -14,8 +14,9 @@ use fixed_analytics::{
     Complex, erf, erfc, fresnel, gamma, kepler_universal, root_in, root_in_newton,
 };
 use fixed_analytics::{
-    Modulus, carlson_rc, carlson_rd, carlson_rf, carlson_rf_roots, carlson_rj, carlson_rj_roots,
-    ellip_e, ellip_k, ellip_pi, ellip_pi_complete, jacobi_am, jacobi_inverse, jacobi_sn_cn_dn,
+    Modulus, carlson_rc, carlson_rd, carlson_rd_rj_roots, carlson_rd_roots, carlson_rf,
+    carlson_rf_rd_roots, carlson_rf_roots, carlson_rj, carlson_rj_roots, ellip_e, ellip_k,
+    ellip_pi, ellip_pi_complete, jacobi_am, jacobi_inverse, jacobi_sn_cn_dn,
 };
 use fixed_analytics::{
     Rounding, atan_ratio_range, atan2_range, atanh_ratio_range, div_rounded, dot_rounded,
@@ -120,6 +121,9 @@ fn exercise<T: CordicNumber>(x: T, y: T, two: T) {
     keep(carlson_rj_roots(x, y, two, x));
     keep(carlson_rc(x, y));
     keep(carlson_rd(x, y, two));
+    keep(carlson_rd_roots(x, y, two));
+    keep(carlson_rf_rd_roots(x, y, two));
+    keep(carlson_rd_rj_roots(x, y, two, x));
     exercise_more(x, y, two);
     exercise_bounds(x, y, two);
 }
