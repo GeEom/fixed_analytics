@@ -38,6 +38,7 @@ use fixed_analytics::{
     atan2_turns, div_by_tau, mul_by_tau, sin_cos_range_turns, sin_cos_turns, wrap_principal,
     wrap_radians,
 };
+use fixed_analytics::{kepler_universal_near, kepler_universal_stumpff};
 
 /// Hands `v` to `black_box`, so the optimizer must compute it in full.
 fn keep<V>(v: V) {
@@ -204,6 +205,8 @@ fn exercise_more<T: CordicNumber>(x: T, y: T, two: T) {
         40,
     ));
     keep(kepler_universal(two, y, x, two));
+    keep(kepler_universal_stumpff(two, y, x, two));
+    keep(kepler_universal_near(two, y, x, two, y));
 
     if let Some(nn) = NonNegative::new(x) {
         keep(sqrt_nonneg(nn));

@@ -1,11 +1,12 @@
 #[cfg(test)]
 mod tests {
-    use crate::unit::support::TestResult;
+    use crate::unit::support::{Lcg, TestResult};
     use fixed::types::extra::{U5, U13, U125};
     use fixed::types::{I16F16, I32F32, I64F64};
     use fixed::{FixedI8, FixedI16, FixedI128};
     use fixed_analytics::{
-        CordicNumber, div_or_saturate, exp, kepler_universal, root_in, root_in_newton, sin, sin_cos,
+        CordicNumber, div_or_saturate, exp, kepler_universal, kepler_universal_near,
+        kepler_universal_stumpff, root_in, root_in_newton, sin, sin_cos, stumpff,
     };
 
     #[test]
@@ -206,5 +207,161 @@ mod tests {
         assert!(kepler_universal(t(0.0), t(0.0), t(1.0), t(1.0)).is_err());
         assert!(kepler_universal(t(1.0), t(2.0), t(1.0), t(1.0)).is_err());
         assert!(kepler_universal(t(1.0), t(1.0), t(1.0), t(1.0)).is_ok());
+    }
+
+    #[test]
+    fn kepler_stumpff_matches_mpmath() -> TestResult {
+        let t = |x: f64| I64F64::from_num(x);
+        let close = |got: I64F64, want: f64| {
+            (got.to_num::<f64>() - want).abs() < 4e-16 * want.abs().max(1.0)
+        };
+        // Hyperbolic, elliptic and the brief's case.
+        let cases = [
+            (
+                0.243_580_071_287_150_6,
+                -0.971_229_468_923_029_6,
+                16.413_642_390_256_246,
+            ),
+            (
+                -0.177_366_616_630_719_7,
+                1.481_145_779_631_915_2,
+                0.558_012_059_195_549_4,
+            ),
+            (1.9171, -2.4429, 0.58454),
+        ];
+        let want = [
+            (
+                2.877_069_856_311_604,
+                [
+                    8.547_788_020_915_303,
+                    2.993_986_921_750_068_5,
+                    0.938_851_770_480_668_6,
+                    0.248_027_388_502_801_38,
+                ],
+            ),
+            (
+                0.606_608_030_904_304_9,
+                [
+                    0.739_643_309_593_761_4,
+                    0.911_606_510_903_198_3,
+                    0.477_699_322_693_433_6,
+                    0.162_183_310_158_715_15,
+                ],
+            ),
+            (
+                0.394_580_713_472_777_6,
+                [
+                    1.196_276_890_168_411_3,
+                    1.064_607_279_852_589_3,
+                    0.516_049_986_861_274_4,
+                    0.169_865_060_988_403_6,
+                ],
+            ),
+        ];
+        for ((s, a, tau), (chi, c)) in cases.into_iter().zip(want) {
+            let (got, stumpffs) = kepler_universal_stumpff(t(1.0), t(s), t(a), t(tau))?;
+            assert_eq!(got, kepler_universal(t(1.0), t(s), t(a), t(tau))?);
+            assert!(close(got, chi));
+            for (g, w) in stumpffs.into_iter().zip(c) {
+                assert!(close(g, w));
+            }
+        }
+        let (zero, at_zero) = kepler_universal_stumpff(t(1.0), t(0.5), t(1.0), t(0.0))?;
+        assert_eq!((zero, at_zero), (t(0.0), stumpff(t(0.0))));
+        Ok(())
+    }
+
+    #[test]
+    fn kepler_stumpff_is_stumpff_at_its_anomaly() -> TestResult {
+        let mut rng = Lcg(17);
+        let ulp = I16F16::DELTA.to_num::<I64F64>();
+        for _ in 0..400 {
+            let r0 = rng.range(0.25, 4.0);
+            let w = rng.range(0.0, 3.0);
+            let alpha = I16F16::from_num((2.0 - w) / r0);
+            let sigma = I16F16::from_num(rng.range(-0.9, 0.9) * (r0 * w).sqrt());
+            let tau = I16F16::from_num(rng.range(-20.0, 20.0));
+            let r0 = I16F16::from_num(r0);
+            let Ok((chi, got)) = kepler_universal_stumpff(r0, sigma, alpha, tau) else {
+                continue;
+            };
+            assert_eq!(chi, kepler_universal(r0, sigma, alpha, tau)?);
+            // α·χ² is exact in I64F64.
+            let chi = chi.to_num::<I64F64>();
+            let want = stumpff(alpha.to_num::<I64F64>() * chi * chi);
+            let (lo, hi) = (
+                I16F16::MIN.to_num::<I64F64>(),
+                I16F16::MAX.to_num::<I64F64>(),
+            );
+            for (c, exact) in got.into_iter().zip(want) {
+                assert!((c.to_num::<I64F64>() - exact.clamp(lo, hi)).abs() <= ulp);
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn kepler_near_ignores_its_start() -> TestResult {
+        fn starts<T: CordicNumber + core::fmt::Debug>(
+            r0: T,
+            sigma: T,
+            alpha: T,
+            tau: T,
+        ) -> TestResult {
+            let want = kepler_universal_stumpff(r0, sigma, alpha, tau)?;
+            let chi = want.0;
+            let neg = |v: T| T::zero().saturating_sub(v);
+            let mut ulp = T::one();
+            for _ in 0..T::frac_bits() {
+                ulp = ulp.div_int(2);
+            }
+            let seeds = [
+                T::zero(),
+                chi,
+                chi.saturating_mul(T::two()),
+                chi.div_int(2),
+                chi.saturating_mul(T::from_num(1000)),
+                chi.div_int(1000),
+                neg(chi),
+                ulp,
+                T::max_value(),
+                T::min_value(),
+                T::one(),
+                neg(T::one()),
+            ];
+            for near in seeds {
+                assert_eq!(kepler_universal_near(r0, sigma, alpha, tau, near)?, want);
+            }
+            Ok(())
+        }
+        let orbits = [
+            (1.0, 0.25, -0.5, 3.0),
+            (1.0, -0.2, 0.75, 10.0),
+            (1.0, 0.5, 0.0, -2.0),
+            (0.5, 0.1, 3.5, 40.0),
+            (1.0, 1.9171, -2.4429, 0.58454),
+            (2.0, -0.3, -1.5, -25.0),
+        ];
+        for (r0, s, a, t) in orbits {
+            starts(
+                I64F64::from_num(r0),
+                I64F64::from_num(s),
+                I64F64::from_num(a),
+                I64F64::from_num(t),
+            )?;
+            starts(
+                I32F32::from_num(r0),
+                I32F32::from_num(s),
+                I32F32::from_num(a),
+                I32F32::from_num(t),
+            )?;
+            starts(
+                I16F16::from_num(r0),
+                I16F16::from_num(s),
+                I16F16::from_num(a),
+                I16F16::from_num(t),
+            )?;
+        }
+        Ok(())
     }
 }

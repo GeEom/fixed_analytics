@@ -37,6 +37,8 @@ pub use interval::{
     tan_ratio_range, tanh_range, tanh_ratio_range,
 };
 pub use ratio::{atan_ratio, atanh_ratio, sin_ratio, stumpff, tan_ratio, tanh_ratio};
-pub use solve::{kepler_universal, root_in, root_in_newton};
+pub use solve::{
+    kepler_universal, kepler_universal_near, kepler_universal_stumpff, root_in, root_in_newton,
+};
 pub use special::{erf, erfc, fresnel, gamma};
 pub use turns::{atan2_turns, div_by_tau, mul_by_tau, sin_cos_turns, wrap_principal, wrap_radians};

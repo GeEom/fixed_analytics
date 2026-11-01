@@ -34,6 +34,7 @@ mod tests {
         atan2_turns, div_by_tau, kepler_universal, mul_by_tau, root_in, root_in_newton,
         sin_cos_range_turns, sin_cos_turns, wrap_principal, wrap_radians,
     };
+    use fixed_analytics::{kepler_universal_near, kepler_universal_stumpff};
     use std::collections::BTreeMap;
     use std::fmt::Write;
 
@@ -123,6 +124,8 @@ mod tests {
         "root_in",
         "root_in_newton",
         "kepler_universal",
+        "kepler_universal_stumpff",
+        "kepler_universal_near",
         "complex_mul",
         "complex_div",
         "complex_exp",
@@ -293,6 +296,14 @@ mod tests {
 
     fn solving<T: CordicNumber>(name: &str, x: T, y: T) -> [Option<T>; 2] {
         let one = |v: T| [Some(v), None];
+        let anomaly = |v: fixed_analytics::Result<(T, [T; 4])>| {
+            v.map_or([None, None], |(chi, c)| {
+                [
+                    Some(chi),
+                    Some(c.into_iter().fold(T::zero(), T::saturating_add)),
+                ]
+            })
+        };
         let res = |v: fixed_analytics::Result<T>| [v.ok(), None];
         match name {
             "sin_cos_turns" => pair(sin_cos_turns(x)),
@@ -320,6 +331,10 @@ mod tests {
                 root_in_newton(rise, step, y, T::zero(), top, 64).map_or([None, None], pair)
             }
             "kepler_universal" => res(kepler_universal(T::one(), T::zero(), y, x)),
+            "kepler_universal_stumpff" => {
+                anomaly(kepler_universal_stumpff(T::one(), T::zero(), y, x))
+            }
+            "kepler_universal_near" => anomaly(kepler_universal_near(T::one(), T::zero(), y, x, y)),
             _ => elliptic(name, x, y),
         }
     }

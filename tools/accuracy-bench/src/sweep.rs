@@ -125,6 +125,11 @@ pub enum Fun {
     WeightedK2Re,
     WeightedK2Im,
     KeplerUniversal,
+    KeplerStumpffC0,
+    KeplerStumpffC1,
+    KeplerStumpffC2,
+    KeplerStumpffC3,
+    KeplerNear,
     Erf,
     Erfc,
     FresnelC,
@@ -152,7 +157,7 @@ pub const ALL: &[Fun] = &[
     Expm1, Exprel, Exprel2, MomentE1, MomentE2, MomentE3, MomentE4, MomentE5, Log1p, Log1pRatio, Log1pResidual, Log1pResidualRatio, StumpffC0, StumpffC1, StumpffC2, StumpffC3, SinRatio, SinRatioVersine, TanRatio, AtanRatio, AtanhRatio, TanhRatio,
     EllipK, EllipKm, EllipE, JacobiSn, JacobiCn, JacobiDn, JacobiAm, JacobiInverse, CarlsonRf, CarlsonRfRoots, CarlsonRj, CarlsonRc, CarlsonRd, CarlsonRjRoots, CarlsonRdRoots, CarlsonRfRdRootsRf, CarlsonRfRdRootsRd, CarlsonRdRjRootsRd, CarlsonRdRjRootsRj, EllipPi, EllipPiComplete,
     SinTurns, CosTurns, Atan2Turns, DivByTau, WrapRadians, WrapPrincipal, MulByTau,
-    CMulRe, CMulIm, CDivRe, CDivIm, CExpRe, CExpIm, CExprelRe, CExprelIm, CExprel2Re, CExprel2Im, FaddeevaRe, FaddeevaIm, CErfRe, CErfIm, E1Re, E1Im, GammaUpperRe, GammaUpperIm, CLnRe, CLnIm, CPowRe, CPowIm, WeightedK1Re, WeightedK1Im, WeightedK2Re, WeightedK2Im, KeplerUniversal, Erf, Erfc, FresnelC, FresnelS, Gamma,
+    CMulRe, CMulIm, CDivRe, CDivIm, CExpRe, CExpIm, CExprelRe, CExprelIm, CExprel2Re, CExprel2Im, FaddeevaRe, FaddeevaIm, CErfRe, CErfIm, E1Re, E1Im, GammaUpperRe, GammaUpperIm, CLnRe, CLnIm, CPowRe, CPowIm, WeightedK1Re, WeightedK1Im, WeightedK2Re, WeightedK2Im, KeplerUniversal, KeplerStumpffC0, KeplerStumpffC1, KeplerStumpffC2, KeplerStumpffC3, KeplerNear, Erf, Erfc, FresnelC, FresnelS, Gamma,
     MulDown, MulUp, MulDivDown, MulDivUp, MulAddDown, MulAddUp, DivDown, DivUp, Dot3Down, Dot3Up, EllipPiIncrement,
 ];
 
@@ -590,6 +595,11 @@ impl Fun {
             WeightedK2Re => "exprel_weighted_k2_re",
             WeightedK2Im => "exprel_weighted_k2_im",
             KeplerUniversal => "kepler_universal",
+            KeplerStumpffC0 => "kepler_universal_stumpff_c0",
+            KeplerStumpffC1 => "kepler_universal_stumpff_c1",
+            KeplerStumpffC2 => "kepler_universal_stumpff_c2",
+            KeplerStumpffC3 => "kepler_universal_stumpff_c3",
+            KeplerNear => "kepler_universal_near",
             Erf => "erf",
             Erfc => "erfc",
             FresnelC => "fresnel_c",
@@ -622,6 +632,8 @@ impl Fun {
             GammaUpperRe | GammaUpperIm | CPowRe | CPowIm => 3,
             CLnRe | CLnIm => 2,
             WeightedK1Re | WeightedK1Im | WeightedK2Re | WeightedK2Im | KeplerUniversal => 4,
+            KeplerStumpffC0 | KeplerStumpffC1 | KeplerStumpffC2 | KeplerStumpffC3 => 4,
+            KeplerNear => 5,
             EllipPi => 5,
             Dot3 | Dot3Down | Dot3Up => 6,
             MulDown | MulUp | DivDown | DivUp => 2,
@@ -756,6 +768,11 @@ impl Fun {
                 })
             }
             KeplerUniversal => fa::kepler_universal(x, a[1], a[2], a[3]).ok(),
+            KeplerStumpffC0 | KeplerStumpffC1 | KeplerStumpffC2 | KeplerStumpffC3 => {
+                let (_, c) = fa::kepler_universal_stumpff(x, a[1], a[2], a[3]).ok()?;
+                Some(c[kepler_stumpff_index(self)])
+            }
+            KeplerNear => fa::kepler_universal_near(x, a[1], a[2], a[3], a[4]).ok().map(|(chi, _)| chi),
             MulByTau => Some(fa::mul_by_tau(x)),
             Erf => Some(fa::erf(x)),
             Erfc => Some(fa::erfc(x)),
@@ -825,7 +842,7 @@ impl Fun {
             CLnRe | CLnIm => x != zero || a[1] != zero,
             CPowRe | CPowIm => x != zero || a[1] != zero || a[2] >= zero,
             WeightedK1Re | WeightedK1Im | WeightedK2Re | WeightedK2Im => a[2] >= zero && a[2] < one && a[3] >= zero,
-            KeplerUniversal => {
+            KeplerUniversal | KeplerStumpffC0 | KeplerStumpffC1 | KeplerStumpffC2 | KeplerStumpffC3 | KeplerNear => {
                 let (r, s, al) = (a[0].to_float(), a[1].to_float(), a[2].to_float());
                 let h2 = Float::with_val(PREC * 3, &r * (Float::with_val(PREC * 3, 2) - Float::with_val(PREC * 3, &al * &r))) - Float::with_val(PREC * 3, s.square_ref());
                 x > zero && h2 > 0
@@ -998,7 +1015,13 @@ impl Fun {
                 };
                 if matches!(self, WeightedK1Re | WeightedK2Re) { r.real().clone() } else { r.imag().clone() }
             }
-            KeplerUniversal => kepler(a),
+            KeplerUniversal | KeplerNear => kepler(a),
+            // cₖ(αχ̂²) at the function's own χ̂, appended by `own`.
+            KeplerStumpffC0 | KeplerStumpffC1 | KeplerStumpffC2 | KeplerStumpffC3 => {
+                let z = Float::with_val(PREC * 3, &a[2] * Float::with_val(PREC * 3, a[4].square_ref()));
+                let fun = [StumpffC0, StumpffC1, StumpffC2, StumpffC3][kepler_stumpff_index(self)];
+                special(fun, &z)
+            }
             MulByTau => {
                 let p = PREC * 3;
                 Float::with_val(p, &x) * (Float::with_val(p, Constant::Pi) * 2u32)
@@ -1019,6 +1042,17 @@ impl Fun {
                 Float::with_val(p, x.atan2(&a[1])) / (Float::with_val(p, Constant::Pi) * 2u32)
             }
             _ => special(self, &Float::with_val(PREC * 3, &x)),
+        }
+    }
+
+    /// A value of the function's own that its reference needs: the anomaly the
+    /// Stumpff values of `kepler_universal_stumpff` are taken at.
+    pub fn own<T: Sut>(self, a: &[T]) -> Option<Float> {
+        match self {
+            KeplerStumpffC0 | KeplerStumpffC1 | KeplerStumpffC2 | KeplerStumpffC3 => {
+                fixed_analytics::kepler_universal_stumpff(a[0], a[1], a[2], a[3]).ok().map(|(chi, _)| chi.to_float())
+            }
+            _ => None,
         }
     }
 
@@ -1167,6 +1201,10 @@ impl Rng {
         };
         if self.next() & 1 == 0 { m } else { -m }
     }
+}
+
+fn kepler_stumpff_index(fun: Fun) -> usize {
+    match fun { KeplerStumpffC0 => 0, KeplerStumpffC1 => 1, KeplerStumpffC2 => 2, _ => 3 }
 }
 
 fn is_weighted(fun: Fun) -> bool {
@@ -1349,7 +1387,8 @@ pub fn run<T: Sut>(fun: Fun) -> FunStats {
             }
             continue;
         };
-        let args: Vec<Float> = p.iter().map(|x| x.to_float()).collect();
+        let mut args: Vec<Float> = p.iter().map(|x| x.to_float()).collect();
+        args.extend(fun.own(p));
         let r = fun.reference(&args);
         if r.is_nan() {
             continue;
