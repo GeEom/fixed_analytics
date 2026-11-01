@@ -85,6 +85,87 @@ pub fn root_in<T: CordicNumber, F: FnMut(T) -> T>(
     Ok((T::from_raw_i128(a), T::from_raw_i128(b)))
 }
 
+/// The bracket of [`root_in`] in at most `budget` more calls, by safeguarded Newton from `guess`.
+///
+/// `step(x, f(x))` is the distance to the root, such as `|f/f′|` or a Halley step; the probe
+/// gives the side. Each step overshoots by a nudge from one ulp, doubled while probes stay on one
+/// side, and one that fails to halve the last bisects, as does a `guess` outside `(lo, hi)`.
+/// # Errors
+/// Returns `DomainError` if `f(lo)` and `f(hi)` are non-zero with one sign.
+#[must_use = "returns the bracket which should be handled"]
+#[cfg_attr(
+    all(feature = "verify-no-panic", not(debug_assertions)),
+    no_panic::no_panic
+)]
+pub fn root_in_newton<T: CordicNumber, F: FnMut(T) -> T, S: FnMut(T, T) -> T>(
+    mut func: F,
+    mut step: S,
+    guess: T,
+    lo: T,
+    hi: T,
+    budget: u32,
+) -> Result<(T, T)> {
+    let (lo, hi) = if lo <= hi { (lo, hi) } else { (hi, lo) };
+    let (ya, yb) = (func(lo), func(hi));
+    let zero = T::zero();
+    if ya == zero {
+        return Ok((lo, lo));
+    }
+    if yb == zero {
+        return Ok((hi, hi));
+    }
+    let low = ya.is_negative();
+    if yb.is_negative() == low {
+        return Err(Error::domain(
+            "root_in_newton",
+            "f(lo) and f(hi) of opposite signs",
+        ));
+    }
+    let (mut a, mut b, mut at) = (lo.raw_i128(), hi.raw_i128(), guess.raw_i128());
+    let (mut last, mut nudge, mut side) = (u128::MAX, 1u128, None);
+    for _ in 0..budget {
+        let span = b.abs_diff(a);
+        if span <= 1 {
+            break;
+        }
+        if at <= a || at >= b {
+            at = a.saturating_add_unsigned(span / 2);
+        }
+        let x = T::from_raw_i128(at);
+        let y = func(x);
+        if y == zero {
+            return Ok((x, x));
+        }
+        let under = y.is_negative() == low;
+        if under {
+            a = at;
+        } else {
+            b = at;
+        }
+        if b.abs_diff(a) <= 1 {
+            break;
+        }
+        nudge = if side == Some(under) {
+            nudge.saturating_mul(2)
+        } else {
+            1
+        };
+        side = Some(under);
+        let size = step(x, y).raw_i128().unsigned_abs();
+        let reach = size.saturating_add(nudge);
+        // Nor does a second zero step on one side.
+        at = if size > last / 2 || (size == 0 && last == 0 && nudge > 1) {
+            a
+        } else if under {
+            at.saturating_add_unsigned(reach)
+        } else {
+            at.saturating_sub_unsigned(reach)
+        };
+        last = size;
+    }
+    Ok((T::from_raw_i128(a), T::from_raw_i128(b)))
+}
+
 fn kepler_residual<V: Work>(chi: V, r0: V, sigma0: V, alpha: V, tau: V) -> (V, V) {
     let x2 = chi.square();
     let z = alpha * x2;

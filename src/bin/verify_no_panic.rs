@@ -10,7 +10,9 @@ use fixed_analytics::CordicNumber;
 use fixed_analytics::bounded::{NonNegative, OpenUnitInterval};
 use fixed_analytics::ops::algebraic::sqrt_nonneg;
 use fixed_analytics::ops::hyperbolic::atanh_open;
-use fixed_analytics::{Complex, erf, erfc, fresnel, gamma, kepler_universal, root_in};
+use fixed_analytics::{
+    Complex, erf, erfc, fresnel, gamma, kepler_universal, root_in, root_in_newton,
+};
 use fixed_analytics::{
     Modulus, carlson_rc, carlson_rd, carlson_rf, carlson_rf_roots, carlson_rj, carlson_rj_roots,
     ellip_e, ellip_k, ellip_pi, ellip_pi_complete, jacobi_am, jacobi_inverse, jacobi_sn_cn_dn,
@@ -188,6 +190,14 @@ fn exercise_more<T: CordicNumber>(x: T, y: T, two: T) {
     keep(fresnel(x));
     keep(gamma(x));
     keep(root_in(|t: T| t.saturating_sub(y), x, two, 40));
+    keep(root_in_newton(
+        |t: T| t.saturating_sub(y),
+        |_, v| v,
+        y,
+        x,
+        two,
+        40,
+    ));
     keep(kepler_universal(two, y, x, two));
 
     if let Some(nn) = NonNegative::new(x) {
