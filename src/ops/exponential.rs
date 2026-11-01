@@ -237,7 +237,16 @@ pub fn log1p<T: CordicNumber>(v: T) -> Result<T> {
     no_panic::no_panic
 )]
 pub fn log1p_ratio<T: CordicNumber>(z: T) -> Result<T> {
-    above_minus_one(z, "log1p_ratio").map(|_| tiered!(T, |w| log1p_ratio_work(w(z))))
+    let near = z.abs() <= T::one() >> 2u32;
+    above_minus_one(z, "log1p_ratio").map(|_| {
+        if near {
+            // 1 is on the grid, so rounding 1 + q is 1 plus q rounded, and q keeps
+            // the bits that place 1 − z/2 + z²/3 against a midpoint.
+            T::one().saturating_add(tiered!(T, |w| w(z) * log1p_minus_ratio(w(z))))
+        } else {
+            tiered!(T, |w| log1p_ratio_work(w(z)))
+        }
+    })
 }
 
 /// `ln(1 + v) − v`, without cancelling near 0. Domain: `v > −1`.
