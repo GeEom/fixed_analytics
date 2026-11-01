@@ -13,14 +13,14 @@ Rows ending `_re` and `_im` are the parts of a `Complex` result. `dot3`,
 `sin_turns` and `cos_turns` those of `sin_cos_turns`. `ellip_k` builds its
 `Modulus` from `k'` and `ellip_k_from_m` from `m`. `exprel_weighted_k1` and
 `_k2` are the two results of `Complex::exprel_weighted`.
-`carlson_rf_rd_roots_rf` and `_rd`, and `carlson_rd_rj_roots_rd` and `_rj`,
-are the two results of the paired Carlson functions, and `sin_ratio_versine`
-is the second of `sin_ratio`. `kepler_universal_stumpff_c0` to `_c3` are the
-Stumpff values that function returns, measured at its own `χ`, which is
-`kepler_universal`'s. The `_down` and `_up` rows are the `_rounded` functions
-with `Rounding::Down` and `Rounding::Up`. Their error approaches a whole ulp
-and the table rounds it to 1.00, but the sweep checks that each is below one
-and on its side.
+`carlson_rf_rd_roots_rf` and `_rd`, `carlson_rd_rj_roots_rd` and `_rj`, and
+`carlson_rf_rd_rj_roots_rf` to `_rj` are the results of the joint Carlson
+functions, and `sin_ratio_versine` is the second of `sin_ratio`.
+`kepler_universal_stumpff_c0` to `_c3` are the Stumpff values that function
+returns, measured at its own `χ`, which is `kepler_universal`'s. The `_down`
+and `_up` rows are the `_rounded` functions with `Rounding::Down` and
+`Rounding::Up`. Their error approaches a whole ulp and the table rounds it to
+1.00, but the sweep checks that each is below one and on its side.
 
 <!-- WORST_START -->
 463213662 inputs over 119 functions and 104 layouts; 0 of 88964644 symmetry checks and 0 of 247907720 monotonicity checks failed.

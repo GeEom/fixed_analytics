@@ -1079,3 +1079,25 @@ pub fn carlson_rd_rj_roots<T: CordicNumber>(rx: T, ry: T, rz: T, rp: T) -> Resul
         (d, j)
     }))
 }
+
+/// [`carlson_rf`], [`carlson_rd`] and [`carlson_rj`] of the squares of the arguments, from one
+/// duplication.
+/// # Errors
+/// Returns `DomainError` if `rx` and `ry` are both 0, or `rz` or `rp` is.
+#[must_use = "returns the integrals which should be handled"]
+#[cfg_attr(
+    all(feature = "verify-no-panic", not(debug_assertions)),
+    no_panic::no_panic
+)]
+pub fn carlson_rf_rd_rj_roots<T: CordicNumber>(rx: T, ry: T, rz: T, rp: T) -> Result<(T, T, T)> {
+    check_rd_roots(rx, ry, rz, "carlson_rf_rd_rj_roots")?;
+    if rp == T::zero() {
+        return Err(Error::domain("carlson_rf_rd_rj_roots", "rp non-zero"));
+    }
+    let all: [T; 3] = tiered!(T, |v| squares(
+        [v(rx), v(ry), v(rz)],
+        Some(v(rp)),
+        [true, true]
+    ));
+    Ok(all.into())
+}

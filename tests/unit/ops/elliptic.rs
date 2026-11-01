@@ -4,9 +4,9 @@ mod tests {
     use fixed::types::{I32F32, I64F64};
     use fixed_analytics::{
         Error, Modulus, carlson_rc, carlson_rd, carlson_rd_rj_roots, carlson_rd_roots, carlson_rf,
-        carlson_rf_rd_roots, carlson_rf_roots, carlson_rj, carlson_rj_roots, ellip_e, ellip_k,
-        ellip_pi, ellip_pi_complete, ellip_pi_increment, jacobi_am, jacobi_inverse,
-        jacobi_sn_cn_dn,
+        carlson_rf_rd_rj_roots, carlson_rf_rd_roots, carlson_rf_roots, carlson_rj,
+        carlson_rj_roots, ellip_e, ellip_k, ellip_pi, ellip_pi_complete, ellip_pi_increment,
+        jacobi_am, jacobi_inverse, jacobi_sn_cn_dn,
     };
 
     fn half() -> Result<Modulus<I64F64>, Error> {
@@ -149,11 +149,24 @@ mod tests {
                 (rd, rj),
                 "{rx} {ry} {rp}"
             );
+            assert_eq!(
+                carlson_rf_rd_rj_roots(rx, ry, rz, rp)?,
+                (rf, rd, rj),
+                "{rx} {ry} {rp}"
+            );
         }
         let (zero, one, far) = (I64F64::ZERO, I64F64::ONE, at(30.0));
         assert_eq!(
             carlson_rd_rj_roots(zero, at(0.5), one, far)?,
             (
+                carlson_rd_roots(zero, at(0.5), one)?,
+                carlson_rj_roots(zero, at(0.5), one, far)?
+            )
+        );
+        assert_eq!(
+            carlson_rf_rd_rj_roots(zero, at(0.5), one, far)?,
+            (
+                carlson_rf_roots(zero, at(0.5), one)?,
                 carlson_rd_roots(zero, at(0.5), one)?,
                 carlson_rj_roots(zero, at(0.5), one, far)?
             )
@@ -210,6 +223,10 @@ mod tests {
         assert!(carlson_rd_rj_roots(one, one, zero, one).is_err());
         assert!(carlson_rd_rj_roots(one, one, one, zero).is_err());
         assert!(carlson_rd_rj_roots(zero, one, one, one).is_ok());
+        assert!(carlson_rf_rd_rj_roots(zero, zero, one, one).is_err());
+        assert!(carlson_rf_rd_rj_roots(one, one, zero, one).is_err());
+        assert!(carlson_rf_rd_rj_roots(one, one, one, zero).is_err());
+        assert!(carlson_rf_rd_rj_roots(zero, one, one, one).is_ok());
     }
 
     #[test]

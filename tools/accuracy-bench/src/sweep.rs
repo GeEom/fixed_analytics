@@ -89,6 +89,9 @@ pub enum Fun {
     CarlsonRfRdRootsRd,
     CarlsonRdRjRootsRd,
     CarlsonRdRjRootsRj,
+    CarlsonRfRdRjRootsRf,
+    CarlsonRfRdRjRootsRd,
+    CarlsonRfRdRjRootsRj,
     EllipPi,
     EllipPiComplete,
     SinTurns,
@@ -155,7 +158,7 @@ pub const ALL: &[Fun] = &[
     Exp, Pow2, Ln, Log2, Log10, Pow, Sqrt, SqrtOrZero, MulAdd, MulDiv, DivOrSaturate, Dot3,
     Hypot, Norm3, Normalize3, ScaleBy, SqrtProduct, AsinFromGap, Rsqrt,
     Expm1, Exprel, Exprel2, MomentE1, MomentE2, MomentE3, MomentE4, MomentE5, Log1p, Log1pRatio, Log1pResidual, Log1pResidualRatio, StumpffC0, StumpffC1, StumpffC2, StumpffC3, SinRatio, SinRatioVersine, TanRatio, AtanRatio, AtanhRatio, TanhRatio,
-    EllipK, EllipKm, EllipE, JacobiSn, JacobiCn, JacobiDn, JacobiAm, JacobiInverse, CarlsonRf, CarlsonRfRoots, CarlsonRj, CarlsonRc, CarlsonRd, CarlsonRjRoots, CarlsonRdRoots, CarlsonRfRdRootsRf, CarlsonRfRdRootsRd, CarlsonRdRjRootsRd, CarlsonRdRjRootsRj, EllipPi, EllipPiComplete,
+    EllipK, EllipKm, EllipE, JacobiSn, JacobiCn, JacobiDn, JacobiAm, JacobiInverse, CarlsonRf, CarlsonRfRoots, CarlsonRj, CarlsonRc, CarlsonRd, CarlsonRjRoots, CarlsonRdRoots, CarlsonRfRdRootsRf, CarlsonRfRdRootsRd, CarlsonRdRjRootsRd, CarlsonRdRjRootsRj, CarlsonRfRdRjRootsRf, CarlsonRfRdRjRootsRd, CarlsonRfRdRjRootsRj, EllipPi, EllipPiComplete,
     SinTurns, CosTurns, Atan2Turns, DivByTau, WrapRadians, WrapPrincipal, MulByTau,
     CMulRe, CMulIm, CDivRe, CDivIm, CExpRe, CExpIm, CExprelRe, CExprelIm, CExprel2Re, CExprel2Im, FaddeevaRe, FaddeevaIm, CErfRe, CErfIm, E1Re, E1Im, GammaUpperRe, GammaUpperIm, CLnRe, CLnIm, CPowRe, CPowIm, WeightedK1Re, WeightedK1Im, WeightedK2Re, WeightedK2Im, KeplerUniversal, KeplerStumpffC0, KeplerStumpffC1, KeplerStumpffC2, KeplerStumpffC3, KeplerNear, Erf, Erfc, FresnelC, FresnelS, Gamma,
     MulDown, MulUp, MulDivDown, MulDivUp, MulAddDown, MulAddUp, DivDown, DivUp, Dot3Down, Dot3Up, EllipPiIncrement,
@@ -215,11 +218,12 @@ fn elliptic(fun: Fun, a: &[Float]) -> Float {
         CarlsonRj => er::rj(&a[0], &a[1], &a[2], &a[3]),
         CarlsonRc => er::rc(&up(&a[0]), &up(&a[1])),
         CarlsonRd => er::rd(&a[0], &a[1], &a[2]),
-        CarlsonRjRoots | CarlsonRdRoots | CarlsonRfRdRootsRf | CarlsonRfRdRootsRd | CarlsonRdRjRootsRd | CarlsonRdRjRootsRj => {
+        CarlsonRjRoots | CarlsonRdRoots | CarlsonRfRdRootsRf | CarlsonRfRdRootsRd | CarlsonRdRjRootsRd | CarlsonRdRjRootsRj
+        | CarlsonRfRdRjRootsRf | CarlsonRfRdRjRootsRd | CarlsonRfRdRjRootsRj => {
             let s: Vec<Float> = a.iter().map(|v| up(v).square()).collect();
             match fun {
-                CarlsonRfRdRootsRf => er::rf(&s[0], &s[1], &s[2]),
-                CarlsonRjRoots | CarlsonRdRjRootsRj => er::rj(&s[0], &s[1], &s[2], &s[3]),
+                CarlsonRfRdRootsRf | CarlsonRfRdRjRootsRf => er::rf(&s[0], &s[1], &s[2]),
+                CarlsonRjRoots | CarlsonRdRjRootsRj | CarlsonRfRdRjRootsRj => er::rj(&s[0], &s[1], &s[2], &s[3]),
                 _ => er::rd(&s[0], &s[1], &s[2]),
             }
         }
@@ -245,7 +249,8 @@ fn elliptic_points<T: Sut>(fun: Fun, rng: &mut Rng) -> Vec<Vec<T>> {
             JacobiSn | JacobiCn | JacobiDn | JacobiAm => vec![pick(rng, &any), pick(rng, &unit)],
             CarlsonRf | CarlsonRd => (0..3).map(|_| pick(rng, &pos)).collect(),
             CarlsonRfRoots | CarlsonRdRoots | CarlsonRfRdRootsRf | CarlsonRfRdRootsRd => (0..3).map(|_| pick(rng, &any)).collect(),
-            CarlsonRjRoots | CarlsonRdRjRootsRd | CarlsonRdRjRootsRj => (0..4).map(|_| pick(rng, &any)).collect(),
+            CarlsonRjRoots | CarlsonRdRjRootsRd | CarlsonRdRjRootsRj | CarlsonRfRdRjRootsRf | CarlsonRfRdRjRootsRd
+            | CarlsonRfRdRjRootsRj => (0..4).map(|_| pick(rng, &any)).collect(),
             CarlsonRj => (0..4).map(|_| pick(rng, &pos)).collect(),
             CarlsonRc => vec![pick(rng, &pos), pick(rng, &pos)],
             EllipPiComplete => vec![pick(rng, &any), pick(rng, &unit)],
@@ -559,6 +564,9 @@ impl Fun {
             CarlsonRfRdRootsRd => "carlson_rf_rd_roots_rd",
             CarlsonRdRjRootsRd => "carlson_rd_rj_roots_rd",
             CarlsonRdRjRootsRj => "carlson_rd_rj_roots_rj",
+            CarlsonRfRdRjRootsRf => "carlson_rf_rd_rj_roots_rf",
+            CarlsonRfRdRjRootsRd => "carlson_rf_rd_rj_roots_rd",
+            CarlsonRfRdRjRootsRj => "carlson_rf_rd_rj_roots_rj",
             EllipPi => "ellip_pi",
             EllipPiComplete => "ellip_pi_complete",
             SinTurns => "sin_turns",
@@ -625,6 +633,7 @@ impl Fun {
             MulAdd | MulDiv | Norm3 | Normalize3 | CarlsonRf | CarlsonRfRoots | CarlsonRd => 3,
             CarlsonRdRoots | CarlsonRfRdRootsRf | CarlsonRfRdRootsRd => 3,
             CarlsonRjRoots | CarlsonRdRjRootsRd | CarlsonRdRjRootsRj => 4,
+            CarlsonRfRdRjRootsRf | CarlsonRfRdRjRootsRd | CarlsonRfRdRjRootsRj => 4,
             JacobiSn | JacobiCn | JacobiDn | JacobiAm | CarlsonRc | EllipPiComplete | Atan2Turns => 2,
             JacobiInverse | CarlsonRj | CMulRe | CMulIm | CDivRe | CDivIm => 4,
             CExpRe | CExpIm | CExprelRe | CExprelIm | CExprel2Re | CExprel2Im | FaddeevaRe
@@ -723,6 +732,9 @@ impl Fun {
             CarlsonRfRdRootsRd => fa::carlson_rf_rd_roots(x, a[1], a[2]).ok().map(|v| v.1),
             CarlsonRdRjRootsRd => fa::carlson_rd_rj_roots(x, a[1], a[2], a[3]).ok().map(|v| v.0),
             CarlsonRdRjRootsRj => fa::carlson_rd_rj_roots(x, a[1], a[2], a[3]).ok().map(|v| v.1),
+            CarlsonRfRdRjRootsRf => fa::carlson_rf_rd_rj_roots(x, a[1], a[2], a[3]).ok().map(|v| v.0),
+            CarlsonRfRdRjRootsRd => fa::carlson_rf_rd_rj_roots(x, a[1], a[2], a[3]).ok().map(|v| v.1),
+            CarlsonRfRdRjRootsRj => fa::carlson_rf_rd_rj_roots(x, a[1], a[2], a[3]).ok().map(|v| v.2),
             EllipPi => fa::ellip_pi(x, a[1], a[2], a[3], fa::Modulus::from_complement(a[4])?).ok(),
             EllipPiComplete => fa::ellip_pi_complete(x, fa::Modulus::from_complement(a[1])?).ok(),
             SinTurns => Some(fa::sin_cos_turns(x).0),
@@ -828,7 +840,7 @@ impl Fun {
             CarlsonRd => x >= zero && a[1] >= zero && a[2] > zero && (x != zero || a[1] != zero),
             CarlsonRjRoots => a[..3].iter().filter(|&&v| v == zero).count() <= 1 && a[3] != zero,
             CarlsonRdRoots | CarlsonRfRdRootsRf | CarlsonRfRdRootsRd => a[2] != zero && (x != zero || a[1] != zero),
-            CarlsonRdRjRootsRd | CarlsonRdRjRootsRj => a[2] != zero && a[3] != zero && (x != zero || a[1] != zero),
+            CarlsonRdRjRootsRd | CarlsonRdRjRootsRj | CarlsonRfRdRjRootsRf | CarlsonRfRdRjRootsRd | CarlsonRfRdRjRootsRj => a[2] != zero && a[3] != zero && (x != zero || a[1] != zero),
             EllipPi => {
                 let sn = a[1].to_float();
                 let pole = Float::with_val(PREC, 1) - Float::with_val(PREC, a[0].to_float() * sn.square());
@@ -939,7 +951,8 @@ impl Fun {
             EllipK | EllipKm | EllipE | JacobiSn | JacobiCn | JacobiDn | JacobiAm | JacobiInverse
             | CarlsonRf | CarlsonRfRoots | CarlsonRj | CarlsonRc | CarlsonRd | EllipPi
             | EllipPiComplete | EllipPiIncrement | CarlsonRjRoots | CarlsonRdRoots | CarlsonRfRdRootsRf
-            | CarlsonRfRdRootsRd | CarlsonRdRjRootsRd | CarlsonRdRjRootsRj => elliptic(self, a),
+            | CarlsonRfRdRootsRd | CarlsonRdRjRootsRd | CarlsonRdRjRootsRj | CarlsonRfRdRjRootsRf
+            | CarlsonRfRdRjRootsRd | CarlsonRfRdRjRootsRj => elliptic(self, a),
             SinTurns | CosTurns | DivByTau | WrapRadians | WrapPrincipal => {
                 let p = PREC * 3;
                 let tau = Float::with_val(p, Constant::Pi) * 2u32;
@@ -1072,6 +1085,7 @@ impl Fun {
                 | CarlsonRf | CarlsonRfRoots | CarlsonRj | CarlsonRc | CarlsonRd | EllipPi
                 | EllipPiComplete | EllipPiIncrement | CarlsonRjRoots | CarlsonRdRoots
                 | CarlsonRfRdRootsRf | CarlsonRfRdRootsRd | CarlsonRdRjRootsRd | CarlsonRdRjRootsRj
+                | CarlsonRfRdRjRootsRf | CarlsonRfRdRjRootsRd | CarlsonRfRdRjRootsRj
         )
     }
 

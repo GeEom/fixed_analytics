@@ -44,8 +44,8 @@ saturates from the first representable input past its value.
 | `stumpff`, `c₃` | to `MAX`, further out | −403.66 | −1065.18 | −3187.97 |
 | `mul_by_tau` | to `MAX` or `MIN` from `\|x\| = MAX/2π` | 5215.19 | 3.418e8 | 1.468e18 |
 | `carlson_rj`, `carlson_rd` | to `MAX` with every argument at or below `a = MAX^(−2/3)` | 9.8e-4 | 6.0e-7 | 2.3e-13 |
-| `carlson_rj_roots`, `carlson_rd_roots`, and the paired forms' `R_D` and `R_J` | to `MAX` with every root at or below `MAX^(−1/3)` | 3.1e-2 | 7.8e-4 | 4.8e-7 |
-| `carlson_rf_roots`, and `carlson_rf_rd_roots`' `R_F` | to `MAX` with every root at or below `1/MAX` | 3.1e-5 | 4.7e-10 | 1.1e-19 |
+| `carlson_rj_roots`, `carlson_rd_roots`, and the joint forms' `R_D` and `R_J` | to `MAX` with every root at or below `MAX^(−1/3)` | 3.1e-2 | 7.8e-4 | 4.8e-7 |
+| `carlson_rf_roots`, and the joint forms' `R_F` | to `MAX` with every root at or below `1/MAX` | 3.1e-5 | 4.7e-10 | 1.1e-19 |
 
 `E₂` to `E₄` fall between `E₁` and `E₅`.
 
@@ -111,7 +111,7 @@ saturate. The formulas in the table give the thresholds on any layout.
 | `carlson_rc` | `x ≥ 0` and `y > 0` |
 | `carlson_rd` | `x, y ≥ 0`, not both 0, and `z > 0` |
 | `carlson_rd_roots`, `carlson_rf_rd_roots` | `rx` and `ry` not both 0, and `rz ≠ 0` |
-| `carlson_rd_rj_roots` | `rx` and `ry` not both 0, `rz ≠ 0` and `rp ≠ 0` |
+| `carlson_rd_rj_roots`, `carlson_rf_rd_rj_roots` | `rx` and `ry` not both 0, `rz ≠ 0` and `rp ≠ 0` |
 | `Complex::ln`, `Complex::e1` | `z ≠ 0` |
 | `Complex::pow` | `z ≠ 0` when `a < 0` |
 | `Complex::gamma_upper` | `a` in `(0, 128]` |
