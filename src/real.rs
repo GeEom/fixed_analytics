@@ -59,7 +59,7 @@ fn shl(limbs: &mut [u64], len: usize, shift: u32) {
     }
 }
 
-/// Shifts right by `s`, returning whether a set bit fell off the end.
+/// Shifts right by `s`. True if a set bit fell off the end.
 fn shr(limbs: &mut [u64], len: usize, shift: u32) -> bool {
     let words = (shift / 64) as usize;
     let bits = shift % 64;
@@ -119,7 +119,7 @@ fn sub_into(a: &mut Scratch, b: &Scratch, len: usize) {
     }
 }
 
-/// `|v|·2^62` for a mantissa top limb whose value is `top · 2^(e − 64)`, `|v| < 2`.
+/// `|v|·2^62` for `|v| < 2` held as `top · 2^(e − 64)`.
 fn q62(neg: bool, e: i32, top: u64) -> i64 {
     let sh = 2 - i64::from(e);
     let q = u32::try_from(sh)
@@ -287,8 +287,8 @@ fn isqrt_rem(x: u128) -> (u64, u128) {
     (r, rem.cast_unsigned())
 }
 
-/// The root and 129-bit remainder of `x·2^128 + a1·2^64 + a0`, `x ≥ 2^126`, by
-/// a Karatsuba step on [`isqrt_rem`], as docs/sqrt.md derives.
+/// Root and 129-bit remainder of `x·2^128 + a1·2^64 + a0` for `x ≥ 2^126`. One step
+/// of Zimmermann's recursion on [`isqrt_rem`] gives both. docs/sqrt.md has the proof.
 fn root_rem(x: u128, a1: u64, a0: u64) -> (u128, (bool, u128)) {
     let (s, rem) = isqrt_rem(x);
     let s_wide = u128::from(s);
@@ -307,7 +307,7 @@ fn root_rem(x: u128, a1: u64, a0: u64) -> (u128, (bool, u128)) {
     (root, (hi != 0, lo))
 }
 
-/// One digit of long division: `⌊(n·2^64 + low)/d⌋` and the remainder, `n < d`, `d` normalized.
+/// `⌊(n·2^64 + low)/d⌋` and its remainder, for `n < d` and a normalized `d`.
 fn div_digit(n: u128, low: u64, d: u128) -> (u64, u128) {
     let (d1, d0) = (hi64(d), lo64(d));
     let mut q = if hi64(n) >= d1 {
@@ -395,14 +395,14 @@ pub trait Work:
     fn square(self) -> Self;
     #[must_use]
     fn mul_int(self, k: i64) -> Self;
-    /// Division by a positive integer, correctly rounded.
+    /// Division by a positive integer, rounded to nearest.
     #[must_use]
     fn div_int(self, k: u64) -> Self;
     #[must_use]
     fn sqrt(self) -> Self;
-    /// For `mag · 2^−frac` turns, or radians when `radians`: the octant
-    /// `⌊8·frac(t)⌋` and the fraction of it, measured from the octant's near
-    /// end to π/4's multiple, so odd octants count back from their top.
+    /// The octant `⌊8·frac(t)⌋` of `t = mag · 2^−frac` turns, or radians if
+    /// `radians` is set. The fraction within it runs from the nearer multiple of
+    /// π/4, so odd octants count back from their top.
     fn octant(mag: u128, frac: u32, radians: bool) -> (u32, Self);
     /// [`octant`](Self::octant) of `|self|` radians, below `2^PREC`.
     fn octant_of(self) -> (u32, Self);
@@ -410,9 +410,9 @@ pub trait Work:
     fn octant_of_product(a: Self, b: Self) -> (u32, Self);
     /// `a·b + c·d` from the exact products, rounded once.
     fn dot2(a: Self, b: Self, c: Self, d: Self) -> Self;
-    /// `Σ ±table[first + step·k]·u^k` for k from 0 to `n` by Horner's rule,
-    /// the signs alternating when `alternate`, for `|u| < 1` and terms whose
-    /// sum stays near 1, in fixed point with 62, 126 or 190 fractional bits.
+    /// `Σ ±table[first + step·k]·u^k` for k up to `n`, by Horner's rule in fixed
+    /// point with 62, 126 or 190 fractional bits. Signs alternate if `alternate`
+    /// is set. It needs `|u| < 1` and a sum near 1.
     fn horner(u: Self, table: &Series, first: u32, step: u32, n: u32, alternate: bool) -> Self;
     /// `round(16·num/den)` from the top bits, for `0 ≤ num ≤ den`, `den > 0`.
     fn sixteenths(num: Self, den: Self) -> i64;
@@ -730,12 +730,12 @@ impl<const N: usize> Real<N> {
         Self { neg, e, m }
     }
 
-    /// Two limbs as one integer.
+    /// The mantissa as one `u128`.
     fn two(&self) -> u128 {
         (u128::from(self.top()) << 64) | u128::from(limb(&self.m, 0))
     }
 
-    /// Two limbs: `hi·2^(e − 128)` rounded to nearest even by the bits below.
+    /// Rounds `hi·2^(e − 128)` to nearest even by what lies below it.
     fn round_two(neg: bool, e: i32, hi: u128, lo: u128, sticky: bool) -> Self {
         let mut top = hi;
         let mut e = e;
@@ -752,7 +752,7 @@ impl<const N: usize> Real<N> {
         Self { neg, e, m }
     }
 
-    /// Two limbs: the correctly rounded quotient by `divisor > 0`, by Möller and Granlund.
+    /// Division by `divisor > 0` through Möller and Granlund's reciprocal, rounded to nearest.
     fn div_two(self, divisor: u64) -> Self {
         let shift = divisor.leading_zeros();
         let d = divisor << shift;
@@ -788,7 +788,7 @@ impl<const N: usize> Real<N> {
         )
     }
 
-    /// The correctly rounded sum for two limbs.
+    /// The sum at 128 bits, rounded to nearest.
     fn add_two(a: Self, b: Self) -> Self {
         if b.is_zero() {
             return a;
@@ -856,7 +856,7 @@ impl<const N: usize> Real<N> {
         )
     }
 
-    /// Two limbs: the product `hi·2^128 + lo` of normalized mantissas, rounded.
+    /// Rounds the product `hi·2^128 + lo` of normalized mantissas.
     fn round_product(neg: bool, e: i32, hi: u128, lo: u128) -> Self {
         if hi >> 127 == 0 {
             return Self::round_two(
@@ -870,7 +870,7 @@ impl<const N: usize> Real<N> {
         Self::round_two(neg, e, hi, lo, false)
     }
 
-    /// The correctly rounded sum for two or three limbs, `|big| ≥ |small|`, both non-zero.
+    /// The sum at 128 or 192 bits, rounded to nearest, for non-zero `|big| ≥ |small|`.
     fn add_wide(big: Self, small: Self) -> Self {
         let gap = big.e.abs_diff(small.e);
         let ((ah, al), sticky) = wide_shr(small.wide(), gap);
@@ -906,7 +906,7 @@ impl<const N: usize> Real<N> {
         )
     }
 
-    /// The correctly rounded product for two limbs.
+    /// The product at 128 bits, rounded to nearest.
     fn mul_two(self, o: Self) -> Self {
         let (a, b) = (self.two(), o.two());
         let (a1, a0, b1, b0) = (
@@ -921,7 +921,7 @@ impl<const N: usize> Real<N> {
         Self::round_product(self.neg != o.neg, self.e.saturating_add(o.e), hi, lo)
     }
 
-    /// The correctly rounded product for two or three limbs of normalized mantissas.
+    /// The product of normalized mantissas at 128 or 192 bits, rounded to nearest.
     fn mul_wide(self, o: Self) -> Option<Self> {
         if N == 2 {
             return Some(self.mul_two(o));
@@ -1079,7 +1079,7 @@ impl<const N: usize> Mul for Real<N> {
 
 impl<const N: usize> Div for Real<N> {
     type Output = Self;
-    /// To within a few units in the last place; correctly rounded for one limb.
+    /// Rounded to nearest at every width.
     fn div(self, o: Self) -> Self {
         if self.is_zero() || o.is_zero() {
             return <Self as Work>::zero();
@@ -1102,7 +1102,7 @@ impl<const N: usize> Div for Real<N> {
 }
 
 impl<const N: usize> Real<N> {
-    /// Two limbs by long division, rounded up when twice the remainder exceeds the divisor.
+    /// Long division at 128 bits. It rounds up when twice the remainder passes the divisor.
     fn quotient_two(a: Self, b: Self) -> Self {
         let (num, den) = (a.wide().0, b.wide().0);
         let (high, low, e) = if num < den {
@@ -1190,7 +1190,7 @@ impl<const N: usize> Real<N> {
         }
     }
 
-    /// `m·2^(e − 128)` in two limbs, `m`'s top bit set.
+    /// `m·2^(e − 128)` for an `m` with its top bit set.
     fn from_two(neg: bool, e: i32, m: u128) -> Self {
         let mut limbs = [0u64; N];
         set(&mut limbs, 0, lo64(m));
@@ -1198,8 +1198,8 @@ impl<const N: usize> Real<N> {
         Self { neg, e, m: limbs }
     }
 
-    /// The rounded root `m·2^(e − 64N)` of a mantissa with even exponent, `top`
-    /// and `low` its top 256 bits, as docs/sqrt.md derives.
+    /// Square root of `m·2^(e − 64N)` for even `e`, from the top 256 bits of `m` in
+    /// `top` and `low`. See docs/sqrt.md.
     fn root(top: u128, low: u128, e: i32) -> Self {
         let (head, (over, rem)) = root_rem(top, hi64(low), lo64(low));
         if N == 2 {
@@ -1544,7 +1544,7 @@ impl<const N: usize> Work for Real<N> {
                 Self::horner(u, table, b, step, n, alternate),
             );
         }
-        // Both chains in one loop, each hiding the other's latency.
+        // Both chains share one loop, so one runs while the other waits.
         let top = (u128::from(u.top()) << 64) | u128::from(limb(&u.m, 0));
         let uq = q126(u.neg, u.e, top);
         let coef = |first: u32, k: u32| {
@@ -1615,7 +1615,7 @@ mod tests {
         *state
     }
 
-    /// Random, or within 2 of a power of two, all ones, a square or twice one.
+    /// Test mantissas. Most are noise, but some sit near powers of two or squares.
     fn mantissa(state: &mut u64) -> u128 {
         let r = (u128::from(next(state)) << 64) | u128::from(next(state));
         let nudge = u128::from(next(state) % 5);
@@ -1630,7 +1630,7 @@ mod tests {
         m.wrapping_add(nudge).wrapping_sub(2) | 1 << 127
     }
 
-    /// Three limbs, a quarter `c²·2^62 + c`, the top of a root's input just below a square.
+    /// A 192-bit root input, just under a square `c²·2^62 + c` in a quarter of cases.
     fn limbs3(state: &mut u64) -> [u64; 3] {
         let m = mantissa(state);
         let low = next(state);
