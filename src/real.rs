@@ -694,55 +694,144 @@ impl<const N: usize> Real<N> {
         Self { neg, e, m }
     }
 
-    /// The correctly rounded sum for two limbs in 192 bits, `|big| ≥ |small|`, both non-zero.
-    fn add_two(big: Self, small: Self) -> Self {
-        let (bm, sm) = (big.wide().0, small.wide().0);
-        let gap = big.e.abs_diff(small.e);
-        // small·2^64 >> gap as its high 128 and low 64 bits, and whether bits fell off.
-        let (ah, al, sticky) = match gap {
-            0 => (sm, 0, false),
-            1..=63 => (sm >> gap, lo64(sm << (64 - gap)), false),
-            64 => (sm >> 64, lo64(sm), false),
-            65..=127 => (sm >> gap, lo64(sm >> (gap - 64)), sm << (192 - gap) != 0),
-            128..=191 => (0, lo64(sm >> (gap - 64)), sm << (192 - gap) != 0),
-            _ => (0, 0, true),
-        };
-        let (mut hi, lo, mut e, sticky) = if big.neg == small.neg {
-            let (sum, carry) = bm.overflowing_add(ah);
-            if carry {
-                let lo = (al >> 1) | (lo64(sum) << 63);
-                (
-                    (sum >> 1) | 1 << 127,
-                    lo,
-                    big.e.saturating_add(1),
-                    sticky || al & 1 == 1,
-                )
-            } else {
-                (sum, al, big.e, sticky)
-            }
-        } else {
-            let (low, b1) = 0u64.overflowing_sub(al);
-            let (low, b2) = low.overflowing_sub(u64::from(sticky));
-            let high = bm.wrapping_sub(ah).wrapping_sub(u128::from(b1 || b2));
-            if high == 0 && low == 0 {
-                return <Self as Work>::zero();
-            }
-            let full = (high, u128::from(low) << 64);
-            let z = wide_leading_zeros(full);
-            let (h, l) = wide_shl(full, z);
-            (h, hi64(l), big.e.saturating_sub(z.cast_signed()), sticky)
-        };
-        if lo >> 63 == 1 && (lo << 1 != 0 || sticky || hi & 1 == 1) {
-            hi = hi.wrapping_add(1);
-            if hi == 0 {
-                hi = 1 << 127;
+    /// Two limbs as one integer.
+    fn two(&self) -> u128 {
+        (u128::from(self.top()) << 64) | u128::from(limb(&self.m, 0))
+    }
+
+    /// Two limbs: `hi·2^(e − 128)` rounded to nearest even by the bits below.
+    fn round_two(neg: bool, e: i32, hi: u128, lo: u128, sticky: bool) -> Self {
+        let mut top = hi;
+        let mut e = e;
+        if lo >> 127 == 1 && (lo << 1 != 0 || sticky || top & 1 == 1) {
+            top = top.wrapping_add(1);
+            if top == 0 {
+                top = 1 << 127;
                 e = e.saturating_add(1);
             }
         }
         let mut m = [0u64; N];
-        set(&mut m, 0, lo64(hi));
-        set(&mut m, 1, hi64(hi));
-        Self { neg: big.neg, e, m }
+        set(&mut m, 0, lo64(top));
+        set(&mut m, 1, hi64(top));
+        Self { neg, e, m }
+    }
+
+    /// Two limbs: the correctly rounded quotient by `divisor > 0`, by Möller and Granlund.
+    fn div_two(self, divisor: u64) -> Self {
+        let shift = divisor.leading_zeros();
+        let d = divisor << shift;
+        let inverse = ((u128::from(!d) << 64) | u128::from(u64::MAX))
+            .checked_div(u128::from(d))
+            .map_or(0, lo64);
+        // `high·2^64 + low` over `d`, for `high < d`.
+        let digit = |high: u64, low: u64| {
+            let guess = (u128::from(inverse) * u128::from(high))
+                .wrapping_add((u128::from(high + 1) << 64) | u128::from(low));
+            let q = hi64(guess);
+            let r = low.wrapping_sub(q.wrapping_mul(d));
+            let (q, r) = if r > lo64(guess) {
+                (q.wrapping_sub(1), r.wrapping_add(d))
+            } else {
+                (q, r)
+            };
+            if r >= d { (q + 1, r - d) } else { (q, r) }
+        };
+        let num = self.two() << shift;
+        let (q2, r) = digit(self.top().checked_shr(64 - shift).unwrap_or(0), hi64(num));
+        let (q1, r) = digit(r, lo64(num));
+        let (q0, r) = digit(r, 0);
+        let high = (u128::from(q2) << 64) | u128::from(q1);
+        let z = high.leading_zeros();
+        let rest = u128::from(q0) << z;
+        Self::round_two(
+            self.neg,
+            self.e.saturating_sub(z.cast_signed()),
+            (high << z) | rest >> 64,
+            rest << 64,
+            r != 0,
+        )
+    }
+
+    /// The correctly rounded sum for two limbs.
+    fn add_two(a: Self, b: Self) -> Self {
+        if b.is_zero() {
+            return a;
+        }
+        if a.is_zero() {
+            return b;
+        }
+        if a.e < b.e {
+            return Self::add_sorted(b, a);
+        }
+        Self::add_sorted(a, b)
+    }
+
+    /// [`add_two`](Self::add_two) of non-zero values, `big.e ≥ small.e`.
+    fn add_sorted(big: Self, small: Self) -> Self {
+        let (hm, sm, gap) = (big.two(), small.two(), big.e.abs_diff(small.e));
+        if gap == 0 && big.neg != small.neg {
+            let (diff, borrow) = hm.overflowing_sub(sm);
+            if diff == 0 {
+                return <Self as Work>::zero();
+            }
+            let (neg, mag) = if borrow {
+                (small.neg, diff.wrapping_neg())
+            } else {
+                (big.neg, diff)
+            };
+            let z = mag.leading_zeros();
+            return Self::round_two(
+                neg,
+                big.e.saturating_sub(z.cast_signed()),
+                mag << z,
+                0,
+                false,
+            );
+        }
+        let ((high, low), sticky) = wide_shr((sm, 0), gap);
+        if big.neg == small.neg {
+            let (sum, carry) = hm.overflowing_add(high);
+            if carry {
+                return Self::round_two(
+                    big.neg,
+                    big.e.saturating_add(1),
+                    (sum >> 1) | 1 << 127,
+                    (low >> 1) | sum << 127,
+                    sticky || low & 1 == 1,
+                );
+            }
+            return Self::round_two(big.neg, big.e, sum, low, sticky);
+        }
+        // big − small, less one unit if bits fell off small, which `sticky` then marks.
+        let (lo, b1) = 0u128.overflowing_sub(low);
+        let (lo, b2) = lo.overflowing_sub(u128::from(sticky));
+        let hi = hm.wrapping_sub(high).wrapping_sub(u128::from(b1 | b2));
+        if hi == 0 && lo == 0 {
+            return <Self as Work>::zero();
+        }
+        let z = wide_leading_zeros((hi, lo));
+        let (hi, lo) = wide_shl((hi, lo), z);
+        Self::round_two(
+            big.neg,
+            big.e.saturating_sub(z.cast_signed()),
+            hi,
+            lo,
+            sticky,
+        )
+    }
+
+    /// Two limbs: the product `hi·2^128 + lo` of normalized mantissas, rounded.
+    fn round_product(neg: bool, e: i32, hi: u128, lo: u128) -> Self {
+        if hi >> 127 == 0 {
+            return Self::round_two(
+                neg,
+                e.saturating_sub(1),
+                (hi << 1) | (lo >> 127),
+                lo << 1,
+                false,
+            );
+        }
+        Self::round_two(neg, e, hi, lo, false)
     }
 
     /// The correctly rounded sum for two or three limbs, `|big| ≥ |small|`, both non-zero.
@@ -781,55 +870,54 @@ impl<const N: usize> Real<N> {
         )
     }
 
+    /// The correctly rounded product for two limbs.
+    fn mul_two(self, o: Self) -> Self {
+        let (a, b) = (self.two(), o.two());
+        let (a1, a0, b1, b0) = (
+            a >> 64,
+            a & u128::from(u64::MAX),
+            b >> 64,
+            b & u128::from(u64::MAX),
+        );
+        let (mid, c1) = (a0 * b1).overflowing_add(a1 * b0);
+        let (lo, c2) = (a0 * b0).overflowing_add(mid << 64);
+        let hi = a1 * b1 + (mid >> 64) + (u128::from(c1) << 64) + u128::from(c2);
+        Self::round_product(self.neg != o.neg, self.e.saturating_add(o.e), hi, lo)
+    }
+
     /// The correctly rounded product for two or three limbs of normalized mantissas.
     fn mul_wide(self, o: Self) -> Option<Self> {
+        if N == 2 {
+            return Some(self.mul_two(o));
+        }
         let neg = self.neg != o.neg;
         let e = self.e.saturating_add(o.e);
-        let (acc, sticky) = if N == 2 {
-            let (a, b) = (self.wide().0, o.wide().0);
-            let (a1, a0, b1, b0) = (
-                a >> 64,
-                a & u128::from(u64::MAX),
-                b >> 64,
-                b & u128::from(u64::MAX),
-            );
-            let (mid, c1) = (a0 * b1).overflowing_add(a1 * b0);
-            let (lo, c2) = (a0 * b0).overflowing_add(mid << 64);
-            let hi = a1 * b1 + (mid >> 64) + (u128::from(c1) << 64) + u128::from(c2);
-            ((hi, lo), false)
-        } else {
-            let mut p = [0u64; 6];
-            for i in 0..3 {
-                let x = u128::from(limb(&self.m, i));
-                let mut carry: u128 = 0;
-                for j in 0..3 {
-                    let cur = u128::from(limb(&p, i + j)) + x * u128::from(limb(&o.m, j)) + carry;
-                    set(&mut p, i + j, lo64(cur));
-                    carry = cur >> 64;
-                }
-                set(&mut p, i + 3, lo64(carry));
+        let mut p = [0u64; 6];
+        for i in 0..3 {
+            let x = u128::from(limb(&self.m, i));
+            let mut carry: u128 = 0;
+            for j in 0..3 {
+                let cur = u128::from(limb(&p, i + j)) + x * u128::from(limb(&o.m, j)) + carry;
+                set(&mut p, i + j, lo64(cur));
+                carry = cur >> 64;
             }
-            let pair = |i: usize| (u128::from(limb(&p, i + 1)) << 64) | u128::from(limb(&p, i));
-            let top = (pair(4), pair(2));
-            let below = pair(0);
-            if top.0 >> 127 == 0 {
-                let shifted = wide_shl(top, 1);
-                return (top.0 >> 126 == 1).then(|| {
-                    Self::round_wide(
-                        neg,
-                        e.saturating_sub(1),
-                        (shifted.0, shifted.1 | below >> 127),
-                        below << 1 != 0,
-                    )
-                });
-            }
-            (top, below != 0)
-        };
-        if acc.0 >> 127 == 0 {
-            return (acc.0 >> 126 == 1)
-                .then(|| Self::round_wide(neg, e.saturating_sub(1), wide_shl(acc, 1), sticky));
+            set(&mut p, i + 3, lo64(carry));
         }
-        Some(Self::round_wide(neg, e, acc, sticky))
+        let pair = |i: usize| (u128::from(limb(&p, i + 1)) << 64) | u128::from(limb(&p, i));
+        let top = (pair(4), pair(2));
+        let below = pair(0);
+        if top.0 >> 127 == 0 {
+            let shifted = wide_shl(top, 1);
+            return (top.0 >> 126 == 1).then(|| {
+                Self::round_wide(
+                    neg,
+                    e.saturating_sub(1),
+                    (shifted.0, shifted.1 | below >> 127),
+                    below << 1 != 0,
+                )
+            });
+        }
+        Some(Self::round_wide(neg, e, top, below != 0))
     }
 
     fn mag_cmp(&self, o: &Self) -> Ordering {
@@ -926,21 +1014,19 @@ impl<const N: usize> Add for Real<N> {
                 Self::add1(self, other)
             };
         }
+        if N == 2 {
+            return Self::add_two(self, other);
+        }
         if other.is_zero() {
             return self;
         }
         if self.is_zero() {
             return other;
         }
-        let (big, small) = if self.mag_cmp(&other) == Ordering::Less {
-            (other, self)
+        if self.mag_cmp(&other) == Ordering::Less {
+            Self::add_wide(other, self)
         } else {
-            (self, other)
-        };
-        if N == 2 {
-            Self::add_two(big, small)
-        } else {
-            Self::add_wide(big, small)
+            Self::add_wide(self, other)
         }
     }
 }
@@ -948,7 +1034,7 @@ impl<const N: usize> Add for Real<N> {
 impl<const N: usize> Sub for Real<N> {
     type Output = Self;
     fn sub(self, o: Self) -> Self {
-        self + -o
+        self + Self { neg: !o.neg, ..o }
     }
 }
 
@@ -1155,6 +1241,9 @@ impl<const N: usize> Work for Real<N> {
     fn div_int(self, k: u64) -> Self {
         if self.is_zero() || k == 0 {
             return self;
+        }
+        if N == 2 {
+            return self.div_two(k);
         }
         let mut q = [0; SCRATCH];
         let mut rem: u128 = 0;
@@ -1459,11 +1548,89 @@ mod two_limbs {
             } else {
                 (a, b)
             };
-            let (x, y) = (Real::add_two(big, small), generic(big, small));
-            assert!(
-                x.neg == y.neg && x.e == y.e && x.m == y.m,
-                "{a:?} {b:?}: {x:?} {y:?}"
-            );
+            let y = generic(big, small);
+            for x in [Real::add_two(a, b), Real::add_two(b, a)] {
+                assert!(
+                    x.neg == y.neg && x.e == y.e && x.m == y.m,
+                    "{a:?} {b:?}: {x:?} {y:?}"
+                );
+            }
+        }
+    }
+
+    fn generic_int(x: Real<2>, k: i64, divide: bool) -> Real<2> {
+        let mut p = [0; SCRATCH];
+        if divide {
+            let k = k.cast_unsigned();
+            let mut rem: u128 = 0;
+            for i in (0..3).rev() {
+                let cur = (rem << 64) | u128::from(if i == 0 { 0 } else { limb(&x.m, i - 1) });
+                set(&mut p, i, lo64(cur / u128::from(k)));
+                rem = cur % u128::from(k);
+            }
+            return Real::normalize(x.neg, x.e, &mut p, 3, rem != 0);
+        }
+        let mut carry: u128 = 0;
+        for i in 0..2 {
+            let cur = u128::from(limb(&x.m, i)) * u128::from(k.unsigned_abs()) + carry;
+            set(&mut p, i, lo64(cur));
+            carry = cur >> 64;
+        }
+        set(&mut p, 2, lo64(carry));
+        Real::normalize(x.neg != (k < 0), x.e.saturating_add(64), &mut p, 3, false)
+    }
+
+    #[test]
+    fn products_and_quotients_match_the_limb_loops() {
+        let mut state = 0x9E37_79B9_7F4A_7C15u64;
+        let mut next = move || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+        for _ in 0..1_000_000 {
+            let limbs = |n: &mut dyn FnMut() -> u64| match n() % 4 {
+                0 => u64::MAX,
+                1 => 0,
+                _ => n(),
+            };
+            let a = Real::<2> {
+                neg: next() % 2 == 1,
+                e: i32::try_from(next() % 64).unwrap_or(0) - 32,
+                m: [limbs(&mut next), limbs(&mut next) | 1 << 63],
+            };
+            let b = Real::<2> {
+                neg: next() % 2 == 1,
+                e: 1,
+                m: [limbs(&mut next), limbs(&mut next) | 1 << 63],
+            };
+            let k = match next() % 4 {
+                0 => next() % 300 + 1,
+                1 => 1 << (next() % 64),
+                2 => next() | 1,
+                _ => u64::MAX - next() % 3,
+            };
+            let ki = k.cast_signed();
+            let (mut ab, mut aa) = (a.product(&b), a.product(&a));
+            let pairs = [
+                (
+                    a * b,
+                    Real::normalize(a.neg != b.neg, a.e + 1, &mut ab, 4, false),
+                ),
+                (
+                    a.square(),
+                    Real::normalize(false, a.e * 2, &mut aa, 4, false),
+                ),
+                (a.mul_int(ki), generic_int(a, ki, false)),
+                (a.div_int(k), generic_int(a, ki, true)),
+            ];
+            for (x, y) in pairs {
+                assert!(
+                    x.neg == y.neg && x.e == y.e && x.m == y.m,
+                    "{a:?} {b:?} {k}: {x:?} {y:?}"
+                );
+            }
         }
     }
 }
