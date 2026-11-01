@@ -10,6 +10,66 @@ function in backticks.
 Releases before 3.1.1 are described on the
 [releases page](https://github.com/GeEom/fixed_analytics/releases).
 
+## 5.0.0
+
+The elliptic functions and the Kepler solver run three to four times as fast,
+and the working arithmetic now rounds square roots and quotients correctly.
+No signature changes.
+
+Output changes:
+
+- `root_in` probed an end of its bracket again when the regula falsi point
+  fell within an ulp of it, so it could spend its budget and return a
+  bracket that was not adjacent. It now keeps each probe strictly inside, so
+  it reaches the adjacent bracket in about a quarter of the calls. Only
+  brackets that were not adjacent change.
+- `log1p_ratio` and `log1p_ratio_range` now round to nearest where
+  `1 − z/2` lies on a midpoint and `z²/3` decides the side. For tiny `z` the
+  result now rounds up, as the exact value lies above the midpoint, where
+  4.0.0 rounded to even.
+
+New, generic over the types:
+
+- `carlson_rd_roots`, `R_D` of the squares of its arguments, which keeps
+  its precision as a root nears 0, and `carlson_rf_rd_roots`,
+  `carlson_rd_rj_roots` and `carlson_rf_rd_rj_roots`, which give two or all
+  three integrals of one triple from one duplication.
+- `kepler_universal_stumpff`, which returns `χ` with the Stumpff values at
+  `αχ²`, and `kepler_universal_near`, which starts from a nearby `χ`. Any
+  start gives the same result.
+- `root_in_newton`, the bracket of `root_in` by safeguarded steps from the
+  caller, Newton's or Halley's.
+- `sin_ratio`, `(sin x/x, (1 − cos x)/x²)` to full relative precision.
+
+Speed on I64F64, per call, with the arguments trajectory passes:
+
+| Function | 4.0.0 | 5.0.0 |
+|----------|-------|-------|
+| `carlson_rj_roots` | 4.26 µs | 1.28 µs |
+| `carlson_rf_roots` | 2.04 µs | 0.66 µs |
+| `jacobi_sn_cn_dn` | 1.92 µs | 0.52 µs |
+| `jacobi_inverse` | 2.35 µs | 0.73 µs |
+| `kepler_universal`, median | 3.77 µs | 0.92 µs |
+| `kepler_universal`, p99 | 99.8 µs | 1.66 µs |
+| `stumpff` | 0.43 µs | 0.21 µs |
+| `tan` | 0.17 µs | 0.10 µs |
+| `sin_cos` | 0.084 µs | 0.069 µs |
+
+Square roots and quotients at 128 and 192 bits are now integer roots and
+long division, and the 128-bit sum and product take shorter paths.
+Carlson's duplication closes with a longer series in fixed point, so it
+takes about five steps where it took nine. The Jacobi functions take
+descending Landen steps over one denominator, with one division in all.
+`kepler_universal` stops once its step is below the output's guard bits,
+where it used to bisect through rounding noise. It takes Halley steps
+from a better start, most of them in the narrow working type.
+`tan` uses the 126-bit kernel on 128-bit types. `ellip_k` and `ellip_e`
+gain from an AGM that now stops reliably. Narrower types gain less, as
+their arithmetic is one limb.
+
+The README is a summary now. The detail is in docs/accuracy.md,
+docs/worst-case.md and docs/saturation.md.
+
 ## 4.0.0
 
 Every function now evaluates in binary floating point at twice its type's

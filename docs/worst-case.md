@@ -23,7 +23,7 @@ and `_up` rows are the `_rounded` functions with `Rounding::Down` and
 1.00, but the sweep checks that each is below one and on its side.
 
 <!-- WORST_START -->
-463213662 inputs over 119 functions and 104 layouts; 0 of 88964644 symmetry checks and 0 of 247907720 monotonicity checks failed.
+488720248 inputs over 135 functions and 104 layouts; 0 of 102948745 symmetry checks and 0 of 253753023 monotonicity checks failed.
 
 | Function | I16F16 | I32F32 | I64F64 | All layouts |
 |----------|------|------|------|------|
@@ -77,6 +77,8 @@ and `_up` rows are the `_rounded` functions with `Rounding::Down` and
 | stumpff_c1 | 0.50 | 0.50 | 0.50 | 0.50 |
 | stumpff_c2 | 0.50 | 0.50 | 0.50 | 0.50 |
 | stumpff_c3 | 0.50 | 0.50 | 0.50 | 0.50 |
+| sin_ratio | 0.50 | 0.50 | 0.50 | 0.50 |
+| sin_ratio_versine | 0.50 | 0.50 | 0.50 | 0.50 |
 | tan_ratio | 0.50 | 0.50 | 0.50 | 0.50 |
 | atan_ratio | 0.50 | 0.50 | 0.50 | 0.50 |
 | atanh_ratio | 0.50 | 0.50 | 0.50 | 0.50 |
@@ -94,6 +96,15 @@ and `_up` rows are the `_rounded` functions with `Rounding::Down` and
 | carlson_rj | 0.50 | 0.50 | 0.50 | 0.50 |
 | carlson_rc | 0.50 | 0.50 | 0.50 | 0.50 |
 | carlson_rd | 0.50 | 0.50 | 0.50 | 0.50 |
+| carlson_rj_roots | 0.50 | 0.50 | 0.50 | 0.50 |
+| carlson_rd_roots | 0.50 | 0.50 | 0.50 | 0.50 |
+| carlson_rf_rd_roots_rf | 0.50 | 0.50 | 0.50 | 0.50 |
+| carlson_rf_rd_roots_rd | 0.50 | 0.50 | 0.50 | 0.50 |
+| carlson_rd_rj_roots_rd | 0.50 | 0.50 | 0.50 | 0.50 |
+| carlson_rd_rj_roots_rj | 0.50 | 0.50 | 0.50 | 0.50 |
+| carlson_rf_rd_rj_roots_rf | 0.50 | 0.50 | 0.50 | 0.50 |
+| carlson_rf_rd_rj_roots_rd | 0.50 | 0.50 | 0.50 | 0.50 |
+| carlson_rf_rd_rj_roots_rj | 0.50 | 0.50 | 0.50 | 0.50 |
 | ellip_pi | 0.50 | 0.50 | 0.50 | 0.50 |
 | ellip_pi_complete | 0.50 | 0.50 | 0.50 | 0.50 |
 | sin_turns | 0.50 | 0.50 | 0.50 | 0.50 |
@@ -130,6 +141,11 @@ and `_up` rows are the `_rounded` functions with `Rounding::Down` and
 | exprel_weighted_k2_re | 0.50 | 0.50 | 0.49 | 0.50 |
 | exprel_weighted_k2_im | 0.50 | 0.50 | 0.50 | 0.50 |
 | kepler_universal | 0.50 | 0.50 | 0.50 | 0.50 |
+| kepler_universal_stumpff_c0 | 0.50 | 0.50 | 0.50 | 0.50 |
+| kepler_universal_stumpff_c1 | 0.50 | 0.50 | 0.50 | 0.50 |
+| kepler_universal_stumpff_c2 | 0.50 | 0.50 | 0.50 | 0.50 |
+| kepler_universal_stumpff_c3 | 0.50 | 0.50 | 0.50 | 0.50 |
+| kepler_universal_near | 0.50 | 0.50 | 0.50 | 0.50 |
 | erf | 0.50 | 0.50 | 0.50 | 0.50 |
 | erfc | 0.50 | 0.50 | 0.50 | 0.50 |
 | fresnel_c | 0.50 | 0.50 | 0.50 | 0.50 |

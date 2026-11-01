@@ -32,14 +32,14 @@ Requires Rust 1.95 or later.
 
 ```toml
 [dependencies]
-fixed_analytics = "4.0.0"
+fixed_analytics = "5.0.0"
 ```
 
 For `no_std`, turn off the default `std` feature, which only implements `std::error::Error` for `Error`:
 
 ```toml
 [dependencies]
-fixed_analytics = { version = "4.0.0", default-features = false }
+fixed_analytics = { version = "5.0.0", default-features = false }
 ```
 
 ## Functions
