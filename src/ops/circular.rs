@@ -83,6 +83,13 @@ pub fn cos<T: CordicNumber>(angle: T) -> T {
     no_panic::no_panic
 )]
 pub fn tan<T: CordicNumber>(angle: T) -> T {
+    let raw = angle.raw_i128();
+    if crate::fast::applies::<T>() {
+        let (s, c) = crate::fast::sin_cos(raw.unsigned_abs(), T::frac_bits(), true);
+        if let Some(t) = crate::fast::tan(s, c, T::frac_bits()) {
+            return T::from_raw_i128(if raw < 0 { -t } else { t });
+        }
+    }
     tiered!(T, |v| tan_work(angle, v))
 }
 
