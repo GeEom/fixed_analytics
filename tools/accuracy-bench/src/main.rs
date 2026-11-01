@@ -4,11 +4,12 @@
 //! Compare: cargo run --release -- --baseline path/to/baseline.json
 //!          [--worst-baseline path/to/worst.txt]
 
-use accuracy_bench::{build_registry, readme, report::Report, sampling::SampleStrategy, worst};
+use accuracy_bench::{accuracy_doc, build_registry, report::Report, sampling::SampleStrategy, worst};
 use rayon::prelude::*;
 use std::{env, fs, path::Path, process};
 
-const README_PATH: &str = "../../README.md";
+const ACCURACY_DOC: &str = "accuracy.md";
+const WORST_DOC: &str = "worst-case.md";
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -60,32 +61,34 @@ fn main() {
     fs::write(&worst_report, &worst_text).expect("Failed to write worst-case report");
     eprintln!("Worst cases saved: {worst_report}");
 
-    // Determine README path (handle running from different directories)
-    let readme_path = find_readme_path();
+    // Determine the docs directory (handle running from different directories)
+    let docs = find_docs_dir();
+    let accuracy_path = docs.as_ref().map(|d| format!("{d}/{ACCURACY_DOC}"));
+    let worst_path = docs.as_ref().map(|d| format!("{d}/{WORST_DOC}"));
 
     if let Some(baseline_path) = baseline_path {
-        // CI mode: verify README and compare to baseline
+        // CI mode: verify the docs pages and compare to baseline
         let mut all_passed = true;
 
-        // Verify README is up-to-date
-        if let Some(ref path) = readme_path {
-            eprintln!("\nVerifying README accuracy section...");
-            match readme::verify_readme(path, &report.results) {
-                Ok(()) => eprintln!("README: OK"),
+        // Verify the docs pages are up-to-date
+        if let Some(ref path) = accuracy_path {
+            eprintln!("\nVerifying {path}...");
+            match accuracy_doc::verify_doc(path, &report.results) {
+                Ok(()) => eprintln!("{path}: OK"),
                 Err(e) => {
-                    eprintln!("README: FAILED\n{e}");
+                    eprintln!("{path}: FAILED\n{e}");
                     all_passed = false;
                 }
             }
         } else {
-            eprintln!("\nWarning: Could not find README.md to verify");
+            eprintln!("\nWarning: Could not find docs/{ACCURACY_DOC} to verify");
         }
 
-        if let Some(ref path) = readme_path.as_ref().filter(|_| !quick) {
-            match worst::verify_readme(path, &worst_stats) {
-                Ok(()) => eprintln!("README worst case: OK"),
+        if let Some(ref path) = worst_path.as_ref().filter(|_| !quick) {
+            match worst::verify_doc(path, &worst_stats) {
+                Ok(()) => eprintln!("{path}: OK"),
                 Err(e) => {
-                    eprintln!("README worst case: FAILED\n{e}");
+                    eprintln!("{path}: FAILED\n{e}");
                     all_passed = false;
                 }
             }
@@ -118,17 +121,17 @@ fn main() {
 
         process::exit(if all_passed { 0 } else { 1 });
     } else {
-        // Local mode: update README and print table
-        if let Some(ref path) = readme_path {
-            match readme::update_readme(path, &report.results) {
-                Ok(true) => eprintln!("README.md updated with latest accuracy data"),
-                Ok(false) => eprintln!("README.md already up-to-date"),
-                Err(e) => eprintln!("Warning: Could not update README: {e}"),
+        // Local mode: update the docs pages and print table
+        if let (Some(accuracy), Some(worst_doc)) = (&accuracy_path, &worst_path) {
+            match accuracy_doc::update_doc(accuracy, &report.results) {
+                Ok(true) => eprintln!("{accuracy} updated with latest accuracy data"),
+                Ok(false) => eprintln!("{accuracy} already up-to-date"),
+                Err(e) => eprintln!("Warning: Could not update {accuracy}: {e}"),
             }
-            match worst::update_readme(path, &worst_stats) {
-                Ok(true) => eprintln!("README.md updated with worst-case data"),
+            match worst::update_doc(worst_doc, &worst_stats) {
+                Ok(true) => eprintln!("{worst_doc} updated with worst-case data"),
                 Ok(false) => {}
-                Err(e) => eprintln!("Warning: Could not update README worst case: {e}"),
+                Err(e) => eprintln!("Warning: Could not update {worst_doc}: {e}"),
             }
         }
         fs::write(worst::WORST_PATH, &worst_text).expect("Failed to write worst.txt");
@@ -138,26 +141,12 @@ fn main() {
     }
 }
 
-/// Find the README.md file, checking multiple possible locations.
-fn find_readme_path() -> Option<String> {
-    let candidates = [
-        README_PATH,
-        "README.md",
-        "../README.md",
-        "../../README.md",
-        "../../../README.md",
-    ];
-
-    for candidate in candidates {
-        if Path::new(candidate).exists()
-            && let Ok(content) = fs::read_to_string(candidate)
-            && content.contains("fixed_analytics")
-        {
-            return Some(candidate.to_string());
-        }
-    }
-
-    None
+/// Find the repo's docs directory, checking multiple possible locations.
+fn find_docs_dir() -> Option<String> {
+    ["../../docs", "docs", "../docs", "../../../docs"]
+        .into_iter()
+        .find(|d| Path::new(d).join(ACCURACY_DOC).exists())
+        .map(String::from)
 }
 
 fn compare_and_report(current: &Report, baseline_path: &str) -> bool {

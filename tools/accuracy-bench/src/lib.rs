@@ -1,10 +1,10 @@
 //! Accuracy benchmarking framework for fixed_analytics.
 
+pub mod accuracy_doc;
 pub mod functions;
 pub mod metrics;
 pub mod complex_ref;
 pub mod elliptic_ref;
-pub mod readme;
 pub mod reference;
 pub mod report;
 pub mod sampling;

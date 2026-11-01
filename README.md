@@ -8,7 +8,9 @@ Fixed-point mathematical functions which are accurate, deterministic, and guaran
 [![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE.txt)
 [![codecov](https://codecov.io/gh/GeEom/fixed_analytics/branch/main/graph/badge.svg)](https://codecov.io/gh/GeEom/fixed_analytics)
 
-## Examples
+Every function is generic over the signed types of the [`fixed`](https://crates.io/crates/fixed) crate, from `I8F0` to `I3F125`. None uses floating point or allocates, and all run under `no_std`. The [`no-panic`](https://github.com/dtolnay/no-panic) crate checks at link time that no function can panic.
+
+## Example
 
 ```rust
 use fixed::types::I16F16;
@@ -33,22 +35,19 @@ Requires Rust 1.95 or later.
 fixed_analytics = "4.0.0"
 ```
 
-For `no_std` environments:
+For `no_std`, turn off the default `std` feature, which only implements `std::error::Error` for `Error`:
 
 ```toml
 [dependencies]
 fixed_analytics = { version = "4.0.0", default-features = false }
 ```
 
-## Available Functions
+## Functions
 
-### Function Categories
+Total functions return `T` for every input. Fallible functions return `Result<T, Error>` and fail only outside their domain.
 
-**Total functions** return `T` directly and handle all inputs, possibly with saturation.
-**Fallible functions** return `Result<T, Error>` and fail on domain violations.
-
-| Category | Total Functions | Fallible Functions |
-|----------|-----------------|-------------------|
+| Category | Total | Fallible |
+|----------|-------|----------|
 | Trigonometric | `sin`, `cos`, `tan`, `sin_cos`, `atan`, `atan2` | `asin`, `acos`, `asin_from_gap` |
 | Hyperbolic | `sinh`, `cosh`, `tanh`, `sinh_cosh`, `asinh` | `acosh`, `atanh`, `acoth`, `coth` |
 | Exponential | `exp`, `pow2`, `expm1`, `exprel`, `exprel2`, `exp_moments` | `ln`, `log2`, `log10`, `pow`, `log1p`, `log1p_ratio`, `log1p_residual`, `log1p_residual_ratio` |
@@ -62,178 +61,19 @@ fixed_analytics = { version = "4.0.0", default-features = false }
 | Solvers | — | `root_in`, `kepler_universal` |
 | Enclosures | `enclose`, `sin_cos_range`, `sin_cos_range_turns`, `exp_range`, `atan_range`, `tanh_range`, `exprel_range`, `exprel2_range`, `exp_moments_range`, `tanh_ratio_range`, `atan_ratio_range`, `tan_ratio_range`, `stumpff_range`, `sqrt_range`, `hypot_range`, `atan2_range` | `log1p_range`, `log1p_ratio_range`, `log1p_residual_ratio_range`, `atanh_ratio_range` |
 
-Each function works in binary floating point at twice its type's width or more, from its arguments converted exactly, and rounds once to the type. Every one is within one ulp of the exact result on every type, `ERROR_ULPS`, and the arithmetic functions within half an ulp, or rounded by `Rounding` to the nearest value below or above. Odd and even functions are exactly so and monotone functions stay monotone. Complete absence of panic is verified at the linker level via the [`no-panic`](https://github.com/dtolnay/no-panic) crate.
+## Accuracy
 
-### Saturation Behavior
+Each function evaluates in binary floating point at twice its type's width or more, from its arguments converted exactly, and rounds once. Every result lies within one ulp of the exact value on every layout, the bound `ERROR_ULPS` states. The arithmetic does better. `mul_add`, `mul_div`, `div_or_saturate`, `dot` and `sqrt` round the exact result to nearest, and the `_rounded` forms round it toward −∞ or +∞. Odd and even functions keep their symmetry, and monotone functions stay monotone.
 
-The following total functions saturate, clamping to the representable range near the following thresholds.
+The accuracy tool checks every function against MPFR on 104 layouts from 8 to 128 bits. On the 8- and 16-bit layouts it tries every input of a one-argument function; elsewhere it draws seeded inputs. Up to the working error at a midpoint, it has found the nearest value in all but two functions. `wrap_principal` keeps its result in (−π, π] at a cost of up to 0.98 ulp next to ±π. The real part of `Complex::erf` reaches 0.80 ulp on I80F48. No symmetry or monotonicity check has failed. CI compares every change with the baseline and fails on a regression.
 
-| Function | I16F16 Threshold | I32F32 Threshold | Result |
-|----------|------------------|------------------|--------|
-| `exp` | x ≥ 10.4 | x ≥ 21.5 | `T::MAX` |
-| `exp` | x ≤ -11.8 | x ≤ -22.9 | Zero |
-| `pow2` | x ≥ 15.0 | x ≥ 31.0 | `T::MAX` |
-| `pow2` | x ≤ -17.0 | x ≤ -33.0 | Zero |
-| `sinh` | \|x\| ≥ 11.1 | \|x\| ≥ 22.2 | `T::MAX` or `T::MIN` |
-| `cosh` | \|x\| ≥ 11.1 | \|x\| ≥ 22.2 | `T::MAX` |
-| `tan` | \|x - pole\| < 3.1e-5 | \|x - pole\| < 4.7e-10 | `T::MAX` or `T::MIN` |
+## Saturation
 
-Where for `tan`, "pole" refers to ±π/2, ±3π/2, ±5π/2, ...
+Out of range, a total function returns `T::MAX` or `T::MIN`. A result under half an ulp rounds to zero. Dividing by zero gives the end with the numerator's sign, and 0/0 gives 0. On I16F16, `exp` saturates from 10.40 and `pow2` from 15, `sinh` and `cosh` from ±11.09, and `tan` within 3.1e-5 of a pole. Inside their domains the fallible functions saturate too, `pow` and `gamma` among them.
 
-<!-- ACCURACY_START -->
-### Accuracy
+## Documentation
 
-Relative error statistics measured against MPFR reference implementations. Accuracy regressions are not permitted; every change is benchmarked against the baseline before merging. The file tools/accuracy-bench/baseline.json contains further measurements.
-
-| Function | I16F16 Mean | I16F16 Median | I16F16 P95 | I32F32 Mean | I32F32 Median | I32F32 P95 |
-|----------|-------------|---------------|------------|-------------|---------------|------------|
-| sin | 3.11e-5 | 6.12e-6 | 6.18e-5 | 4.65e-10 | 9.35e-11 | 9.59e-10 |
-| cos | 3.14e-5 | 6.17e-6 | 6.29e-5 | 4.73e-10 | 9.33e-11 | 9.89e-10 |
-| tan | 3.28e-5 | 1.26e-5 | 7.51e-5 | 5.37e-10 | 1.91e-10 | 1.13e-9 |
-| asin | 3.89e-5 | 1.12e-5 | 9.52e-5 | 6.56e-10 | 1.72e-10 | 1.50e-9 |
-| acos | 8.39e-6 | 3.69e-6 | 2.85e-5 | 1.29e-10 | 5.64e-11 | 4.25e-10 |
-| atan | 2.72e-6 | 2.52e-6 | 4.78e-6 | 4.19e-11 | 3.88e-11 | 7.29e-11 |
-| sinh | 7.41e-6 | 4.17e-6 | 1.26e-5 | 1.18e-10 | 6.33e-11 | 1.91e-10 |
-| cosh | 3.79e-6 | 3.73e-6 | 7.35e-6 | 5.76e-11 | 5.65e-11 | 1.12e-10 |
-| tanh | 5.38e-6 | 2.10e-6 | 9.51e-6 | 1.09e-10 | 6.18e-11 | 1.41e-10 |
-| coth | 3.53e-6 | 2.24e-6 | 8.26e-6 | 7.05e-11 | 5.99e-11 | 1.28e-10 |
-| asinh | 2.85e-6 | 1.37e-6 | 4.96e-6 | 4.43e-11 | 2.08e-11 | 7.56e-11 |
-| acosh | 2.29e-6 | 1.36e-6 | 4.80e-6 | 3.59e-11 | 2.09e-11 | 7.45e-11 |
-| atanh | 4.22e-5 | 1.40e-5 | 1.01e-4 | 7.11e-10 | 2.13e-10 | 1.56e-9 |
-| acoth | 1.92e-4 | 1.40e-4 | 5.49e-4 | 2.94e-9 | 2.16e-9 | 8.40e-9 |
-| exp | 5.98e-3 | 9.19e-6 | 4.13e-2 | 9.45e-8 | 1.39e-10 | 6.50e-7 |
-| ln | 1.02e-6 | 6.57e-7 | 1.46e-6 | 1.39e-11 | 1.01e-11 | 2.23e-11 |
-| log2 | 6.76e-7 | 4.55e-7 | 1.01e-6 | 9.69e-12 | 6.89e-12 | 1.53e-11 |
-| log10 | 1.92e-6 | 1.50e-6 | 3.35e-6 | 3.00e-11 | 2.30e-11 | 5.07e-11 |
-| pow2 | 3.54e-4 | 5.03e-6 | 2.37e-3 | 5.47e-9 | 7.69e-11 | 3.67e-8 |
-| pow | 6.47e-4 | 1.33e-5 | 3.13e-3 | 1.01e-8 | 2.02e-10 | 4.85e-8 |
-| sqrt | 8.88e-8 | 5.80e-8 | 2.42e-7 | 1.37e-12 | 8.85e-13 | 3.62e-12 |
-<!-- ACCURACY_END -->
-
-<!-- WORST_START -->
-### Worst-case error
-
-The largest error seen, in ulps of the type, against MPFR on exact inputs. The sweep covers 104 layouts from 8 to 128 bits, every value of each 8- and 16-bit one and 40000 seeded samples of each wider one; tools/accuracy-bench/worst.txt holds every layout. The directed forms, `_down` and `_up`, come within a rounding of a whole ulp, and the sweep checks exactly that each is below one and on its side.
-
-| Function | I16F16 | I32F32 | I64F64 |
-|----------|------|------|------|
-| sin | 0.50 | 0.50 | 0.50 |
-| cos | 0.50 | 0.50 | 0.50 |
-| tan | 0.50 | 0.50 | 0.50 |
-| asin | 0.50 | 0.50 | 0.50 |
-| acos | 0.50 | 0.50 | 0.50 |
-| atan | 0.50 | 0.50 | 0.50 |
-| atan2 | 0.50 | 0.50 | 0.50 |
-| sinh | 0.50 | 0.50 | 0.50 |
-| cosh | 0.50 | 0.50 | 0.50 |
-| tanh | 0.50 | 0.50 | 0.50 |
-| coth | 0.50 | 0.50 | 0.50 |
-| asinh | 0.50 | 0.50 | 0.50 |
-| acosh | 0.50 | 0.50 | 0.50 |
-| atanh | 0.50 | 0.50 | 0.50 |
-| acoth | 0.50 | 0.50 | 0.50 |
-| exp | 0.50 | 0.50 | 0.50 |
-| pow2 | 0.50 | 0.50 | 0.50 |
-| ln | 0.50 | 0.50 | 0.50 |
-| log2 | 0.50 | 0.50 | 0.50 |
-| log10 | 0.50 | 0.50 | 0.50 |
-| pow | 0.50 | 0.50 | 0.50 |
-| sqrt | 0.50 | 0.50 | 0.50 |
-| sqrt_or_zero | 0.50 | 0.50 | 0.50 |
-| mul_add | 0.50 | 0.50 | 0.50 |
-| mul_div | 0.50 | 0.50 | 0.50 |
-| div_or_saturate | 0.50 | 0.50 | 0.50 |
-| dot3 | 0.50 | 0.50 | 0.50 |
-| hypot | 0.50 | 0.50 | 0.50 |
-| norm3 | 0.50 | 0.50 | 0.50 |
-| normalize3 | 0.50 | 0.50 | 0.50 |
-| scale_by | 0.50 | 0.50 | 0.50 |
-| sqrt_product | 0.50 | 0.50 | 0.50 |
-| asin_from_gap | 0.50 | 0.50 | 0.50 |
-| rsqrt | 0.50 | 0.50 | 0.50 |
-| expm1 | 0.50 | 0.50 | 0.50 |
-| exprel | 0.50 | 0.50 | 0.50 |
-| exprel2 | 0.50 | 0.50 | 0.50 |
-| exp_moments_e1 | 0.50 | 0.50 | 0.50 |
-| exp_moments_e2 | 0.50 | 0.50 | 0.50 |
-| exp_moments_e3 | 0.50 | 0.50 | 0.50 |
-| exp_moments_e4 | 0.50 | 0.50 | 0.50 |
-| exp_moments_e5 | 0.50 | 0.50 | 0.50 |
-| log1p | 0.50 | 0.50 | 0.50 |
-| log1p_ratio | 0.50 | 0.50 | 0.50 |
-| log1p_residual | 0.50 | 0.50 | 0.50 |
-| log1p_residual_ratio | 0.50 | 0.50 | 0.50 |
-| stumpff_c0 | 0.50 | 0.50 | 0.50 |
-| stumpff_c1 | 0.50 | 0.50 | 0.50 |
-| stumpff_c2 | 0.50 | 0.50 | 0.50 |
-| stumpff_c3 | 0.50 | 0.50 | 0.50 |
-| tan_ratio | 0.50 | 0.50 | 0.50 |
-| atan_ratio | 0.50 | 0.50 | 0.50 |
-| atanh_ratio | 0.50 | 0.50 | 0.50 |
-| tanh_ratio | 0.50 | 0.50 | 0.50 |
-| ellip_k | 0.50 | 0.50 | 0.50 |
-| ellip_k_from_m | 0.50 | 0.50 | 0.50 |
-| ellip_e | 0.50 | 0.50 | 0.50 |
-| jacobi_sn | 0.50 | 0.50 | 0.50 |
-| jacobi_cn | 0.50 | 0.50 | 0.50 |
-| jacobi_dn | 0.50 | 0.50 | 0.50 |
-| jacobi_am | 0.50 | 0.50 | 0.50 |
-| jacobi_inverse | 0.50 | 0.50 | 0.50 |
-| carlson_rf | 0.50 | 0.50 | 0.50 |
-| carlson_rf_roots | 0.50 | 0.50 | 0.50 |
-| carlson_rj | 0.50 | 0.50 | 0.50 |
-| carlson_rc | 0.50 | 0.50 | 0.50 |
-| carlson_rd | 0.50 | 0.50 | 0.50 |
-| ellip_pi | 0.50 | 0.50 | 0.50 |
-| ellip_pi_complete | 0.50 | 0.50 | 0.50 |
-| sin_turns | 0.50 | 0.50 | 0.50 |
-| cos_turns | 0.50 | 0.50 | 0.50 |
-| atan2_turns | 0.50 | 0.50 | 0.50 |
-| div_by_tau | 0.50 | 0.50 | 0.50 |
-| wrap_radians | 0.50 | 0.50 | 0.50 |
-| wrap_principal | 0.50 | 0.50 | 0.50 |
-| mul_by_tau | 0.50 | 0.50 | 0.50 |
-| c_mul_re | 0.50 | 0.50 | 0.50 |
-| c_mul_im | 0.50 | 0.50 | 0.50 |
-| c_div_re | 0.50 | 0.50 | 0.50 |
-| c_div_im | 0.50 | 0.50 | 0.50 |
-| c_exp_re | 0.50 | 0.50 | 0.50 |
-| c_exp_im | 0.50 | 0.50 | 0.50 |
-| c_exprel_re | 0.50 | 0.50 | 0.50 |
-| c_exprel_im | 0.50 | 0.50 | 0.50 |
-| c_exprel2_re | 0.50 | 0.50 | 0.50 |
-| c_exprel2_im | 0.50 | 0.50 | 0.50 |
-| faddeeva_re | 0.50 | 0.50 | 0.50 |
-| faddeeva_im | 0.50 | 0.50 | 0.50 |
-| c_erf_re | 0.50 | 0.50 | 0.50 |
-| c_erf_im | 0.50 | 0.50 | 0.50 |
-| e1_re | 0.50 | 0.50 | 0.50 |
-| e1_im | 0.50 | 0.50 | 0.50 |
-| gamma_upper_re | 0.50 | 0.50 | 0.50 |
-| gamma_upper_im | 0.50 | 0.50 | 0.50 |
-| c_ln_re | 0.50 | 0.50 | 0.50 |
-| c_ln_im | 0.50 | 0.50 | 0.50 |
-| c_pow_re | 0.50 | 0.50 | 0.50 |
-| c_pow_im | 0.50 | 0.50 | 0.50 |
-| exprel_weighted_k1_re | 0.50 | 0.50 | 0.50 |
-| exprel_weighted_k1_im | 0.50 | 0.50 | 0.49 |
-| exprel_weighted_k2_re | 0.50 | 0.50 | 0.49 |
-| exprel_weighted_k2_im | 0.50 | 0.50 | 0.50 |
-| kepler_universal | 0.50 | 0.50 | 0.50 |
-| erf | 0.50 | 0.50 | 0.50 |
-| erfc | 0.50 | 0.50 | 0.50 |
-| fresnel_c | 0.50 | 0.50 | 0.50 |
-| fresnel_s | 0.50 | 0.50 | 0.50 |
-| gamma | 0.50 | 0.50 | 0.50 |
-| mul_down | 1.00 | 1.00 | 1.00 |
-| mul_up | 1.00 | 1.00 | 1.00 |
-| mul_div_down | 1.00 | 1.00 | 1.00 |
-| mul_div_up | 1.00 | 1.00 | 1.00 |
-| mul_add_down | 1.00 | 1.00 | 1.00 |
-| mul_add_up | 1.00 | 1.00 | 1.00 |
-| div_down | 1.00 | 1.00 | 1.00 |
-| div_up | 1.00 | 1.00 | 1.00 |
-| dot3_down | 1.00 | 1.00 | 1.00 |
-| dot3_up | 1.00 | 1.00 | 1.00 |
-| ellip_pi_increment | 0.50 | 0.50 | 0.50 |
-<!-- WORST_END -->
+- [Accuracy](docs/accuracy.md): the bound, how it is measured, and relative error per function.
+- [Worst case](docs/worst-case.md): the largest error of every function, on all 104 layouts.
+- [Saturation](docs/saturation.md): thresholds and domains for every function.
+- [API reference](https://docs.rs/fixed_analytics) and [changelog](CHANGELOG.md).

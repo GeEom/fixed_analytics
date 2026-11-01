@@ -1,5 +1,5 @@
 //! The worst-case table: running the sweep, writing it as text, comparing it
-//! with a baseline, and its section of the README.
+//! with a baseline, and its section of docs/worst-case.md.
 
 use crate::sut::types;
 use crate::sweep::{ALL, FunStats};
@@ -10,7 +10,9 @@ use std::fmt::Write;
 pub const WORST_PATH: &str = "worst.txt";
 const MARKER_START: &str = "<!-- WORST_START -->";
 const MARKER_END: &str = "<!-- WORST_END -->";
-const README_TYPES: [&str; 3] = ["I16F16", "I32F32", "I64F64"];
+const TABLE_TYPES: [&str; 3] = ["I16F16", "I32F32", "I64F64"];
+/// Half an ulp and the working error, past which a result has missed the nearest value.
+const PAST_NEAREST: f64 = 0.5 + 1.0 / (1u32 << 20) as f64;
 
 /// Runs every function on every type, in the order of `ALL` then `types()`.
 pub fn sweep() -> Vec<FunStats> {
@@ -72,6 +74,7 @@ pub fn parse(text: &str) -> BTreeMap<(String, String), FunStats> {
             mono_bad: c[7].parse().unwrap_or(u64::MAX),
             mono_n: c[8].parse().unwrap_or(0),
             errors: c[9].parse().unwrap_or(u64::MAX),
+            worst: c.get(10).unwrap_or(&"").to_string(),
             ..FunStats::default()
         };
         map.insert((s.fun.clone(), s.ty.clone()), s);
@@ -156,28 +159,52 @@ fn fmt_ulps(u: f64) -> String {
     }
 }
 
-pub fn readme_section(stats: &[FunStats]) -> String {
+pub fn doc_section(stats: &[FunStats]) -> String {
     let n_types = types().len();
+    let sum = |f: fn(&FunStats) -> u64| stats.iter().map(f).sum::<u64>();
     let mut out = String::new();
-    writeln!(out, "### Worst-case error\n").unwrap();
     writeln!(
         out,
-        "The largest error seen, in ulps of the type, against MPFR on exact inputs. The sweep covers {n_types} layouts from 8 to 128 bits, every value of each 8- and 16-bit one and {} seeded samples of each wider one; tools/accuracy-bench/worst.txt holds every layout. The directed forms, `_down` and `_up`, come within a rounding of a whole ulp, and the sweep checks exactly that each is below one and on its side.\n",
-        crate::sweep::sample_count()
+        "{} inputs over {} functions and {n_types} layouts; {} of {} symmetry checks and {} of {} monotonicity checks failed.\n",
+        sum(|s| s.samples),
+        ALL.len(),
+        sum(|s| s.parity_bad),
+        sum(|s| s.parity_n),
+        sum(|s| s.mono_bad),
+        sum(|s| s.mono_n),
     )
     .unwrap();
-    writeln!(out, "| Function | {} |", README_TYPES.join(" | ")).unwrap();
-    writeln!(out, "|----------|{}", "------|".repeat(README_TYPES.len())).unwrap();
-    let mut by_fun: BTreeMap<usize, Vec<String>> = BTreeMap::new();
+    writeln!(out, "| Function | {} | All layouts |", TABLE_TYPES.join(" | ")).unwrap();
+    writeln!(out, "|----------|{}", "------|".repeat(TABLE_TYPES.len() + 1)).unwrap();
+    let mut by_fun: BTreeMap<usize, (Vec<String>, f64)> = BTreeMap::new();
     for s in stats {
-        if let Some(col) = README_TYPES.iter().position(|t| *t == s.ty) {
-            let row = ALL.iter().position(|f| f.name() == s.fun).unwrap_or(usize::MAX);
-            let cells = by_fun.entry(row).or_insert_with(|| vec![String::new(); README_TYPES.len()]);
+        let row = ALL.iter().position(|f| f.name() == s.fun).unwrap_or(usize::MAX);
+        let (cells, all) = by_fun
+            .entry(row)
+            .or_insert_with(|| (vec![String::new(); TABLE_TYPES.len()], 0.0));
+        *all = all.max(s.max_ulps);
+        if let Some(col) = TABLE_TYPES.iter().position(|t| *t == s.ty) {
             cells[col] = fmt_ulps(s.max_ulps);
         }
     }
-    for (row, cells) in by_fun {
-        writeln!(out, "| {} | {} |", ALL[row].name(), cells.join(" | ")).unwrap();
+    for (row, (cells, all)) in by_fun {
+        let name = ALL.get(row).map_or("?", |f| f.name());
+        writeln!(out, "| {name} | {} | {} |", cells.join(" | "), fmt_ulps(all)).unwrap();
+    }
+    let past: Vec<&FunStats> = stats
+        .iter()
+        .filter(|s| s.max_ulps > PAST_NEAREST)
+        .filter(|s| !ALL.iter().any(|f| f.name() == s.fun && f.direction().is_some()))
+        .collect();
+    writeln!(out, "\nPast the nearest value by more than the working error, 2^-20 ulp:\n").unwrap();
+    if past.is_empty() {
+        writeln!(out, "None.").unwrap();
+        return out;
+    }
+    writeln!(out, "| Function | Layout | Ulps | Input |").unwrap();
+    writeln!(out, "|----------|--------|------|-------|").unwrap();
+    for s in past {
+        writeln!(out, "| {} | {} | {} | {} |", s.fun, s.ty, fmt_ulps(s.max_ulps), s.worst).unwrap();
     }
     out
 }
@@ -185,20 +212,20 @@ pub fn readme_section(stats: &[FunStats]) -> String {
 fn section_bounds(content: &str) -> Result<(usize, usize), String> {
     let start = content
         .find(MARKER_START)
-        .ok_or("README has no <!-- WORST_START --> marker")?;
+        .ok_or("no <!-- WORST_START --> marker")?;
     let end = content
         .find(MARKER_END)
-        .ok_or("README has no <!-- WORST_END --> marker")?;
+        .ok_or("no <!-- WORST_END --> marker")?;
     if end <= start {
         return Err("WORST_END must follow WORST_START".to_string());
     }
     Ok((start + MARKER_START.len(), end))
 }
 
-pub fn update_readme(path: &str, stats: &[FunStats]) -> Result<bool, String> {
+pub fn update_doc(path: &str, stats: &[FunStats]) -> Result<bool, String> {
     let content = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
     let (a, b) = section_bounds(&content)?;
-    let new = format!("{}\n{}{}", &content[..a], readme_section(stats), &content[b..]);
+    let new = format!("{}\n{}{}", &content[..a], doc_section(stats), &content[b..]);
     if new == content {
         return Ok(false);
     }
@@ -206,12 +233,12 @@ pub fn update_readme(path: &str, stats: &[FunStats]) -> Result<bool, String> {
     Ok(true)
 }
 
-pub fn verify_readme(path: &str, stats: &[FunStats]) -> Result<(), String> {
+pub fn verify_doc(path: &str, stats: &[FunStats]) -> Result<(), String> {
     let content = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
     let (a, b) = section_bounds(&content)?;
-    if content[a..b].trim() == readme_section(stats).trim() {
+    if content[a..b].trim() == doc_section(stats).trim() {
         Ok(())
     } else {
-        Err("README worst-case section is out of date; run `cargo run --release` in tools/accuracy-bench".to_string())
+        Err(format!("{path} is out of date; run `cargo run --release` in tools/accuracy-bench"))
     }
 }

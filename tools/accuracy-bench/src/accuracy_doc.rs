@@ -1,4 +1,4 @@
-//! README accuracy table generation and validation.
+//! The relative error table in docs/accuracy.md: generating it and checking it.
 
 use crate::FunctionResult;
 use std::fmt::Write;
@@ -10,14 +10,6 @@ const MARKER_END: &str = "<!-- ACCURACY_END -->";
 pub fn generate_accuracy_section(results: &[FunctionResult]) -> String {
     let mut out = String::new();
 
-    writeln!(out, "### Accuracy\n").unwrap();
-    writeln!(
-        out,
-        "Relative error statistics measured against MPFR reference implementations. Accuracy regressions are not permitted; every change is benchmarked against the baseline before merging. The file tools/accuracy-bench/baseline.json contains further measurements.\n"
-    )
-    .unwrap();
-
-    // Combined table with both I16F16 and I32F32
     writeln!(
         out,
         "| Function | I16F16 Mean | I16F16 Median | I16F16 P95 | I32F32 Mean | I32F32 Median | I32F32 P95 |"
@@ -46,11 +38,11 @@ pub fn generate_accuracy_section(results: &[FunctionResult]) -> String {
     out
 }
 
-/// Update the README file with new accuracy data.
+/// Update the docs page with new accuracy data.
 /// Returns Ok(true) if changes were made, Ok(false) if already up-to-date.
-pub fn update_readme(readme_path: &str, results: &[FunctionResult]) -> Result<bool, String> {
-    let content = std::fs::read_to_string(readme_path)
-        .map_err(|e| format!("Failed to read {readme_path}: {e}"))?;
+pub fn update_doc(doc_path: &str, results: &[FunctionResult]) -> Result<bool, String> {
+    let content = std::fs::read_to_string(doc_path)
+        .map_err(|e| format!("Failed to read {doc_path}: {e}"))?;
 
     let new_section = generate_accuracy_section(results);
     let new_content = replace_section(&content, &new_section)?;
@@ -59,17 +51,17 @@ pub fn update_readme(readme_path: &str, results: &[FunctionResult]) -> Result<bo
         return Ok(false);
     }
 
-    std::fs::write(readme_path, &new_content)
-        .map_err(|e| format!("Failed to write {readme_path}: {e}"))?;
+    std::fs::write(doc_path, &new_content)
+        .map_err(|e| format!("Failed to write {doc_path}: {e}"))?;
 
     Ok(true)
 }
 
-/// Verify the README accuracy section matches current results.
+/// Verify the docs page's accuracy section matches current results.
 /// Returns Ok(()) if valid, Err with details if mismatched.
-pub fn verify_readme(readme_path: &str, results: &[FunctionResult]) -> Result<(), String> {
-    let content = std::fs::read_to_string(readme_path)
-        .map_err(|e| format!("Failed to read {readme_path}: {e}"))?;
+pub fn verify_doc(doc_path: &str, results: &[FunctionResult]) -> Result<(), String> {
+    let content = std::fs::read_to_string(doc_path)
+        .map_err(|e| format!("Failed to read {doc_path}: {e}"))?;
 
     let current = extract_section(&content)?;
     let expected = generate_accuracy_section(results);
@@ -90,21 +82,21 @@ pub fn verify_readme(readme_path: &str, results: &[FunctionResult]) -> Result<()
                 };
                 if rel_diff > 0.01 {
                     mismatches.push(format!(
-                        "  {}: README has {:.2e}, expected {:.2e}",
+                        "  {}: the page has {:.2e}, expected {:.2e}",
                         key, cur_val, exp_val
                     ));
                 }
             }
             None => {
-                mismatches.push(format!("  {}: missing from README", key));
+                mismatches.push(format!("  {}: missing from the page", key));
             }
         }
     }
 
-    // Check for extra entries in README
+    // Check for extra entries in the page
     for key in current_values.keys() {
         if !expected_values.contains_key(key) {
-            mismatches.push(format!("  {}: unexpected entry in README", key));
+            mismatches.push(format!("  {}: unexpected entry in the page", key));
         }
     }
 
@@ -112,7 +104,7 @@ pub fn verify_readme(readme_path: &str, results: &[FunctionResult]) -> Result<()
         Ok(())
     } else {
         Err(format!(
-            "README accuracy section is out of date:\n{}\n\nRun `cargo run --release` in tools/accuracy-bench to update.",
+            "{doc_path} is out of date:\n{}\n\nRun `cargo run --release` in tools/accuracy-bench to update.",
             mismatches.join("\n")
         ))
     }
@@ -120,9 +112,9 @@ pub fn verify_readme(readme_path: &str, results: &[FunctionResult]) -> Result<()
 
 fn replace_section(content: &str, new_section: &str) -> Result<String, String> {
     let start_idx = content.find(MARKER_START)
-        .ok_or("README missing accuracy section start marker. Add <!-- ACCURACY_START --> where you want the table.")?;
+        .ok_or("missing accuracy section start marker. Add <!-- ACCURACY_START --> where you want the table.")?;
     let end_idx = content.find(MARKER_END)
-        .ok_or("README missing accuracy section end marker. Add <!-- ACCURACY_END --> after the start marker.")?;
+        .ok_or("missing accuracy section end marker. Add <!-- ACCURACY_END --> after the start marker.")?;
 
     if end_idx <= start_idx {
         return Err("ACCURACY_END marker must come after ACCURACY_START".to_string());
@@ -142,10 +134,10 @@ fn replace_section(content: &str, new_section: &str) -> Result<String, String> {
 fn extract_section(content: &str) -> Result<String, String> {
     let start_idx = content
         .find(MARKER_START)
-        .ok_or("README missing accuracy section start marker")?;
+        .ok_or("missing accuracy section start marker")?;
     let end_idx = content
         .find(MARKER_END)
-        .ok_or("README missing accuracy section end marker")?;
+        .ok_or("missing accuracy section end marker")?;
 
     let section_start = start_idx + MARKER_START.len();
     Ok(content[section_start..end_idx].to_string())
@@ -204,10 +196,6 @@ mod tests {
     #[test]
     fn test_parse_table_values() {
         let section = r#"
-### Accuracy
-
-Relative error statistics measured against MPFR reference implementations. Accuracy regressions are not permitted; every change is benchmarked against the baseline before merging. The file tools/accuracy-bench/baseline.json contains further measurements.
-
 | Function | I16F16 Mean | I16F16 Median | I16F16 P95 | I32F32 Mean | I32F32 Median | I32F32 P95 |
 |----------|-------------|---------------|------------|-------------|---------------|------------|
 | sin | 7.30e-5 | 6.05e-5 | 1.80e-4 | 1.41e-9 | 1.16e-9 | 3.49e-9 |

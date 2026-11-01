@@ -180,10 +180,6 @@ fn exhaustive_bits() -> u32 {
     if quick() { 8 } else { 16 }
 }
 
-pub const fn sample_count() -> usize {
-    SAMPLES
-}
-
 fn fun_roots(fun: Fun) -> bool {
     fun == CarlsonRfRoots
 }
