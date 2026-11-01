@@ -44,14 +44,16 @@ saturates from the first representable input past its value.
 | `stumpff`, `c₃` | to `MAX`, further out | −403.66 | −1065.18 | −3187.97 |
 | `mul_by_tau` | to `MAX` or `MIN` from `\|x\| = MAX/2π` | 5215.19 | 3.418e8 | 1.468e18 |
 | `carlson_rj`, `carlson_rd` | to `MAX` with every argument at or below `a = MAX^(−2/3)` | 9.8e-4 | 6.0e-7 | 2.3e-13 |
-| `carlson_rf_roots` | to `MAX` with every root at or below `1/MAX` | 3.1e-5 | 4.7e-10 | 1.1e-19 |
+| `carlson_rj_roots`, `carlson_rd_roots`, and the paired forms' `R_D` and `R_J` | to `MAX` with every root at or below `MAX^(−1/3)` | 3.1e-2 | 7.8e-4 | 4.8e-7 |
+| `carlson_rf_roots`, and `carlson_rf_rd_roots`' `R_F` | to `MAX` with every root at or below `1/MAX` | 3.1e-5 | 4.7e-10 | 1.1e-19 |
 
 `E₂` to `E₄` fall between `E₁` and `E₅`.
 
 Carlson's integrals are homogeneous. Scaling every argument by `λ` scales
 `R_J` and `R_D` by `λ^(−3/2)`, but `R_F` and `R_C` only by `λ^(−1/2)`, so
-small arguments saturate the first pair long before the second. `rsqrt` never
-saturates on these three types, since `1/√ulp` is in range.
+small arguments saturate the first pair long before the second. In roots the
+powers double, to `−3` and `−1`. `rsqrt` never saturates on these three
+types, since `1/√ulp` is in range.
 
 ## Without a fixed threshold
 
@@ -108,12 +110,14 @@ saturate. The formulas in the table give the thresholds on any layout.
 | `carlson_rj_roots` | At most one of `rx`, `ry`, `rz` 0, and `rp ≠ 0` |
 | `carlson_rc` | `x ≥ 0` and `y > 0` |
 | `carlson_rd` | `x, y ≥ 0`, not both 0, and `z > 0` |
+| `carlson_rd_roots`, `carlson_rf_rd_roots` | `rx` and `ry` not both 0, and `rz ≠ 0` |
+| `carlson_rd_rj_roots` | `rx` and `ry` not both 0, `rz ≠ 0` and `rp ≠ 0` |
 | `Complex::ln`, `Complex::e1` | `z ≠ 0` |
 | `Complex::pow` | `z ≠ 0` when `a < 0` |
 | `Complex::gamma_upper` | `a` in `(0, 128]` |
 | `Complex::exprel_weighted` | `ε` in `[0, 1)` and `p ≥ 0` |
-| `root_in` | `f(lo)` and `f(hi)` not both non-zero with one sign |
-| `kepler_universal` | `r₀ > 0` and `r₀(2 − αr₀) ≥ σ₀²`, a real orbit |
+| `root_in`, `root_in_newton` | `f(lo)` and `f(hi)` not both non-zero with one sign |
+| `kepler_universal`, `kepler_universal_stumpff`, `kepler_universal_near` | `r₀ > 0` and `r₀(2 − αr₀) ≥ σ₀²`, a real orbit |
 | `log1p_range`, `log1p_ratio_range`, `log1p_residual_ratio_range` | Both ends above −1 |
 | `atanh_ratio_range` | Both ends in `(−1, 1)` |
 
