@@ -53,8 +53,9 @@ functions are exactly odd and even, except that an odd one saturating at
 `MAX` meets `MIN` on the other side, and functions that are monotone stay
 monotone.
 
-The accuracy tool checks all of this against MPFR on 104 layouts: every
-value of the 8- and 16-bit ones, and seeded samples of the wider ones.
+The accuracy tool checks all of this against MPFR on 104 layouts. It tries
+every input of a one-argument function on the 8- and 16-bit ones, and seeded
+samples elsewhere.
 Accuracy regressions are not permitted across releases, and a release that
 changes any output bit says so in the changelog. The enclosure functions
 turn the bound into intervals certain to hold the exact value.
